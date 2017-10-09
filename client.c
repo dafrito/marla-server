@@ -3,12 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/socket.h>
 #include <unistd.h>
-#include <fcntl.h>
 #include <errno.h>
 #include <openssl/err.h>
-#include <arpa/inet.h>
 
 static void common_SSL_return(parsegraph_Client* client, int rv)
 {
@@ -25,7 +22,7 @@ static void common_SSL_return(parsegraph_Client* client, int rv)
     }
 }
 
-parsegraph_Client* parsegraph_Client_new(SSL_CTX* ctx, int socket)
+parsegraph_Client* parsegraph_Client_new(SSL_CTX* ctx, int fd)
 {
     parsegraph_Client* client = (parsegraph_Client*)malloc(sizeof(*client));
     if(!client) {
@@ -33,16 +30,21 @@ parsegraph_Client* parsegraph_Client_new(SSL_CTX* ctx, int socket)
     }
     client->stage = parsegraph_CLIENT_ACCEPTED;
     client->ctx = ctx;
-    client->socket = socket;
+    client->fd = fd;
     client->shouldDestroy = 0;
     client->wantsWrite = 0;
     client->wantsRead = 0;
     client->ssl = SSL_new(ctx);
-    if(1 != SSL_set_fd(client->ssl, client->socket)) {
+    if(1 != SSL_set_fd(client->ssl, client->fd)) {
         free(client);
         return 0;
     }
     return client;
+}
+
+void parsegraph_Client_shutdown(parsegraph_Client* client)
+{
+    client->stage = parsegraph_CLIENT_COMPLETE;
 }
 
 void parsegraph_Client_destroy(parsegraph_Client* client)
@@ -51,7 +53,7 @@ void parsegraph_Client_destroy(parsegraph_Client* client)
 
     /* Closing the descriptor will make epoll remove it
      from the set of descriptors which are monitored. */
-    close(client->socket);
+    close(client->fd);
     free(client);
 }
 
@@ -100,7 +102,8 @@ void parsegraph_Client_handle(parsegraph_Client* client, int event)
             return;
         }
         else {
-            const char reply[] = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n<html><body>Hello, <b>world.</b></body></html>";
+            write(1, buf, nread);
+            const char reply[] = "HTTP/1.1 200 OK\r\n\r\n<html><body>Hello, <b>world.</b></body></html>";
             int nwritten = SSL_write(client->ssl, reply, strlen(reply));
             if(nwritten <= 0) {
                 common_SSL_return(client, nwritten);
@@ -110,8 +113,19 @@ void parsegraph_Client_handle(parsegraph_Client* client, int event)
 
         client->stage = parsegraph_CLIENT_COMPLETE;
     }
-
-    // Finished with connection.
-    client->shouldDestroy = 1;
+    if(client->stage == parsegraph_CLIENT_COMPLETE) {
+        // Client needs shutdown.
+        int rv = 0;
+        while(rv == 0) {
+            rv = SSL_shutdown(client->ssl);
+            if(rv < 0) {
+                common_SSL_return(client, rv);
+                return;
+            }
+            else if(rv == 1) {
+                client->shouldDestroy = 1;
+                return;
+            }
+        }
+    }
 }
-

@@ -268,7 +268,7 @@ main (int argc, char *argv[])
                 parsegraph_Client* client = (parsegraph_Client*)events[i].data.ptr;
                 parsegraph_Client_handle(client, events[i].events);
                 if(client->shouldDestroy) {
-                  printf ("Closed connection on descriptor %d\n", client->socket);
+                  printf ("Closed connection on descriptor %d\n", client->fd);
                   parsegraph_Client_destroy(client);
                 }
             }

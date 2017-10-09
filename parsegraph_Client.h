@@ -12,7 +12,7 @@ parsegraph_CLIENT_COMPLETE = 2 /* Done with connection */
 
 typedef struct {
 parsegraph_ClientStage stage;
-int socket;
+int fd;
 SSL_CTX* ctx;
 SSL* ssl;
 int shouldDestroy;
@@ -21,7 +21,7 @@ int wantsRead;
 struct epoll_event poll;
 } parsegraph_Client;
 
-parsegraph_Client* parsegraph_Client_new(SSL_CTX* ctx, int socket);
+parsegraph_Client* parsegraph_Client_new(SSL_CTX* ctx, int fd);
 void parsegraph_Client_handle(parsegraph_Client* client, int event);
 void parsegraph_Client_destroy(parsegraph_Client* client);
 

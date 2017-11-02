@@ -11,7 +11,7 @@ rainback: epoll.c librainback.a | rainback.h
 certificate.pem key.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out certificate.pem
 
-PORT=4433
+PORT=4434
 
 kill: rainback.tmux
 	tmux -S rainback.tmux kill-server
@@ -29,7 +29,7 @@ check: certificate.pem run-tests
 	./test-ring.sh
 	./run-tests.sh $(PORT)
 	#./run-tests $(PORT)
-	./test_low.sh 4433 TEST
+	./test_low.sh $(PORT) TEST
 .PHONY: check
 
 run-tests: run-tests.c | rainback.h librainback.a

@@ -1,4 +1,6 @@
-#include "parsegraph_Client.h"
+#include "rainback.h"
+#include <math.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,125 +9,1070 @@
 #include <errno.h>
 #include <openssl/err.h>
 
-static void common_SSL_return(parsegraph_Client* client, int rv)
+static void common_SSL_return(parsegraph_Connection* cxn, int rv);
+
+// TODO Initiate backend connection, if needed.
+void route_request(parsegraph_Connection* client)
 {
-    switch(SSL_get_error(client->ssl, rv)) {
-    case SSL_ERROR_WANT_WRITE:
-        client->wantsWrite = 1;
+}
+
+int parsegraph_Client_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd)
+{
+    if(cxn->type == parsegraph_ConnectionNature_CLIENT) {
+       return 1;
+    }
+    else if(cxn->type != parsegraph_ConnectionNature_UNKNOWN) {
+        fprintf(stderr, "Init on non-unknown type(%d), aborting.\n", cxn->type);
+        abort();
+    }
+
+    // Set connection type.
+    cxn->type = parsegraph_ConnectionNature_CLIENT;
+
+    // Initialize the buffer.
+    cxn->nature.client.input = parsegraph_Ring_new(parsegraph_BUFSIZE);
+    cxn->nature.client.output = parsegraph_Ring_new(parsegraph_BUFSIZE);
+
+    cxn->nature.client.fd = fd;
+    cxn->nature.client.stage = parsegraph_CLIENT_ACCEPTED;
+    cxn->nature.client.ctx = ctx;
+    cxn->nature.client.ssl = SSL_new(ctx);
+    cxn->nature.client.requests_in_process = 0;
+    cxn->nature.client.latest_request = 0;
+    cxn->nature.client.current_request = 0;
+    return SSL_set_fd(cxn->nature.client.ssl, fd);
+}
+
+static void default_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
+{
+    int* acceptor;
+    char resp[parsegraph_BUFSIZE];
+    char buf[parsegraph_BUFSIZE + 1];
+    switch(ev) {
+    case parsegraph_EVENT_HEADER:
         break;
-    case SSL_ERROR_WANT_READ:
-        client->wantsRead = 1;
+    case parsegraph_EVENT_ACCEPTING_REQUEST:
+        acceptor = data;
+        *acceptor = 1;
         break;
-    default:
-        client->shouldDestroy = 1;
+    case parsegraph_EVENT_REQUEST_BODY:
+        break;
+    case parsegraph_EVENT_RESPOND:
+        fprintf(stderr, "Responding...\n");
+        memset(resp, 0, sizeof(resp));
+
+        const char* message_body = "<!DOCTYPE html><html><body>Hello, <b>world.</b><br/></body></html>";
+        const char* header = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+        int nwritten = parsegraph_Connection_write(req->cxn, header, strlen(header));
+        if(nwritten <= 0) {
+            common_SSL_return(req->cxn, nwritten);
+            return;
+        }
+
+        buf[sizeof(buf) - 1] = 0;
+        int cs = 0;
+        int message_len = strlen(message_body);
+        for(int i = 0; i <= message_len; ++i) {
+            if((i == message_len) || (i && !(i & (sizeof(buf) - 2)))) {
+                if(i & (sizeof(buf) - 2)) {
+                    buf[i & (sizeof(buf) - 2)] = 0;
+                }
+                int rv = snprintf(resp, 1023, "%x\r\n", cs);
+                if(rv < 0) {
+                    dprintf(3, "Failed to generate response.");
+                    req->cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+                memcpy(resp + rv, buf, cs);
+                resp[rv + cs] = '\r';
+                resp[rv + cs + 1] = '\n';
+
+                int nwritten = parsegraph_Connection_write(req->cxn, resp, rv + cs + 2);
+                if(nwritten <= 0) {
+                    common_SSL_return(req->cxn, nwritten);
+                    return;
+                }
+                cs = 0;
+            }
+            if(i == message_len) {
+                break;
+            }
+            buf[i & (sizeof(buf) - 2)] = message_body[i];
+            ++cs;
+        }
+
+        nwritten = parsegraph_Connection_write(req->cxn, "0\r\n\r\n", 5);
+        if(nwritten <= 0) {
+            common_SSL_return(req->cxn, nwritten);
+            return;
+        }
+
+        // Mark connection as complete.
+        req->stage = parsegraph_CLIENT_REQUEST_DONE;
+        break;
+    case parsegraph_EVENT_DESTROYING:
         break;
     }
 }
 
-parsegraph_Client* parsegraph_Client_new(SSL_CTX* ctx, int fd)
+parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cxn)
 {
-    parsegraph_Client* client = (parsegraph_Client*)malloc(sizeof(*client));
-    if(!client) {
-        return 0;
+    parsegraph_ClientRequest* req = malloc(sizeof(parsegraph_ClientRequest));
+    req->cxn = cxn;
+
+    req->handle = default_request_handler;
+    req->stage = parsegraph_CLIENT_REQUEST_FRESH;
+
+    // Counters
+    req->contentLen = parsegraph_MESSAGE_LENGTH_UNKNOWN;
+    req->totalContentLen = 0;
+    req->chunkSize = 0;
+
+    // Content
+    memset(req->host, 0, sizeof(req->host));
+    memset(req->uri, 0, sizeof(req->uri));
+    memset(req->method, 0, sizeof(req->method));
+
+    // Flags
+    req->expect_continue = 0;
+    req->expect_trailer = 0;
+
+    req->next_request = 0;
+
+    return req;
+}
+
+void parsegraph_ClientRequest_destroy(parsegraph_ClientRequest* req)
+{
+    if(req->handle) {
+        req->handle(req, parsegraph_EVENT_DESTROYING, 0, 0);
     }
-    client->stage = parsegraph_CLIENT_ACCEPTED;
-    client->ctx = ctx;
-    client->fd = fd;
-    client->shouldDestroy = 0;
-    client->wantsWrite = 0;
-    client->wantsRead = 0;
-    client->ssl = SSL_new(ctx);
-    if(1 != SSL_set_fd(client->ssl, client->fd)) {
-        free(client);
-        return 0;
+    free(req);
+}
+
+static void parsegraph_clientRead(parsegraph_Connection* cxn)
+{
+    parsegraph_ClientRequest* req = 0;
+    if(!cxn->nature.client.current_request) {
+        // No request yet made.
+        req = parsegraph_ClientRequest_new(cxn);
+        cxn->nature.client.current_request = req;
+        cxn->nature.client.latest_request = req;
+        ++cxn->nature.client.requests_in_process;
     }
-    return client;
-}
+    else {
+        req = cxn->nature.client.latest_request;
+    }
 
-void parsegraph_Client_shutdown(parsegraph_Client* client)
-{
-    client->stage = parsegraph_CLIENT_COMPLETE;
-}
+    if(req->stage == parsegraph_CLIENT_REQUEST_FRESH) {
+        while(1) {
+            char c;
+            int nread = parsegraph_Connection_read(cxn, &c, 1);
+            if(nread <= 0) {
+                return;
+            }
+            if(c != '\r' && c != '\n') {
+                parsegraph_Connection_putback(cxn, 1);
+                req->stage = parsegraph_CLIENT_REQUEST_READING_METHOD;
+                break;
+            }
+        }
+    }
 
-void parsegraph_Client_destroy(parsegraph_Client* client)
-{
-    SSL_free(client->ssl);
+    if(req->stage == parsegraph_CLIENT_REQUEST_READING_METHOD) {
+        memset(req->method, 0, sizeof(req->method));
+        int nread = parsegraph_Connection_read(cxn, req->method, MAX_METHOD_LENGTH + 1);
+        if(nread <= 0) {
+            // Error.
+            return;
+        }
+        if(nread < MIN_METHOD_LENGTH + 1) {
+            // Incomplete.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
 
-    /* Closing the descriptor will make epoll remove it
-     from the set of descriptors which are monitored. */
-    close(client->fd);
-    free(client);
-}
+        // Validate the given method.
+        int foundSpace = 0;
+        for(int i = 0; i < nread; ++i) {
+            char c = req->method[i];
+            if(c <= 0x1f || c == 0x7f) {
+                dprintf(3, "Request line contains control characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
+                dprintf(3, "Request line contains delimiters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`') {
+                dprintf(3, "Request line contains unwise characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(c == ' ') {
+                parsegraph_Connection_putback(cxn, nread - i);
+                req->method[i] = 0;
+                foundSpace = 1;
+                break;
+            }
+            if(!isascii(c)) {
+                dprintf(3, "Request method contains non-ASCII characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+        }
+        if(nread == MAX_METHOD_LENGTH + 1 && !foundSpace) {
+            dprintf(3, "Request method is too long, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(!foundSpace) {
+            // No space found in the fragment found, so incomplete read.
+            return;
+        }
 
-void parsegraph_Client_handle(parsegraph_Client* client, int event)
-{
-    // Ensure the client can be handled.
-    if(client->wantsRead) {
-        if(event & EPOLLIN) {
-            client->wantsRead = 0;
+        req->stage = parsegraph_CLIENT_REQUEST_PAST_METHOD;
+
+        if(!strcmp(req->method, "GET")) {
+
+        }
+        else if(!strcmp(req->method, "HEAD")) {
+
+        }
+        else if(!strcmp(req->method, "POST")) {
+
+        }
+        else if(!strcmp(req->method, "PUT")) {
+
+        }
+        else if(!strcmp(req->method, "DELETE")) {
+
+        }
+        else if(!strcmp(req->method, "CONNECT")) {
+
+        }
+        else if(!strcmp(req->method, "OPTIONS")) {
+
+        }
+        else if(!strcmp(req->method, "TRACE")) {
+            // A client MUST NOT send a message body in a TRACE request.
         }
         else {
+            dprintf(3, "Request method is unknown, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+
+        fprintf(stderr, "Found method: %s\n", req->method);
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_PAST_METHOD) {
+        while(1) {
+            char c;
+            int nread = parsegraph_Connection_read(cxn, &c, 1);
+            if(nread <= 0) {
+                return;
+            }
+            if(c != ' ') {
+                parsegraph_Connection_putback(cxn, 1);
+                req->stage = parsegraph_CLIENT_REQUEST_READING_REQUEST_TARGET;
+                break;
+            }
+        }
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_READING_REQUEST_TARGET) {
+        memset(req->uri, 0, sizeof(req->uri));
+        int nread = parsegraph_Connection_read(cxn, req->uri, MAX_URI_LENGTH + 1);
+        if(nread <= 0) {
+            // Error.
+            return;
+        }
+        if(nread < MIN_METHOD_LENGTH + 1) {
+            // Incomplete.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
+
+        // Validate the given method.
+        int foundSpace = 0;
+        for(int i = 0; i < nread; ++i) {
+            char c = req->uri[i];
+            if(c <= 0x1f || c == 0x7f) {
+                dprintf(3, "Request target contains control characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
+                dprintf(3, "Request target contains delimiters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`') {
+                dprintf(3, "Request target contains unwise characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(c == ' ') {
+                parsegraph_Connection_putback(cxn, nread - i);
+                req->uri[i] = 0;
+                foundSpace = 1;
+                break;
+            }
+        }
+        if(nread == MAX_URI_LENGTH + 1 && !foundSpace) {
+            dprintf(3, "Request target is too long, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(!foundSpace) {
+            // No space found in the fragment found, so incomplete read.
+            return;
+        }
+
+        fprintf(stderr, "Found URI: %s\n", req->uri);
+
+        req->stage = parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET;
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET) {
+        while(1) {
+            char c;
+            int nread = parsegraph_Connection_read(cxn, &c, 1);
+            if(nread <= 0) {
+                return;
+            }
+            if(c != ' ') {
+                parsegraph_Connection_putback(cxn, 1);
+                req->stage = parsegraph_CLIENT_REQUEST_READING_VERSION;
+                break;
+            }
+        }
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_READING_VERSION) {
+        // "HTTP/1.1", HTTP_Version))
+        // "01234567"
+        char givenVersion[10];
+        memset(givenVersion, 0, sizeof(givenVersion));
+        int nread = parsegraph_Connection_read(cxn, givenVersion, sizeof(givenVersion));
+        if(nread <= 0) {
+            // Error.
+            return;
+        }
+        if(nread < 10) {
+            // Incomplete.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
+
+        // Validate.
+        if(givenVersion[8] != '\r' && givenVersion[9] != '\n') {
+            dprintf(3, "Request version is too long, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+
+        givenVersion[8] = 0;
+        if(strncmp(givenVersion, "HTTP/1.1", 8)) {
+            dprintf(3, "Request version is unknown, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+
+        req->stage = parsegraph_CLIENT_REQUEST_READING_FIELD;
+    }
+
+    while(req->stage == parsegraph_CLIENT_REQUEST_READING_FIELD) {
+        char fieldLine[MAX_FIELD_NAME_LENGTH + 2 + MAX_FIELD_VALUE_LENGTH + 2];
+        memset(fieldLine, 0, sizeof(fieldLine));
+        int nread = parsegraph_Connection_read(cxn, fieldLine, sizeof(fieldLine));
+        if(nread <= 0) {
+            // Error.
+            return;
+        }
+        if(nread < 2) {
+            // Incomplete.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
+
+        // Validate.
+        int foundNewline = 0;
+        int foundSeparator = 0;
+        int toleratingSpaces = 0;
+        char* fieldValue = 0;
+        for(int i = 0; i < nread - 1; ++i) {
+            if(fieldLine[i] == '\r' && fieldLine[i + 1] == '\n') {
+                fieldLine[i] = 0;
+                foundNewline = 1;
+                parsegraph_Connection_putback(cxn, nread - i - 2);
+                break;
+            }
+            char c = fieldLine[i];
+            if(c <= 0x1f || c == 0x7f) {
+                dprintf(3, "Header line contains control characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%' || c == '"')) {
+                dprintf(3, "Header name contains delimiters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(!foundSeparator && (c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`')) {
+                dprintf(3, "Header name contains unwise characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(!foundSeparator && !isalnum(c) && c != '-') {
+                if(c == ':' && i > 0 && i < nread - 1) {
+                    foundSeparator = i;
+                    fieldLine[i] = 0;
+                    toleratingSpaces = 1;
+                    continue;
+                }
+                dprintf(3, "Header name contains non alphanumeric characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(foundSeparator && toleratingSpaces) {
+                if(c == ' ') {
+                    continue;
+                }
+                toleratingSpaces = 0;
+                fieldValue = fieldLine + i;
+            }
+        }
+
+        // Validate.
+        if(!foundNewline && nread == sizeof(fieldLine)) {
+            dprintf(3, "Request version is too long, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(!foundNewline) {
+            // Incomplete;
+            return;
+        }
+        if(foundSeparator && fieldValue) {
+            // Header found.
+            char* fieldName = fieldLine;
+            fprintf(stderr, "HEADER: %s = %s\n", fieldName, fieldValue);
+
+            if(!strcmp(fieldName, "Content-Length")) {
+                if(req->contentLen != -2) {
+                    dprintf(3, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+                char* endptr;
+                long int x = strtol(fieldValue, &endptr, 10);
+                if(*endptr != '\0' || x < 0) {
+                    dprintf(3, "Content-Length header value could not be read, so no valid request.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+                req->contentLen = x;
+            }
+            else if(!strcmp(fieldName, "Host")) {
+                memset(req->host, 0, sizeof(req->host));
+                strncpy(req->host, fieldValue, sizeof(req->host) - 1);
+            }
+            else if(!strcmp(fieldName, "Transfer-Encoding")) {
+                if(req->contentLen != -2) {
+                    dprintf(3, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+
+                if(!strcmp(fieldValue, "chunked")) {
+                    req->contentLen = parsegraph_MESSAGE_IS_CHUNKED;
+                }
+            }
+            else if(!strcmp(fieldName, "Connection")) {
+                if(!strcmp(fieldValue, "close")) {
+                    req->contentLen = parsegraph_MESSAGE_USES_CLOSE;
+                }
+                else if(strcmp(fieldValue, "keep-alive")) {
+                    dprintf(3, "Connection is not understood, so no valid request.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+            }
+            else if(!strcmp(fieldName, "Trailer")) {
+
+            }
+            else if(!strcmp(fieldName, "TE")) {
+
+            }
+            else if(!strcmp(fieldName, "Range")) {
+
+            }
+            else if(!strcmp(fieldName, "If-Unmodified-Since")) {
+
+            }
+            else if(!strcmp(fieldName, "If-Range")) {
+
+            }
+            else if(!strcmp(fieldName, "If-None-Match")) {
+
+            }
+            else if(!strcmp(fieldName, "If-Modified-Since")) {
+
+            }
+            else if(!strcmp(fieldName, "If-Match")) {
+
+            }
+            else if(!strcmp(fieldName, "Expect")) {
+                if(!strcmp(fieldValue, "100-continue")) {
+                    req->expect_continue = 1;
+                }
+            }
+            else if(!strcmp(fieldName, "Content-Type")) {
+
+            }
+            else if(!strcmp(fieldName, "Accept-Language")) {
+
+            }
+            else if(!strcmp(fieldName, "Accept-Encoding")) {
+
+            }
+            else if(!strcmp(fieldName, "Accept-Charset")) {
+
+            }
+            else if(!strcmp(fieldName, "Accept")) {
+
+            }
+            else {
+                req->handle(req, parsegraph_EVENT_HEADER, fieldName, fieldValue - fieldName);
+            }
+
+            continue;
+        }
+        else if(fieldLine[0] == 0) {
+            // Empty line. End of request headers.
+
+            // Determine target URI.
+            if(req->uri[0] == '/') {
+                // Origin form.
+
+                if(req->host[0] == 0) {
+                    // No Host sent.
+                    dprintf(3, "No Host provided.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+            }
+            else if(isascii(req->uri[0])) {
+                char* schemeSep = strstr(req->uri, "://");
+                if(schemeSep != 0) {
+                    for(char* c = req->uri; c != schemeSep; ++c) {
+                        if(!isascii(*c)) {
+                            dprintf(3, "Scheme invalid, so no valid request.");
+                            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                            return;
+                        }
+                    }
+                    *schemeSep = 0;
+                    if(!strcmp("http", req->uri)) {
+                        dprintf(3, "HTTP scheme unsupported, so no valid request.");
+                        cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                        return;
+                    }
+                    else if(!strcmp("https", req->uri)) {
+                        *schemeSep = ':';
+                    }
+                    else {
+                        dprintf(3, "Request scheme unrecognized.");
+                        cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                        return;
+                    }
+                }
+                char* hostPart = schemeSep + 3;
+                char* hostSep = strstr(hostPart, "/");
+                if(hostSep - hostPart >= MAX_FIELD_VALUE_LENGTH) {
+                    dprintf(3, "Host too long.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+
+                if(hostSep == 0) {
+                    // GET https://localhost
+                    strncpy(req->host, hostPart, MAX_FIELD_VALUE_LENGTH);
+                }
+                else {
+                    // GET https://localhost/absolute/path?query
+                    *hostSep = 0;
+                    if(req->host[0] != 0 && strcmp(req->host, hostPart)) {
+                        dprintf(3, "Host differs from absolute URI's host.");
+                        cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                        return;
+                    }
+                    strncpy(req->host, hostPart, MAX_FIELD_VALUE_LENGTH);
+                    *hostSep = '/';
+
+                    // Transform an absolute URI into a origin form
+                    memmove(req->uri, hostSep, strlen(hostSep));
+                }
+            }
+            else {
+                dprintf(3, "Request target unrecognized.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+
+            int accept = 1;
+            req->handle(req, parsegraph_EVENT_ACCEPTING_REQUEST, &accept, 0);
+            if(!accept) {
+                dprintf(3, "Request explicitly rejected.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+
+            // Request not rejected. Issue 100-continue if needed.
+            if(req->expect_continue) {
+                req->stage = parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE;
+            }
+            else {
+                switch(req->contentLen) {
+                case parsegraph_MESSAGE_IS_CHUNKED:
+                    req->stage = parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE;
+                    break;
+                case 0:
+                case parsegraph_MESSAGE_LENGTH_UNKNOWN:
+                    req->stage = parsegraph_CLIENT_REQUEST_RESPONDING;
+                    break;
+                default:
+                case parsegraph_MESSAGE_USES_CLOSE:
+                    req->stage = parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY;
+                    break;
+                }
+            }
+
+            break;
+        }
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE) {
+        return;
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY) {
+        while(req->contentLen != 0) {
+            // Read request body.
+            char buf[parsegraph_BUFSIZE];
+            memset(buf, 0, sizeof(buf));
+            int requestedLen = req->contentLen;
+            if(requestedLen > sizeof(buf)) {
+                requestedLen = sizeof(buf);
+            }
+            int nread = parsegraph_Connection_read(cxn, buf, requestedLen);
+            if(nread == 0) {
+                // Zero-length read indicates end of stream.
+                if(req->contentLen > 0) {
+                    dprintf(3, "Premature end of request body.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+                break;
+            }
+            if(nread < 0) {
+                // Error.
+                dprintf(3, "Error while receiving request body.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(nread < 4 && req->contentLen > 4) {
+                // A read too small.
+                parsegraph_Connection_putback(cxn, nread);
+                return;
+            }
+
+            // Handle input.
+            req->totalContentLen += nread;
+            req->contentLen -= nread;
+            req->handle(req, parsegraph_EVENT_REQUEST_BODY, buf, nread);
+        }
+        req->stage = parsegraph_CLIENT_REQUEST_RESPONDING;
+    }
+
+    while(req->stage == parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE) {
+        char buf[parsegraph_MAX_CHUNK_SIZE_LINE];
+        memset(buf, 0, sizeof(buf));
+        int nread = parsegraph_Connection_read(cxn, buf, sizeof(buf));
+        if(nread == 0) {
+            // Zero-length read indicates premature end of stream.
+            dprintf(3, "Premature end of chunked request body.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(nread < 0) {
+            // Error.
+            dprintf(3, "Error while receiving request body.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(nread < 3) {
+            // A read too small.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
+
+        int foundHexDigit = 0;
+        int foundEnd = 0;
+        for(int i = 0; i < nread; ++i) {
+            char c = buf[i];
+            if((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || (c >= '0' && c <= '9')) {
+                // It's a hex digit.
+                foundHexDigit = 1;
+                continue;
+            }
+            else if(foundHexDigit && c == '\r' && i < nread - 1 && buf[i + 1] == '\n') {
+                // It's the size-body separator.
+                foundEnd = 1;
+                buf[i] = 0;
+                parsegraph_Connection_putback(cxn, nread - (i + 2));
+                break;
+            }
+            else {
+                // Garbage.
+                dprintf(3, "Error while receiving chunk size.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+        }
+
+        if(!foundEnd) {
+            if(nread >= parsegraph_MAX_CHUNK_SIZE_LINE) {
+                dprintf(3, "Chunk size line too long.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+
+            // Incomplete read.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
+
+        if(!foundHexDigit) {
+            dprintf(3, "Assertion failed while receiving chunk size.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+
+        char* endptr = 0;
+        long int chunkSize = strtol(buf, &endptr, 16);
+        if(endptr != 0) {
+            dprintf(3, "Error while parsing chunk size.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(chunkSize < 0 || chunkSize > parsegraph_MAX_CHUNK_SIZE) {
+            dprintf(3, "Request chunk size is out of range.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        req->chunkSize = chunkSize;
+        req->stage = parsegraph_CLIENT_REQUEST_READING_CHUNK_BODY;
+        if(req->chunkSize == 0) {
+            if(req->expect_trailer) {
+                req->stage = parsegraph_CLIENT_REQUEST_READING_TRAILER;
+            }
+            else {
+                req->stage = parsegraph_CLIENT_REQUEST_RESPONDING;
+            }
+        }
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_READING_CHUNK_BODY) {
+        while(req->chunkSize > 0) {
+            char buf[parsegraph_BUFSIZE];
+            memset(buf, 0, sizeof(buf));
+            int requestedLen = req->chunkSize;
+            if(requestedLen > sizeof(buf)) {
+                requestedLen = sizeof(buf);
+            }
+
+            int nread = parsegraph_Connection_read(
+                cxn,
+                buf,
+                requestedLen
+            );
+            if(nread == 0) {
+                // Zero-length read indicates end of stream.
+                if(req->chunkSize > 0) {
+                    dprintf(3, "Premature end of request chunk body.");
+                    cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+                break;
+            }
+            if(nread < 0) {
+                // Error.
+                dprintf(3, "Error while receiving request chunk body.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(nread < 4 && req->chunkSize > 4) {
+                // A read too small.
+                parsegraph_Connection_putback(cxn, nread);
+                return;
+            }
+
+            // Handle input.
+            req->totalContentLen += nread;
+            req->chunkSize -= nread;
+            req->handle(req, parsegraph_EVENT_REQUEST_BODY, buf, nread);
+        }
+        req->stage = parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE;
+    }
+
+    while(req->stage == parsegraph_CLIENT_REQUEST_READING_TRAILER) {
+        char fieldLine[MAX_FIELD_NAME_LENGTH + 2 + MAX_FIELD_VALUE_LENGTH + 2];
+        memset(fieldLine, 0, sizeof(fieldLine));
+        int nread = parsegraph_Connection_read(cxn, fieldLine, sizeof(fieldLine));
+        if(nread <= 0) {
+            // Error.
+            return;
+        }
+        if(nread < 2) {
+            // Incomplete.
+            parsegraph_Connection_putback(cxn, nread);
+            return;
+        }
+
+        // Validate.
+        int foundNewline = 0;
+        int foundSeparator = 0;
+        int toleratingSpaces = 0;
+        char* fieldValue = 0;
+        for(int i = 0; i < nread - 1; ++i) {
+            if(fieldLine[i] == '\r' && fieldLine[i + 1] == '\n') {
+                fieldLine[i] = 0;
+                foundNewline = 1;
+                parsegraph_Connection_putback(cxn, nread - i - 2);
+                break;
+            }
+            char c = fieldLine[i];
+            if(c <= 0x1f || c == 0x7f) {
+                dprintf(3, "Header line contains control characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%' || c == '"')) {
+                dprintf(3, "Header name contains delimiters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(!foundSeparator && (c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`')) {
+                dprintf(3, "Header name contains unwise characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(!foundSeparator && !isalnum(c) && c != '-') {
+                if(c == ':' && i > 0 && i < nread - 1) {
+                    foundSeparator = i;
+                    fieldLine[i] = 0;
+                    toleratingSpaces = 1;
+                    continue;
+                }
+                dprintf(3, "Header name contains non alphanumeric characters, so no valid request.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(foundSeparator && toleratingSpaces) {
+                if(c == ' ') {
+                    continue;
+                }
+                toleratingSpaces = 0;
+                fieldValue = fieldLine + i;
+            }
+        }
+
+        // Validate.
+        if(!foundNewline && nread == sizeof(fieldLine)) {
+            dprintf(3, "Request version is too long, so no valid request.");
+            cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+            return;
+        }
+        if(!foundNewline) {
+            // Incomplete;
+            return;
+        }
+        if(foundSeparator && fieldValue) {
+            char* fieldName = fieldLine;
+            fprintf(stderr, "Header: %s = %s\n", fieldName, fieldValue);
+            // Header found.
+            req->handle(req, parsegraph_EVENT_HEADER, fieldName, fieldValue - fieldName);
+            continue;
+        }
+        else if(fieldLine[0] == 0) {
+            // Empty line. End of trailers.
+            fprintf(stderr, "End of headers\n");
+            req->stage = parsegraph_CLIENT_REQUEST_RESPONDING;
+            break;
+        }
+    }
+
+    if(req->stage == parsegraph_CLIENT_REQUEST_DONE || req->stage == parsegraph_CLIENT_REQUEST_RESPONDING) {
+        return;
+    }
+    else {
+        dprintf(3, "Unexpected request stage.");
+        cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+        return;
+    }
+}
+
+static void parsegraph_clientWrite(parsegraph_Connection* cxn)
+{
+    if(cxn->nature.client.stage != parsegraph_CLIENT_SECURED) {
+        return;
+    }
+
+    parsegraph_Ring* output = cxn->nature.client.output;
+
+    // Write current output.
+    if(parsegraph_Ring_size(output) > 0) {
+        int nflushed;
+        int rv = parsegraph_Connection_flush(cxn, &nflushed);
+        if(rv <= 0) {
             return;
         }
     }
-    if(client->wantsWrite) {
-        if(event & EPOLLOUT) {
-            client->wantsWrite = 0;
-        }
-        else {
+
+    parsegraph_ClientRequest* req;
+    while((req = cxn->nature.client.current_request) != 0) {
+        if(req->stage <= parsegraph_CLIENT_REQUEST_READING_FIELD) {
+            // Request premature; couldn't write.
             return;
         }
-    }
 
-    if(client->stage == parsegraph_CLIENT_ACCEPTED) {
+        if(req->stage == parsegraph_CLIENT_REQUEST_DONE) {
+            cxn->nature.client.current_request = req->next_request;
+            parsegraph_ClientRequest_destroy(req);
+            continue;
+        }
+
+        if(parsegraph_Ring_size(output) > parsegraph_Ring_capacity(output) - 4) {
+            // Buffer too full.
+            return;
+        }
+
+        if(req->stage == parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE) {
+            const char* statusLine = "HTTP/1.1 100 Continue\r\n";
+            size_t len = strlen(statusLine);
+            int nwritten = parsegraph_Connection_write(cxn, statusLine, len);
+            if(nwritten == 0) {
+                dprintf(3, "Premature connection close.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(nwritten < 0) {
+                dprintf(3, "Error while writing connection.");
+                cxn->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+                return;
+
+            }
+            if(nwritten <= len) {
+                // Only allow writes of the whole thing.
+                parsegraph_Connection_putbackWrite(cxn, nwritten);
+                return;
+            }
+
+            if(req->contentLen == -1) {
+                req->stage = parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE;
+            }
+            else if(req->contentLen == 0) {
+                req->stage = parsegraph_CLIENT_REQUEST_DONE;
+            }
+            else if(req->contentLen > 0) {
+                req->stage = parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY;
+            }
+            return;
+        }
+
+        if(req->stage > parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE) {
+            req->handle(req, parsegraph_EVENT_RESPOND, 0, 0);
+
+            // Write current output.
+            if(parsegraph_Ring_size(output) > 0) {
+                int nflushed;
+                int rv = parsegraph_Connection_flush(cxn, &nflushed);
+                if(rv <= 0) {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+void parsegraph_Client_handle(parsegraph_Connection* cxn, int event)
+{
+    if(cxn->type != parsegraph_ConnectionNature_CLIENT) {
+        return;
+    }
+    if(cxn->nature.client.stage == parsegraph_CLIENT_ACCEPTED) {
         // Client has just connected.
-        int rv = SSL_accept(client->ssl);
+        int rv = SSL_accept(cxn->nature.client.ssl);
         if(rv == 0) {
             // Shutdown controlled
-            client->shouldDestroy = 1;
+            cxn->shouldDestroy = 1;
             return;
         }
         else if(rv != 1) {
-            common_SSL_return(client, rv);
+            common_SSL_return(cxn, rv);
             return;
         }
 
         // Accepted and secured.
-        client->stage = parsegraph_CLIENT_SECURED;
+        cxn->nature.client.stage = parsegraph_CLIENT_SECURED;
     }
-    if(client->stage == parsegraph_CLIENT_SECURED) {
-        // Ready to read payload from client.
-        char buf[1024];
-        int nread = SSL_read(client->ssl, buf, sizeof(buf));
-        if(nread <= 0) {
-            common_SSL_return(client, nread);
-            return;
-        }
-        else {
-            write(1, buf, nread);
-            const char reply[] = "HTTP/1.1 200 OK\r\n\r\n<html><body>Hello, <b>world.</b></body></html>";
-            int nwritten = SSL_write(client->ssl, reply, strlen(reply));
-            if(nwritten <= 0) {
-                common_SSL_return(client, nwritten);
-                return;
-            }
-        }
 
-        client->stage = parsegraph_CLIENT_COMPLETE;
-    }
-    if(client->stage == parsegraph_CLIENT_COMPLETE) {
+    // Read in requests.
+    parsegraph_clientRead(cxn);
+    parsegraph_clientWrite(cxn);
+
+    if(cxn->nature.client.stage == parsegraph_CLIENT_COMPLETE) {
         // Client needs shutdown.
         int rv = 0;
         while(rv == 0) {
-            rv = SSL_shutdown(client->ssl);
+            rv = SSL_shutdown(cxn->nature.client.ssl);
             if(rv < 0) {
-                common_SSL_return(client, rv);
+                common_SSL_return(cxn, rv);
                 return;
             }
             else if(rv == 1) {
-                client->shouldDestroy = 1;
+                cxn->shouldDestroy = 1;
                 return;
             }
         }
+    }
+}
+
+enum rainback_Status parsegraph_Client_shutdown(parsegraph_Connection* client)
+{
+    if(client->type != parsegraph_ConnectionNature_CLIENT) {
+        return rainback_WRONG_NATURE;
+    }
+    client->nature.client.stage = parsegraph_CLIENT_COMPLETE;
+    return rainback_OK;
+}
+
+static void common_SSL_return(parsegraph_Connection* cxn, int rv)
+{
+    switch(SSL_get_error(cxn->nature.client.ssl, rv)) {
+    case SSL_ERROR_WANT_WRITE:
+        cxn->wantsWrite = 1;
+        break;
+    case SSL_ERROR_WANT_READ:
+        cxn->wantsRead = 1;
+        break;
+    default:
+        cxn->shouldDestroy = 1;
+        break;
     }
 }

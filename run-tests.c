@@ -10,11 +10,10 @@
 #include <errno.h>
 #include <openssl/err.h>
 #include <arpa/inet.h>
-#include <pthread.h>
-#include <ncurses.h>
-#include <locale.h>
 
 #define MAXEVENTS 64
+
+static const char* name = "rainback";
 
 static void init_openssl()
 {
@@ -83,87 +82,50 @@ make_socket_non_blocking (int sfd)
   return 0;
 }
 
-static int
-create_and_bind (const char *port)
+static int create_and_bind(const char* host, const char *port)
 {
-  struct addrinfo hints;
-  struct addrinfo *result, *rp;
-  int s, sfd;
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof (struct addrinfo));
+    hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
+    hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
+    hints.ai_flags = AI_PASSIVE;     /* All interfaces */
 
-  memset (&hints, 0, sizeof (struct addrinfo));
-  hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
-  hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
-  hints.ai_flags = AI_PASSIVE;     /* All interfaces */
-
-  s = getaddrinfo (NULL, port, &hints, &result);
-  if (s != 0)
-    {
-      fprintf (stderr, "getaddrinfo: %s\n", gai_strerror (s));
-      return -1;
+    struct addrinfo *result;
+    int rv = getaddrinfo(host, port, &hints, &result);
+    if(rv != 0) {
+        perror("getaddrinfo");
+        return -1;
     }
 
-  for (rp = result; rp != NULL; rp = rp->ai_next)
-    {
-      sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-      if (sfd == -1)
-        continue;
-
-      s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
-      if (s == 0)
-        {
-          /* We managed to bind successfully! */
-          break;
+    int sfd;
+    struct addrinfo* rp = NULL;
+    for(rp = result; rp != NULL; rp = rp->ai_next) {
+        sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if(sfd == -1) {
+            continue;
         }
-        else {
-          fprintf(stderr, "Could not bind: %s (errno=%d)\n", strerror(errno), errno);
-      }
 
-      close (sfd);
+        if(connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1) {
+            break;
+        }
+
+        close(sfd);
     }
 
-  if (rp == NULL)
-    {
-      fprintf(stderr, "Could not bind on any sockets.");
-      return -1;
+    if(rp == NULL) {
+        fprintf(stderr, "Could not connect\n");
+        exit(EXIT_FAILURE);
     }
 
-  freeaddrinfo (result);
+    freeaddrinfo(result);
 
-  return sfd;
+    return sfd;
 }
 
-void* terminal_operator(void* data)
+int main(int argc, const char** argv)
 {
-    /*setlocale(LC_ALL, "");
-    initscr();
-    cbreak();
-    noecho();
-    nonl();
-
-    intrflush(stdscr, FALSE);
-    keypad(stdscr, TRUE);
-
-    int c = getch();
-
-    keypad(stdscr, FALSE);
-    intrflush(stdscr, TRUE);
-    nl();
-    nocbreak();
-    echo();
-    endwin();*/
-}
-
-static pthread_t terminal_thread;
-static int exit_value = EXIT_SUCCESS;
-
-int main(int argc, const char**argv)
-{
-    int sfd, s;
-    int efd;
-    struct epoll_event *events;
-
-    if(0 != pthread_create(&terminal_thread, 0, terminal_operator, 0)) {
-        fprintf(stderr, "Failed to create terminal thread");
+    if(argc < 3) {
+        fprintf(stderr, "Usage: %s <host> <port>\n", name);
         exit(EXIT_FAILURE);
     }
 
@@ -171,50 +133,38 @@ int main(int argc, const char**argv)
     SSL_CTX *ctx = create_context();
     configure_context(ctx);
 
-    if(argc != 2) {
-        fprintf(stderr, "Usage: %s [port]\n", argv[0]);
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
-    }
-
-    sfd = create_and_bind(argv[1]);
+    int sfd = create_and_bind(argv[1], argv[2]);
     if(sfd == -1) {
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        exit(EXIT_FAILURE);
     }
 
-    s = make_socket_non_blocking(sfd);
-    if(s == -1) {
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+    int rv = make_socket_non_blocking(sfd);
+    if(rv == -1) {
+        exit(EXIT_FAILURE);
     }
 
-    s = listen(sfd, SOMAXCONN);
-    if(s == -1) {
+    rv = listen(sfd, SOMAXCONN);
+    if(rv == -1) {
         perror ("listen");
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        abort ();
     }
 
-    efd = epoll_create1(0);
+    int efd = epoll_create1(0);
     if(efd == -1) {
         perror("epoll_create");
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        abort();
     }
 
     struct epoll_event event;
     event.data.fd = sfd;
     event.events = EPOLLIN | EPOLLET;
-    s = epoll_ctl (efd, EPOLL_CTL_ADD, sfd, &event);
-    if(s == -1) {
+    rv = epoll_ctl (efd, EPOLL_CTL_ADD, sfd, &event);
+    if(rv == -1) {
         perror("epoll_ctl");
         abort();
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
     }
 
-    events = (struct epoll_event*)calloc(MAXEVENTS, sizeof event);
+    struct epoll_event* events = (struct epoll_event*)calloc(MAXEVENTS, sizeof event);
     while(1) {
         int n, i;
 
@@ -228,6 +178,7 @@ int main(int argc, const char**argv)
             fprintf (stderr, "epoll error\n");
             parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
             parsegraph_Connection_destroy(source);
+            fsync(3);
             continue;
         }
         else if (sfd == events[i].data.fd) {
@@ -253,11 +204,11 @@ int main(int argc, const char**argv)
                     }
                 }
 
-                  s = getnameinfo (&in_addr, in_len,
+                  rv = getnameinfo (&in_addr, in_len,
                                    hbuf, sizeof hbuf,
                                    sbuf, sizeof sbuf,
                                    NI_NUMERICHOST | NI_NUMERICSERV);
-                  if (s == 0)
+                  if (rv == 0)
                     {
                       printf("Accepted connection on descriptor %d "
                              "(host=%s, port=%s)\n", infd, hbuf, sbuf);
@@ -265,27 +216,24 @@ int main(int argc, const char**argv)
 
                   /* Make the incoming socket non-blocking and add it to the
                      list of fds to monitor. */
-                  s = make_socket_non_blocking (infd);
-                  if (s != 0) {
-                    close(infd);
-                    continue;
+                  rv = make_socket_non_blocking (infd);
+                  if (rv == -1) {
+                    abort ();
                   }
 
                   parsegraph_Connection* cxn = parsegraph_Connection_new();
                   if(1 != parsegraph_Client_init(cxn, ctx, infd)) {
                      perror("Unable to create connection");
-                      close(infd);
-                        continue;
+                     abort();
                   }
 
                   event.data.ptr = cxn;
                   event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-                  s = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
-                  if (s == -1)
+                  rv = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
+                  if (rv == -1)
                     {
                       perror ("epoll_ctl");
-                      close(infd);
-                        continue;
+                      abort ();
                     }
                 }
               continue;
@@ -303,12 +251,10 @@ int main(int argc, const char**argv)
     }
 
 destroy:
-    free (events);
-    close (sfd);
-    SSL_CTX_free(ctx);
-    cleanup_openssl();
+  free (events);
+  close (sfd);
+  SSL_CTX_free(ctx);
+  cleanup_openssl();
 
-end_terminal:
-    pthread_exit(&terminal_thread);
-    return exit_value;
+  return EXIT_SUCCESS;
 }

@@ -205,7 +205,7 @@ int main(int argc, const char**argv)
 
     struct epoll_event event;
     event.data.fd = sfd;
-    event.events = EPOLLIN;
+    event.events = EPOLLIN | EPOLLET;
     s = epoll_ctl (efd, EPOLL_CTL_ADD, sfd, &event);
     if(s == -1) {
         perror("epoll_ctl");
@@ -280,7 +280,7 @@ int main(int argc, const char**argv)
                   }
 
                   event.data.ptr = cxn;
-                  event.events = EPOLLIN | EPOLLOUT;
+                  event.events = EPOLLIN | EPOLLOUT | EPOLLET;
                   s = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
                   if (s == -1)
                     {

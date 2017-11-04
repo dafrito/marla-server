@@ -205,7 +205,7 @@ int main(int argc, const char**argv)
 
     struct epoll_event event;
     event.data.fd = sfd;
-    event.events = EPOLLIN | EPOLLET;
+    event.events = EPOLLIN;
     s = epoll_ctl (efd, EPOLL_CTL_ADD, sfd, &event);
     if(s == -1) {
         perror("epoll_ctl");
@@ -225,7 +225,7 @@ int main(int argc, const char**argv)
       for(i = 0; i < n; i++) {
         if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
             // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
-            fprintf (stderr, "epoll error\n");
+            printf("epoll error: %d\n", events[i].events);
             parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
             parsegraph_Connection_destroy(source);
             continue;
@@ -274,16 +274,18 @@ int main(int argc, const char**argv)
                   parsegraph_Connection* cxn = parsegraph_Connection_new();
                   if(1 != parsegraph_Client_init(cxn, ctx, infd)) {
                      perror("Unable to create connection");
+                      parsegraph_Connection_destroy(cxn);
                       close(infd);
                         continue;
                   }
 
                   event.data.ptr = cxn;
-                  event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+                  event.events = EPOLLIN | EPOLLOUT;
                   s = epoll_ctl (efd, EPOLL_CTL_ADD, infd, &event);
                   if (s == -1)
                     {
                       perror ("epoll_ctl");
+                      parsegraph_Connection_destroy(cxn);
                       close(infd);
                         continue;
                     }
@@ -294,7 +296,7 @@ int main(int argc, const char**argv)
             {
                 /* Connection is ready */
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
-                parsegraph_Connection_handle(cxn , events[i].events);
+                parsegraph_Connection_handle(cxn, events[i].events);
                 if(cxn->shouldDestroy) {
                   parsegraph_Connection_destroy(cxn);
                 }

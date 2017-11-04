@@ -88,6 +88,7 @@ long int chunkSize;
 enum parsegraph_RequestStage stage;
 int expect_continue;
 int expect_trailer;
+int close_after_done;
 void(*handle)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
 struct parsegraph_ClientRequest* next_request;
 };

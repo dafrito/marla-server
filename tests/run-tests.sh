@@ -12,7 +12,7 @@ test -n $PORT || die "Port number must be provided."
 
 test_connection()
 {
-    curl -Ss -o $TESTFILE --cacert `pwd`/certificate.pem https://localhost:$PORT || exit
+    curl -Ss -v -o $TESTFILE --cacert `pwd`/certificate.pem https://localhost:$PORT || exit
     rm $TESTFILE || (echo "Failed to remove test file at $TESTFILE"; exit 1)
 }
 

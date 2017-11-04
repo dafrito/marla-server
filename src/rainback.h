@@ -27,18 +27,6 @@ void parsegraph_Ring_writec(parsegraph_Ring* ring, char source);
 void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen);
 void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen);
 
-enum rainback_Status {
-    rainback_OK,
-    rainback_WRONG_NATURE
-};
-
-enum parsegraph_ConnectionNature {
-parsegraph_ConnectionNature_UNKNOWN,
-parsegraph_ConnectionNature_CLIENT,
-parsegraph_ConnectionNature_BACKEND,
-parsegraph_ConnectionNature_WEBSOCKET
-};
-
 enum parsegraph_RequestStage {
 parsegraph_CLIENT_REQUEST_FRESH,
 parsegraph_CLIENT_REQUEST_READING_METHOD,
@@ -103,46 +91,42 @@ parsegraph_CLIENT_SECURED, /* SSL has been accepted */
 parsegraph_CLIENT_COMPLETE /* Done with connection */
 };
 
-struct parsegraph_ClientNature {
+typedef struct {
 int fd;
-struct epoll_event poll;
 SSL_CTX* ctx;
 SSL* ssl;
-enum parsegraph_ClientStage stage;
-parsegraph_Ring* input;
-parsegraph_Ring* output;
-parsegraph_ClientRequest* current_request;
-parsegraph_ClientRequest* latest_request;
-size_t requests_in_process;
-};
-
-enum parsegraph_ServerStage {
-parsegraph_SERVER_CONNECTED,
-parsegraph_SERVER_COMPLETE
-};
-
-struct parsegraph_BackendNature {
-
-};
-
-struct parsegraph_WebSocketNature {
-
-};
+} parsegraph_SSLSource;
 
 struct parsegraph_Connection {
+
+// Flags
 int shouldDestroy;
 int wantsWrite;
 int wantsRead;
-enum parsegraph_ConnectionNature type;
-union {
-struct parsegraph_ClientNature client;
-struct parsegraph_BackendNature backend;
-struct parsegraph_WebSocketNature ws;
-} nature;
+enum parsegraph_ClientStage stage;
+
+// Requests
+parsegraph_ClientRequest* current_request;
+parsegraph_ClientRequest* latest_request;
+size_t requests_in_process;
+
+// Buffers
+parsegraph_Ring* input;
+parsegraph_Ring* output;
+
+// Source
+void* source;
+int(*readSource)(struct parsegraph_Connection*, void*, size_t);
+int(*writeSource)(struct parsegraph_Connection*, void*, size_t);
+void(*acceptSource)(struct parsegraph_Connection*);
+int(*shutdownSource)(struct parsegraph_Connection*);
+void(*destroySource)(struct parsegraph_Connection*);
+struct epoll_event poll;
 };
 typedef struct parsegraph_Connection parsegraph_Connection;
 
 parsegraph_Connection* parsegraph_Connection_new();
+int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd);
 
 void parsegraph_Connection_putback(parsegraph_Connection* cxn, size_t amount);
 void parsegraph_Connection_putbackWrite(parsegraph_Connection* cxn, size_t amount);
@@ -151,10 +135,5 @@ void parsegraph_Connection_handle(parsegraph_Connection* cxn, int event);
 void parsegraph_Connection_destroy(parsegraph_Connection* cxn);
 int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed);
 int parsegraph_Connection_write(parsegraph_Connection* cxn, const char* source, size_t requested);
-
-int parsegraph_Client_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd);
-enum rainback_Status parsegraph_Client_shutdown(parsegraph_Connection* cxn);
-
-parsegraph_Connection* parsegraph_Backend_new(int fd);
 
 #endif // rainback_INCLUDED

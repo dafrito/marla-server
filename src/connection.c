@@ -7,10 +7,148 @@
 #include <errno.h>
 #include <openssl/err.h>
 
+// SSL source
+    // int parsegraph_Source_New(SSL_CTX* ctx, int fd)
+    // void parsegraph_Source_Destroy()
+    // int parsegraph_Source_Init(SSL*)
+    // int parsegraph_Source_Read(void* sink, size_t len)
+    // int parsegraph_Source_Write(void* source, size_t len)
+
+// Loopback source
+    // int parsegraph_Source_New(int bufsize)
+    // void parsegraph_Source_Destroy()
+    // int parsegraph_Source_Init()
+    // int parsegraph_Source_Read(void* sink, size_t len)
+    // int parsegraph_Source_Write(void* source, size_t len)
+    // int parsegraph_Source_Feed(void* source, size_t len) <-- loopback
+    // int parsegraph_Source_Consume(void* sink, size_t len) <-- loopback
+
+// parsegraph_Connection {
+//     void* source;
+
+static void common_SSL_return(parsegraph_Connection* cxn, int rv)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    switch(SSL_get_error(cxnSource->ssl, rv)) {
+    case SSL_ERROR_WANT_WRITE:
+        cxn->wantsWrite = 1;
+        break;
+    case SSL_ERROR_WANT_READ:
+        cxn->wantsRead = 1;
+        break;
+    default:
+        cxn->shouldDestroy = 1;
+        break;
+    }
+}
+
+static int readSSLSource(parsegraph_Connection* cxn, void* sink, size_t len)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    int nsslread = SSL_read(cxnSource->ssl, sink, len);
+    if(nsslread <= 0) {
+        common_SSL_return(cxn, nsslread);
+        return -1;
+    }
+    return nsslread;
+}
+
+static int writeSSLSource(parsegraph_Connection* cxn, void* source, size_t len)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    int nsslwritten = SSL_write(cxnSource->ssl, source, len);
+    if(nsslwritten <= 0) {
+        common_SSL_return(cxn, nsslwritten);
+        return -1;
+    }
+    return nsslwritten;
+}
+
+static void acceptSSLSource(parsegraph_Connection* cxn)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    int rv = SSL_accept(cxnSource->ssl);
+    if(rv == 0) {
+        // Shutdown controlled
+        cxn->shouldDestroy = 1;
+        return;
+    }
+    else if(rv != 1) {
+        common_SSL_return(cxn, rv);
+        return;
+    }
+
+    // Accepted and secured.
+    cxn->stage = parsegraph_CLIENT_SECURED;
+}
+
+static int shutdownSSLSource(parsegraph_Connection* cxn)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    int rv = SSL_shutdown(cxnSource->ssl);
+    if(rv <= 0) {
+        common_SSL_return(cxn, rv);
+    }
+    return rv;
+}
+
+static void destroySSLSource(parsegraph_Connection* cxn)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    SSL_free(cxnSource->ssl);
+    close(cxnSource->fd);
+    free(cxn->source);
+}
+
+int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd)
+{
+    parsegraph_SSLSource* source = malloc(sizeof *source);
+    cxn->source = source;
+    cxn->readSource = readSSLSource;
+    cxn->writeSource = writeSSLSource;
+    cxn->acceptSource = acceptSSLSource;
+    cxn->shutdownSource = shutdownSSLSource;
+    cxn->destroySource = destroySSLSource;
+    source->ctx = ctx;
+    source->fd = fd;
+    source->ssl = SSL_new(ctx);
+    return SSL_set_fd(source->ssl, fd);
+}
+
+parsegraph_Connection* parsegraph_Connection_new()
+{
+    parsegraph_Connection* cxn = (parsegraph_Connection*)malloc(sizeof(*cxn));
+    if(!cxn) {
+        return 0;
+    }
+
+    // Initialize flags.
+    cxn->shouldDestroy = 0;
+    cxn->wantsWrite = 0;
+    cxn->wantsRead = 0;
+
+    cxn->source = 0;
+    cxn->readSource = 0;
+    cxn->writeSource = 0;
+    cxn->acceptSource = 0;
+    cxn->shutdownSource = 0;
+    cxn->destroySource = 0;
+
+    // Initialize the buffer.
+    cxn->input = parsegraph_Ring_new(parsegraph_BUFSIZE);
+    cxn->output = parsegraph_Ring_new(parsegraph_BUFSIZE);
+
+    cxn->stage = parsegraph_CLIENT_ACCEPTED;
+    cxn->requests_in_process = 0;
+    cxn->latest_request = 0;
+    cxn->current_request = 0;
+
+    return cxn;
+}
+
 int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t requested)
 {
-    parsegraph_Ring* const input = cxn->nature.client.input;
-    SSL* ssl = cxn->nature.client.ssl;
+    parsegraph_Ring* const input = cxn->input;
 
     int sinkread = 0;
     int partialRead = 0;
@@ -36,20 +174,15 @@ int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t re
         if(slotLen == 0) {
             break;
         }
-        int nsslread = SSL_read(ssl, ringBuf, slotLen);
+        int nsslread = cxn->readSource(cxn, ringBuf, slotLen);
         if(nsslread <= 0) {
-            switch(SSL_get_error(ssl, nsslread)) {
-            case SSL_ERROR_NONE:
-            case SSL_ERROR_WANT_READ:
-            case SSL_ERROR_WANT_WRITE:
-                // Nothing.
-                parsegraph_Ring_putbackWrite(input, slotLen);
-                return sinkread;
-            default:
+            if(cxn->shouldDestroy) {
                 // Error; put everything back.
                 parsegraph_Ring_putbackWrite(input, sinkread + slotLen);
                 return nsslread;
             }
+            parsegraph_Ring_putbackWrite(input, slotLen);
+            return sinkread;
         }
         if(nsslread < slotLen) {
             parsegraph_Ring_putbackWrite(input, slotLen - nsslread);
@@ -61,17 +194,17 @@ int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t re
 
 void parsegraph_Connection_putback(parsegraph_Connection* cxn, size_t amount)
 {
-    return parsegraph_Ring_putback(cxn->nature.client.input, amount);
+    return parsegraph_Ring_putback(cxn->input, amount);
 }
 
 void parsegraph_Connection_putbackWrite(parsegraph_Connection* cxn, size_t amount)
 {
-    return parsegraph_Ring_putbackWrite(cxn->nature.client.output, amount);
+    return parsegraph_Ring_putbackWrite(cxn->output, amount);
 }
 
 int parsegraph_Connection_write(parsegraph_Connection* cxn, const char* source, size_t requested)
 {
-    return parsegraph_Ring_write(cxn->nature.client.output, source, requested);
+    return parsegraph_Ring_write(cxn->output, source, requested);
 }
 
 int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
@@ -81,11 +214,11 @@ int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
 
     int nflushed = 0;
     while(1) {
-        parsegraph_Ring_readSlot(cxn->nature.client.output, &buf, &len);
+        parsegraph_Ring_readSlot(cxn->output, &buf, &len);
         if(len == 0) {
             break;
         }
-        int nsslwritten = SSL_write(cxn->nature.client.ssl, buf, len);
+        int nsslwritten = cxn->writeSource(cxn, buf, len);
         if(nsslwritten <= 0) {
             if(outnflushed) {
                 *outnflushed = nflushed;
@@ -93,7 +226,7 @@ int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
             return nsslwritten;
         }
         nflushed += nsslwritten;
-        parsegraph_Ring_putback(cxn->nature.client.output, len - nsslwritten);
+        parsegraph_Ring_putback(cxn->output, len - nsslwritten);
         if(nsslwritten < len) {
             // Partial write.
             break;
@@ -106,55 +239,20 @@ int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
     return nflushed;
 }
 
-parsegraph_Connection* parsegraph_Connection_new()
-{
-    parsegraph_Connection* cxn = (parsegraph_Connection*)malloc(sizeof(*cxn));
-    if(!cxn) {
-        return 0;
-    }
-
-    // Set the type to unknown.
-    cxn->type = parsegraph_ConnectionNature_UNKNOWN;
-
-    // Initialize flags.
-    cxn->shouldDestroy = 0;
-    cxn->wantsWrite = 0;
-    cxn->wantsRead = 0;
-
-    return cxn;
-}
-
 extern void parsegraph_Client_handle(parsegraph_Connection* cxn, int event);
-//extern void parsegraph_Backend_handle(parsegraph_Connection* cxn, int event);
 void parsegraph_Connection_handle(parsegraph_Connection* cxn, int event)
 {
-    switch(cxn->type) {
-    case parsegraph_ConnectionNature_CLIENT:
-        parsegraph_Client_handle(cxn, event);
-        break;
-    case parsegraph_ConnectionNature_BACKEND:
-        //parsegraph_Backend_handle(cxn, event);
-        break;
-    case parsegraph_ConnectionNature_UNKNOWN:
-        return;
-    }
+    parsegraph_Client_handle(cxn, event);
 }
 
 void parsegraph_Connection_destroy(parsegraph_Connection* cxn)
 {
-    switch(cxn->type) {
-    case parsegraph_ConnectionNature_CLIENT:
-        parsegraph_Ring_free(cxn->nature.client.input);
-        parsegraph_Ring_free(cxn->nature.client.output);
-        SSL_free(cxn->nature.client.ssl);
-        close(cxn->nature.client.fd);
-        break;
-    case parsegraph_ConnectionNature_BACKEND:
-        break;
-    case parsegraph_ConnectionNature_UNKNOWN:
-        break;
+    if(cxn->destroySource) {
+        cxn->destroySource(cxn);
+        cxn->destroySource = 0;
     }
-
+    parsegraph_Ring_free(cxn->input);
+    parsegraph_Ring_free(cxn->output);
     /* Closing the descriptor will make epoll remove it
      from the set of descriptors which are monitored. */
     free(cxn);

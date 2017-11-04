@@ -253,31 +253,32 @@ int main(int argc, const char**argv)
                     }
                 }
 
-                  s = getnameinfo (&in_addr, in_len,
-                                   hbuf, sizeof hbuf,
-                                   sbuf, sizeof sbuf,
-                                   NI_NUMERICHOST | NI_NUMERICSERV);
-                  if (s == 0)
-                    {
-                      printf("Accepted connection on descriptor %d "
-                             "(host=%s, port=%s)\n", infd, hbuf, sbuf);
-                    }
+                s = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+                if(s == 0) {
+                    printf("Accepted connection on descriptor %d "
+                    "(host=%s, port=%s)\n", infd, hbuf, sbuf);
+                }
 
-                  /* Make the incoming socket non-blocking and add it to the
-                     list of fds to monitor. */
-                  s = make_socket_non_blocking (infd);
-                  if (s != 0) {
+                /* Make the incoming socket non-blocking and add it to the
+                list of fds to monitor. */
+                s = make_socket_non_blocking (infd);
+                if(s != 0) {
                     close(infd);
                     continue;
-                  }
+                }
 
-                  parsegraph_Connection* cxn = parsegraph_Connection_new();
-                  if(1 != parsegraph_Client_init(cxn, ctx, infd)) {
-                     perror("Unable to create connection");
-                      parsegraph_Connection_destroy(cxn);
-                      close(infd);
-                        continue;
-                  }
+                parsegraph_Connection* cxn = parsegraph_Connection_new(ctx, infd);
+                if(!cxn) {
+                    perror("Unable to create connection");
+                    close(infd);
+                    continue;
+                }
+                s = parsegraph_SSL_init(cxn, ctx, infd);
+                if(s <= 0) {
+                    perror("Unable to initialize SSL connection");
+                    close(infd);
+                    continue;
+                }
 
                   event.data.ptr = cxn;
                   event.events = EPOLLIN | EPOLLOUT | EPOLLET;
@@ -305,8 +306,8 @@ int main(int argc, const char**argv)
     }
 
 destroy:
-    free (events);
-    close (sfd);
+    free(events);
+    close(sfd);
     SSL_CTX_free(ctx);
     cleanup_openssl();
 

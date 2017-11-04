@@ -1,9 +1,9 @@
 all: librainback.a rainback
 .PHONY: all
 
-librainback.a: src/ring.c src/connection.c src/client.c | src/rainback.h
+librainback.a: src/ring.c src/connection.c src/client.c src/request.c | src/rainback.h
 	$(CC) -c -g $^
-	ar rcs $@ ring.o connection.o client.o
+	ar rcs $@ ring.o connection.o client.o request.o
 
 rainback: src/epoll.c librainback.a | src/rainback.h
 	$(CC) -g `pkg-config --cflags --libs openssl apr-1 ncurses` $^ -o$@ -lpthread
@@ -26,8 +26,9 @@ tmux:
 .PHONY: tmux
 
 check: certificate.pem tests/run-tests
-	cd tests; \
-	./test-ring.sh; \
+	cd tests || exit; \
+	./test-ring.sh || exit; \
+	./test-connection.sh || exit; \
 	for i in seq 3; do \
 	./run-tests.sh $(PORT) || exit; \
 	./test_low.sh $(PORT) TEST || exit; \

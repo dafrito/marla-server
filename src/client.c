@@ -36,10 +36,10 @@ void parsegraph_Client_handle(parsegraph_Connection* cxn, int event)
         parsegraph_Connection_putback(cxn, 1);
 
         parsegraph_clientRead(cxn);
-    }
 
-    // Write requests.
-    parsegraph_clientWrite(cxn);
+        // Write requests.
+        parsegraph_clientWrite(cxn);
+    }
 
     if(cxn->stage == parsegraph_CLIENT_COMPLETE) {
         // Client needs shutdown.
@@ -165,7 +165,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
             return;
         }
 
-        printf("Found method: %s\n", req->method);
+        //printf("Found method: %s\n", req->method);
     }
 
     if(req->stage == parsegraph_CLIENT_REQUEST_PAST_METHOD) {
@@ -227,7 +227,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
             return;
         }
 
-        printf("Found URI: %s\n", req->uri);
+        //printf("Found URI: %s\n", req->uri);
 
         req->stage = parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET;
     }
@@ -630,19 +630,19 @@ read_chunk_size:
         for(int i = 0; i < nread; ++i) {
             char c = buf[i];
             if((c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || (c >= '0' && c <= '9')) {
-                // It's a hex digit.
+                // Hex digit.
                 foundHexDigit = 1;
                 continue;
             }
             else if(foundHexDigit && c == '\n') {
-                // It's the size-body separator.
+                // Size-body separator.
                 foundEnd = 1;
                 buf[i] = 0;
                 parsegraph_Connection_putback(cxn, nread - (i + 1));
                 break;
             }
             else if(foundHexDigit && c == '\r' && i < nread - 1 && buf[i + 1] == '\n') {
-                // It's the size-body separator.
+                // Size-body separator.
                 foundEnd = 1;
                 buf[i] = 0;
                 parsegraph_Connection_putback(cxn, nread - (i + 2));
@@ -739,7 +739,7 @@ read_chunk_size:
             req->handle(req, parsegraph_EVENT_REQUEST_BODY, buf, nread);
         }
 
-        // Consume trailiing EOL
+        // Consume trailing EOL
         char buf[2];
         int nread = parsegraph_Connection_read(
             cxn,

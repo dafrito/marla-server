@@ -50,6 +50,7 @@ static int readSSLSource(parsegraph_Connection* cxn, void* sink, size_t len)
         common_SSL_return(cxn, nsslread);
         return -1;
     }
+    write(1, sink, len);
     return nsslread;
 }
 
@@ -86,7 +87,15 @@ static int shutdownSSLSource(parsegraph_Connection* cxn)
 {
     parsegraph_SSLSource* cxnSource = cxn->source;
     int rv = SSL_shutdown(cxnSource->ssl);
-    if(rv <= 0) {
+    if(rv == 1) {
+        return rv;
+    }
+    if(rv == 0) {
+        rv = SSL_shutdown(cxnSource->ssl);
+        common_SSL_return(cxn, rv);
+        return rv;
+    }
+    if(rv < 0) {
         common_SSL_return(cxn, rv);
     }
     return rv;

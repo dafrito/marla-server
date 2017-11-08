@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -16,9 +17,7 @@
 #include <openssl/err.h>
 #include <stdbool.h>
 
-#include "tlsutil.h"
-
-#define CERTF "src/server.crt"
+#define CERTF "certificate.pem"
 #define KEYF  "src/server.key"
 
 #define MAXEVENTS 128
@@ -40,7 +39,7 @@ void init_ssl_opts(SSL_CTX* ctx) {
         ERR_print_errors_fp(stderr);
         exit(5);
     }
-    if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
+    /*if (SSL_CTX_use_certificate_file(ctx, CERTF, SSL_FILETYPE_PEM) <= 0) {
         printf("Could not load cert file: ");
         ERR_print_errors_fp(stderr);
         exit(5);
@@ -54,24 +53,23 @@ void init_ssl_opts(SSL_CTX* ctx) {
         fprintf(stderr,
                 "Private key does not match public key in certificate.\n");
         exit(7);
-    }
+    }*/
     /* Enable client certificate verification. Enable before accepting connections. */
-    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT |
-    SSL_VERIFY_CLIENT_ONCE, 0);
+    SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT | SSL_VERIFY_CLIENT_ONCE, 0);
 }
 
 static void
 dump_cert_info(SSL *ssl, bool server) {
 
     if(server) {
-        printf("Ssl server version: %s", SSL_get_version(ssl));
+        printf("Ssl server version: %s\n", SSL_get_version(ssl));
     }
     else {
-        printf("Client Version: %s", SSL_get_version(ssl));
+        printf("Client Version: %s\n", SSL_get_version(ssl));
     }
 
     /* The cipher negotiated and being used */
-    printf("Using cipher %s", SSL_get_cipher(ssl));
+    printf("Using cipher %s\n", SSL_get_cipher(ssl));
 
     /* Get client's certificate (note: beware of dynamic allocation) - opt */
     X509 *client_cert = SSL_get_peer_certificate(ssl);
@@ -108,7 +106,6 @@ int main(int argc, char *argv[]) {
     // SSL send
     // make socket non-blocking
 
-    const SSL_METHOD *meth;
     SSL_CTX* ctx;
     SSL* ssl;
     //X509* server_cert;
@@ -118,38 +115,42 @@ int main(int argc, char *argv[]) {
     //char* str;
     char buf[4096];
 
-    printf("epoll openssl tls client..");
-
     /* ------------ */
     /* Init openssl */
     SSL_load_error_strings();
     OpenSSL_add_ssl_algorithms();
-
-    /* ------------------------------------- */
-    meth = TLSv1_2_client_method();
+    const SSL_METHOD *meth = TLS_client_method();
     ctx = SSL_CTX_new(meth);
-    CHK_NULL(ctx);
+    if(!ctx) {
+        perror("Unable to create SSL context");
+        ERR_print_errors_fp(stderr);
+        exit(EXIT_FAILURE);
+    }
 
     init_ssl_opts(ctx);
     /* --------------------------------------------- */
     /* Create a normal socket and connect to server. */
 
     sd = socket(AF_INET, SOCK_STREAM, 0);
-    CHK_ERR(sd, "socket");
+    if(sd == -1) {
+        perror("main");
+        exit(EXIT_FAILURE);
+    }
 
     // non-blocking client socket
     int flags = fcntl(sd, F_GETFL, 0);
     if (flags < 0) {
-      exit(12);
+        perror("main");
+        exit(EXIT_FAILURE);
     }
     fcntl(sd, F_SETFL, flags | O_NONBLOCK);
 
     // ---------------------
 
-    memset(&sa, '\0', sizeof(sa));
+    memset(&sa, 0, sizeof sa);
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = inet_addr("127.0.0.1"); /* Server IP */
-    sa.sin_port = htons(1112); /* Server Port number */
+    sa.sin_port = htons(4434); /* Server Port number */
 
     printf("Connected to server %s, port %u\n", inet_ntoa(sa.sin_addr),
             ntohs(sa.sin_port));
@@ -164,7 +165,7 @@ int main(int argc, char *argv[]) {
     int efd = epoll_create1(0);
     if (efd == -1) {
         perror("epoll_create");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     struct epoll_event event;
@@ -174,7 +175,7 @@ int main(int argc, char *argv[]) {
     int s = epoll_ctl(efd, EPOLL_CTL_ADD, sd, &event);
     if (s == -1) {
         perror("epoll_ctl");
-        exit(2);
+        exit(EXIT_FAILURE);
     }
 
     // ------------------------------- //
@@ -182,9 +183,11 @@ int main(int argc, char *argv[]) {
     /* --------------- ---------------------------------- */
     /* Start SSL negotiation, connection available. */
     ssl = SSL_new(ctx);
-    CHK_NULL(ssl);
-
-    SSL_set_fd(ssl, sd);
+    if(SSL_set_fd(ssl, sd) <= 0) {
+        printf("Unable to initialize SSL connection");
+        close(sd);
+        exit(EXIT_FAILURE);
+    }
     SSL_set_connect_state(ssl);
 
     for(;;) {
@@ -218,76 +221,70 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    /* Buffer where events are returned */
-    struct epoll_event* events = calloc(MAXEVENTS, sizeof event);
-    /* The event loop */
-    while (1) {
+    int strprog = 0;
+    int eventno = 1;
+    struct epoll_event events[MAXEVENTS];
+    for(;;) {
+        struct timespec sleep = { 0, 1e6 * 1.25 };
+        nanosleep(&sleep, 0);
         int n = epoll_wait(efd, events, MAXEVENTS, -1);
-        if (n < 0 && n == EINTR) {
-            printf("epoll_wait System call interrupted. Continue..");
-            continue;
+        if(n < 0) {
+            if(errno == EINTR) {
+                printf("epoll_wait EINTR");
+                continue;
+            }
+            else {
+                perror("main:epoll_wait");
+                exit(EXIT_FAILURE);
+            }
         }
-
-        int i;
-        for (i = 0; i < n; i++) {
-            if ((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP)
-                    || (!(events[i].events & (EPOLLIN | EPOLLOUT)))) {
-                /* An error has occurred on this socket or the socket is not
-                 ready for reading (why were we notified then?) */
-                fprintf(stderr, "epoll error\n");
+        for(int i = 0; i < n; ++i) {
+            if(events[i].events & EPOLLERR) {
+                // Error condition happened on fd.
                 close(events[i].data.fd);
                 continue;
             }
-            // read
-            else if (events->events & (EPOLLIN | EPOLLHUP)) {
-                err = SSL_read(ssl, buf, sizeof(buf) - 1);
-                CHK_SSL(err);
-                buf[err] = '\0';
-                printf("Client Received %d chars - '%s'\n", err, buf);
-
-                if (err <= 0) {
-                    if(err == SSL_ERROR_WANT_READ ||
-                        err == SSL_ERROR_WANT_WRITE ||
-                        err == SSL_ERROR_WANT_X509_LOOKUP) {
-                        printf("Read could not complete. Will be invoked later.");
-                        break;
-                    }
-                    else if(err == SSL_ERROR_ZERO_RETURN) {
-                        printf("SSL_read: close notify received from peer");
-                        return 0;
-                    }
-                    else {
-                        printf("Error during SSL_read");
-                        exit(17);
-                    }
-                }
-                exit(0);
+            if(events[i].events & EPOLLPRI) {
+                // Priority data not handled.
+                close(events[i].data.fd);
+                continue;
             }
-            //write
-            else if (events->events & EPOLLOUT) {
-                err = SSL_write(ssl, "PING", strlen("PING"));
-                CHK_SSL(err);
-
-                if (err <= 0) {
+            if(events[i].events & (EPOLLHUP | EPOLLIN | EPOLLRDHUP)) {
+                printf("%d. EPOLLIN\n", eventno++);
+                err = SSL_read(ssl, buf, sizeof buf);
+                if(err > 0) {
+                    write(1, buf, err);
+                }
+                else if(err <= 0) {
                     if(err == SSL_ERROR_WANT_READ ||
                         err == SSL_ERROR_WANT_WRITE ||
                         err == SSL_ERROR_WANT_X509_LOOKUP) {
-                        printf("Write could not complete. Will be invoked later.");
-                        break;
+                        continue;
                     }
                     else if(err == SSL_ERROR_ZERO_RETURN) {
-                        printf("SSL_write: close notify received from peer");
-                        return 0;
+                        printf("SSL_read: close notify received from peer\n");
+                        continue;
                     }
                     else {
-                        printf("Error during SSL_write");
-                        exit(17);
+                        printf("Error during SSL_read\n");
+                        continue;
                     }
                 }
+            }
+            if(events[i].events & EPOLLOUT) {
+                printf("%d. EPOLLOUT\n", eventno++);
+                const char* str = "GET / HTTP/1.1\r\nHost: localhost:4434\r\n\r\n";
+                if(strprog >= strlen(str)) {
+                    strprog = 0;
+                }
+                err = SSL_write(ssl, str + strprog, strlen(str) - strprog);
+                if(err <= 0) {
+                    continue;
+                }
+                strprog += err;
             }
         }
     }
-    free(events);
     close(sd);
     close(efd);
     return 0;

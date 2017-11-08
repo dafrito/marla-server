@@ -14,6 +14,7 @@ static void default_request_handler(struct parsegraph_ClientRequest* req, enum p
     int* acceptor;
     char resp[parsegraph_BUFSIZE];
     char buf[parsegraph_BUFSIZE + 1];
+    memset(buf, 0, sizeof buf);
     switch(ev) {
     case parsegraph_EVENT_HEADER:
         break;
@@ -27,16 +28,13 @@ static void default_request_handler(struct parsegraph_ClientRequest* req, enum p
         fprintf(stderr, "Responding...\n");
         memset(resp, 0, sizeof(resp));
 
-        const char* message_body = "<!DOCTYPE html><html><body>Hello, <b>world.</b><br/></body></html>";
         const char* header = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
         int nwritten = parsegraph_Connection_write(req->cxn, header, strlen(header));
         if(nwritten <= 0) {
             return;
         }
-
-        buf[sizeof(buf) - 1] = 0;
         int cs = 0;
-        int message_len = strlen(message_body);
+        int message_len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><body>Hello, <b>world.</b><p>This is request %d</body></html>", req->id);
         for(int i = 0; i <= message_len; ++i) {
             if((i == message_len) || (i && !(i & (sizeof(buf) - 2)))) {
                 if(i & (sizeof(buf) - 2)) {
@@ -61,7 +59,7 @@ static void default_request_handler(struct parsegraph_ClientRequest* req, enum p
             if(i == message_len) {
                 break;
             }
-            buf[i & (sizeof(buf) - 2)] = message_body[i];
+            buf[i & (sizeof(buf) - 2)] = buf[i];
             ++cs;
         }
 
@@ -78,10 +76,13 @@ static void default_request_handler(struct parsegraph_ClientRequest* req, enum p
     }
 }
 
+static int request_id = 1;
 parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cxn)
 {
     parsegraph_ClientRequest* req = malloc(sizeof(parsegraph_ClientRequest));
     req->cxn = cxn;
+
+    req->id = request_id++;
 
     req->handle = default_request_handler;
     req->stage = parsegraph_CLIENT_REQUEST_FRESH;

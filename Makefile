@@ -28,7 +28,7 @@ tmux:
 check: certificate.pem tests/run-tests
 	cd tests || exit; \
 	./test-ring.sh || exit; \
-	./test-connection.sh || exit; \
+	./test-connection.sh $(PORT) || exit; \
 	for i in seq 3; do \
 	./run-tests.sh $(PORT) || exit; \
 	./test_low.sh $(PORT) TEST || exit; \

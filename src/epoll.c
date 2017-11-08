@@ -1,5 +1,6 @@
 #include "rainback.h"
 #include <stdio.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -32,7 +33,7 @@ static SSL_CTX *create_context()
     const SSL_METHOD *method;
     SSL_CTX *ctx;
 
-    method = SSLv23_server_method();
+    method = TLS_server_method();
 
     ctx = SSL_CTX_new(method);
     if (!ctx) {
@@ -166,6 +167,8 @@ int main(int argc, const char**argv)
         fprintf(stderr, "Failed to create terminal thread");
         exit(EXIT_FAILURE);
     }
+
+    signal(SIGPIPE, SIG_IGN);
 
     init_openssl();
     SSL_CTX *ctx = create_context();

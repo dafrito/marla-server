@@ -66,6 +66,7 @@ parsegraph_EVENT_DESTROYING
 
 struct parsegraph_Connection;
 struct parsegraph_ClientRequest {
+int id;
 struct parsegraph_Connection* cxn;
 char method[MAX_METHOD_LENGTH + 1];
 char host[MAX_FIELD_VALUE_LENGTH + 1];

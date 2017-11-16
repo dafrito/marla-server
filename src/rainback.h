@@ -3,9 +3,11 @@
 
 #include <sys/epoll.h>
 #include <openssl/ssl.h>
+#include <apr_pools.h>
 
 #define parsegraph_BUFSIZE 1024
 
+// ring.c
 typedef struct {
 char* buf;
 unsigned int read_index;
@@ -27,6 +29,7 @@ void parsegraph_Ring_writec(parsegraph_Ring* ring, char source);
 void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen);
 void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen);
 
+// client.c
 enum parsegraph_RequestStage {
 parsegraph_CLIENT_REQUEST_FRESH,
 parsegraph_CLIENT_REQUEST_READING_METHOD,
@@ -36,11 +39,13 @@ parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET,
 parsegraph_CLIENT_REQUEST_READING_VERSION,
 parsegraph_CLIENT_REQUEST_READING_FIELD,
 parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE,
+parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE,
 parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY,
 parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE,
 parsegraph_CLIENT_REQUEST_READING_CHUNK_BODY,
 parsegraph_CLIENT_REQUEST_READING_TRAILER,
 parsegraph_CLIENT_REQUEST_RESPONDING,
+parsegraph_CLIENT_REQUEST_WEBSOCKET,
 parsegraph_CLIENT_REQUEST_DONE
 };
 
@@ -48,6 +53,7 @@ parsegraph_CLIENT_REQUEST_DONE
 #define MAX_METHOD_LENGTH 7
 #define MAX_FIELD_NAME_LENGTH 64
 #define MAX_FIELD_VALUE_LENGTH 255
+#define MAX_WEBSOCKET_NONCE_LENGTH 255
 #define MAX_URI_LENGTH 255
 #define parsegraph_MAX_CHUNK_SIZE 0xFFFFFFFF
 #define parsegraph_MAX_CHUNK_SIZE_LINE 10
@@ -60,6 +66,7 @@ enum parsegraph_ClientEvent {
 parsegraph_EVENT_HEADER,
 parsegraph_EVENT_ACCEPTING_REQUEST,
 parsegraph_EVENT_REQUEST_BODY,
+parsegraph_EVENT_READ,
 parsegraph_EVENT_RESPOND,
 parsegraph_EVENT_DESTROYING
 };
@@ -75,8 +82,13 @@ long int contentLen;
 long int totalContentLen;
 long int chunkSize;
 enum parsegraph_RequestStage stage;
+int expect_upgrade;
+char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1];
+char websocket_accept[2 * SHA_DIGEST_LENGTH + 1];
 int expect_continue;
+int websocket_version;
 int expect_trailer;
+int expect_websocket;
 int close_after_done;
 void(*handle)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
 struct parsegraph_ClientRequest* next_request;
@@ -92,12 +104,7 @@ parsegraph_CLIENT_SECURED, /* SSL has been accepted */
 parsegraph_CLIENT_COMPLETE /* Done with connection */
 };
 
-typedef struct {
-int fd;
-SSL_CTX* ctx;
-SSL* ssl;
-} parsegraph_SSLSource;
-
+// connection.c
 struct parsegraph_Connection {
 
 // Flags
@@ -124,11 +131,9 @@ int(*shutdownSource)(struct parsegraph_Connection*);
 void(*destroySource)(struct parsegraph_Connection*);
 struct epoll_event poll;
 };
+
 typedef struct parsegraph_Connection parsegraph_Connection;
-
 parsegraph_Connection* parsegraph_Connection_new();
-int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd);
-
 void parsegraph_Connection_putback(parsegraph_Connection* cxn, size_t amount);
 void parsegraph_Connection_putbackWrite(parsegraph_Connection* cxn, size_t amount);
 int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t requested);
@@ -136,5 +141,17 @@ void parsegraph_Connection_handle(parsegraph_Connection* cxn, int event);
 void parsegraph_Connection_destroy(parsegraph_Connection* cxn);
 int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed);
 int parsegraph_Connection_write(parsegraph_Connection* cxn, const char* source, size_t requested);
+
+typedef struct {
+int fd;
+SSL_CTX* ctx;
+SSL* ssl;
+} parsegraph_SSLSource;
+
+// ssl.c
+int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd);
+
+// default_request_handler.c
+extern void(*default_request_handler)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
 
 #endif // rainback_INCLUDED

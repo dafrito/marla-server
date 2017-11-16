@@ -9,7 +9,7 @@
 #include <errno.h>
 #include <openssl/err.h>
 
-static void default_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
+static void default_request_handler_func(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
 {
     int* acceptor;
     char resp[parsegraph_BUFSIZE];
@@ -34,7 +34,7 @@ static void default_request_handler(struct parsegraph_ClientRequest* req, enum p
             return;
         }
         int cs = 0;
-        int message_len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><body>Hello, <b>world.</b><p>This is request %d</body></html>", req->id);
+        int message_len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><head><script>function run() { WS=new WebSocket(\"wss://localhost:4434/\"); WS.onopen = function() { alert('notime'); }; }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", req->id);
         for(int i = 0; i <= message_len; ++i) {
             if((i == message_len) || (i && !(i & (sizeof(buf) - 2)))) {
                 if(i & (sizeof(buf) - 2)) {
@@ -76,42 +76,4 @@ static void default_request_handler(struct parsegraph_ClientRequest* req, enum p
     }
 }
 
-static int request_id = 1;
-parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cxn)
-{
-    parsegraph_ClientRequest* req = malloc(sizeof(parsegraph_ClientRequest));
-    req->cxn = cxn;
-
-    req->id = request_id++;
-
-    req->handle = default_request_handler;
-    req->stage = parsegraph_CLIENT_REQUEST_FRESH;
-
-    // Counters
-    req->contentLen = parsegraph_MESSAGE_LENGTH_UNKNOWN;
-    req->totalContentLen = 0;
-    req->chunkSize = 0;
-
-    // Content
-    memset(req->host, 0, sizeof(req->host));
-    memset(req->uri, 0, sizeof(req->uri));
-    memset(req->method, 0, sizeof(req->method));
-
-    // Flags
-    req->expect_continue = 0;
-    req->expect_trailer = 0;
-    req->close_after_done = 0;
-
-    req->next_request = 0;
-
-    return req;
-}
-
-void parsegraph_ClientRequest_destroy(parsegraph_ClientRequest* req)
-{
-    if(req->handle) {
-        req->handle(req, parsegraph_EVENT_DESTROYING, 0, 0);
-    }
-    free(req);
-}
-
+void (*default_request_handler)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int) = default_request_handler_func;

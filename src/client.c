@@ -8,6 +8,54 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include <openssl/sha.h>
+
+static int request_id = 1;
+
+parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cxn)
+{
+    parsegraph_ClientRequest* req = malloc(sizeof(parsegraph_ClientRequest));
+    req->cxn = cxn;
+
+    req->id = request_id++;
+
+    req->handle = default_request_handler;
+    req->stage = parsegraph_CLIENT_REQUEST_FRESH;
+
+    // Counters
+    req->contentLen = parsegraph_MESSAGE_LENGTH_UNKNOWN;
+    req->totalContentLen = 0;
+    req->chunkSize = 0;
+
+    // Content
+    memset(req->host, 0, sizeof(req->host));
+    memset(req->uri, 0, sizeof(req->uri));
+    memset(req->method, 0, sizeof(req->method));
+    memset(req->websocket_nonce, 0, sizeof(req->websocket_nonce));
+    memset(req->websocket_accept, 0, sizeof(req->websocket_accept));
+
+    req->websocket_version = 13;
+
+    // Flags
+    req->expect_continue = 0;
+    req->expect_trailer = 0;
+    req->expect_upgrade = 0;
+    req->expect_websocket = 0;
+    req->close_after_done = 0;
+
+    req->next_request = 0;
+
+    return req;
+}
+
+void parsegraph_ClientRequest_destroy(parsegraph_ClientRequest* req)
+{
+    if(req->handle) {
+        req->handle(req, parsegraph_EVENT_DESTROYING, 0, 0);
+    }
+    free(req);
+}
+
 static void parsegraph_clientRead(parsegraph_Connection* cxn);
 static void parsegraph_clientWrite(parsegraph_Connection* cxn);
 
@@ -31,13 +79,12 @@ void parsegraph_Client_handle(parsegraph_Connection* cxn, int event)
         char c;
         int nread = parsegraph_Connection_read(cxn, &c, 1);
         if(nread <= 0) {
+            parsegraph_Connection_putback(cxn, 1);
+            parsegraph_clientWrite(cxn);
             break;
         }
-        parsegraph_Connection_putback(cxn, 1);
 
         parsegraph_clientRead(cxn);
-
-        // Write requests.
         parsegraph_clientWrite(cxn);
     }
 
@@ -394,14 +441,25 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
                 }
             }
             else if(!strcmp(fieldName, "Connection")) {
-                if(!strcmp(fieldValue, "close")) {
-                    req->contentLen = parsegraph_MESSAGE_USES_CLOSE;
-                    req->close_after_done = 1;
+                char* sp;
+                char* fieldToken = strtok_r(fieldValue, ", ", &sp);
+                if(!fieldToken) {
+                    fieldToken = fieldValue;
                 }
-                else if(strcmp(fieldValue, "keep-alive")) {
-                    printf("Connection is not understood, so no valid request.\n");
-                    cxn->stage = parsegraph_CLIENT_COMPLETE;
-                    return;
+                else while(fieldToken) {
+                    if(!strcmp(fieldToken, "close")) {
+                        req->contentLen = parsegraph_MESSAGE_USES_CLOSE;
+                        req->close_after_done = 1;
+                    }
+                    else if(!strcmp(fieldToken, "Upgrade")) {
+                        req->expect_upgrade = 1;
+                    }
+                    else if(strcmp(fieldToken, "keep-alive")) {
+                        printf("Connection is not understood, so no valid request.\n");
+                        cxn->stage = parsegraph_CLIENT_COMPLETE;
+                        return;
+                    }
+                    fieldToken = strtok_r(0, ", ", &sp);
                 }
             }
             else if(!strcmp(fieldName, "Trailer")) {
@@ -445,8 +503,21 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
             else if(!strcmp(fieldName, "Accept-Charset")) {
 
             }
+            else if(!strcmp(fieldName, "Sec-WebSocket-Key")) {
+                strncpy(req->websocket_nonce, fieldValue, MAX_WEBSOCKET_NONCE_LENGTH);
+            }
+            else if(!strcmp(fieldName, "Sec-WebSocket-Version")) {
+                if(!strcmp(fieldValue, "13")) {
+                    req->websocket_version = 13;
+                }
+            }
             else if(!strcmp(fieldName, "Accept")) {
 
+            }
+            else if(!strcmp(fieldName, "Upgrade")) {
+                if(!strcmp(fieldValue, "websocket")) {
+                    req->expect_websocket = 1;
+                }
             }
             else {
                 req->handle(req, parsegraph_EVENT_HEADER, fieldName, fieldValue - fieldName);
@@ -526,32 +597,64 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
                 return;
             }
 
-            int accept = 1;
-            req->handle(req, parsegraph_EVENT_ACCEPTING_REQUEST, &accept, 0);
-            if(!accept) {
-                printf("Request explicitly rejected.\n");
-                cxn->stage = parsegraph_CLIENT_COMPLETE;
-                return;
-            }
+            if(req->expect_upgrade && req->expect_websocket && req->websocket_nonce[0] != 0 && req->websocket_version == 13)
+            {
+                // Test Websocket nonce.
+                char buf[MAX_FIELD_VALUE_LENGTH + 32 + 1];
+                memset(buf, 0, sizeof(buf));
+                strcpy(buf, req->websocket_nonce);
+                strcat(buf, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+                char digest[SHA_DIGEST_LENGTH];
+                memset(digest, 0, sizeof(digest));
+                SHA1(buf, strlen(buf), digest);
 
-            // Request not rejected. Issue 100-continue if needed.
-            if(req->expect_continue) {
-                req->stage = parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE;
+                BIO* mem = BIO_new(BIO_s_mem());
+                BIO* b64 = BIO_new(BIO_f_base64());
+                BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
+                BIO_push(b64, mem);
+                BIO_write(b64, digest, SHA_DIGEST_LENGTH);
+                BIO_flush(b64);
+                BUF_MEM* bptr;
+                BIO_get_mem_ptr(b64, &bptr);
+
+                char* buff = (char*)malloc(bptr->length);
+                memcpy(req->websocket_accept, bptr->data, bptr->length-1);
+                req->websocket_accept[bptr->length-1] = 0;
+                BIO_free_all(b64);
+
+                req->stage = parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE;
             }
             else {
-                switch(req->contentLen) {
-                case parsegraph_MESSAGE_IS_CHUNKED:
-                    req->stage = parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE;
-                    break;
-                case 0:
-                case parsegraph_MESSAGE_LENGTH_UNKNOWN:
-                    req->stage = parsegraph_CLIENT_REQUEST_RESPONDING;
-                    break;
-                default:
-                case parsegraph_MESSAGE_USES_CLOSE:
-                    req->close_after_done = 1;
-                    req->stage = parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY;
-                    break;
+                req->expect_upgrade = 0;
+                req->expect_websocket = 0;
+
+                int accept = 1;
+                req->handle(req, parsegraph_EVENT_ACCEPTING_REQUEST, &accept, 0);
+                if(!accept) {
+                    printf("Request explicitly rejected.\n");
+                    cxn->stage = parsegraph_CLIENT_COMPLETE;
+                    return;
+                }
+
+                // Request not rejected. Issue 100-continue if needed.
+                if(req->expect_continue) {
+                    req->stage = parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE;
+                }
+                else {
+                    switch(req->contentLen) {
+                    case parsegraph_MESSAGE_IS_CHUNKED:
+                        req->stage = parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE;
+                        break;
+                    case 0:
+                    case parsegraph_MESSAGE_LENGTH_UNKNOWN:
+                        req->stage = parsegraph_CLIENT_REQUEST_RESPONDING;
+                        break;
+                    default:
+                    case parsegraph_MESSAGE_USES_CLOSE:
+                        req->close_after_done = 1;
+                        req->stage = parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY;
+                        break;
+                    }
                 }
             }
 
@@ -559,7 +662,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
         }
     }
 
-    if(req->stage == parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE) {
+    if(req->stage == parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE || req->stage == parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE) {
         return;
     }
 
@@ -872,6 +975,9 @@ read_chunk_size:
         }
     }
 
+    if(req->stage == parsegraph_CLIENT_REQUEST_WEBSOCKET) {
+        req->handle(req, parsegraph_EVENT_READ, 0, 0);
+    }
     if(req->stage == parsegraph_CLIENT_REQUEST_DONE || req->stage == parsegraph_CLIENT_REQUEST_RESPONDING) {
         return;
     }
@@ -950,6 +1056,31 @@ static void parsegraph_clientWrite(parsegraph_Connection* cxn)
             else if(req->contentLen > 0) {
                 req->stage = parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY;
             }
+            return;
+        }
+
+        if(req->stage == parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE) {
+            char out[1024];
+            int nwrit = snprintf(out, sizeof(out), "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", req->websocket_accept);
+            int nwritten = parsegraph_Connection_write(cxn, out, nwrit);
+            if(nwritten == 0) {
+                printf("Premature connection close.\n");
+                cxn->stage = parsegraph_CLIENT_COMPLETE;
+                return;
+            }
+            if(nwritten < 0) {
+                printf("Error while writing connection.\n");
+                cxn->stage = parsegraph_CLIENT_COMPLETE;
+                return;
+
+            }
+            if(nwritten < nwrit) {
+                // Only allow writes of the whole thing.
+                parsegraph_Connection_putbackWrite(cxn, nwritten);
+                return;
+            }
+
+            req->stage = parsegraph_CLIENT_REQUEST_WEBSOCKET;
             return;
         }
 

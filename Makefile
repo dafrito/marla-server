@@ -1,9 +1,9 @@
 all: librainback.a rainback
 .PHONY: all
 
-librainback.a: src/ring.c src/connection.c src/client.c src/request.c | src/rainback.h
-	$(CC) -c -g $^
-	ar rcs $@ ring.o connection.o client.o request.o
+librainback.a: src/ring.c src/connection.c src/client.c src/default_request_handler.c src/ssl.c | src/rainback.h
+	$(CC) -c -g `pkg-config --cflags openssl apr-1 ncurses` $^
+	ar rcs $@ ring.o connection.o client.o default_request_handler.o ssl.o
 
 rainback: src/epoll.c librainback.a | src/rainback.h
 	$(CC) -g `pkg-config --cflags --libs openssl apr-1 ncurses` $^ -o$@ -lpthread

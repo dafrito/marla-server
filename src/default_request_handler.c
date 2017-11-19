@@ -253,7 +253,7 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
         fprintf(stdout, "READ: ");
         fflush(stdout);
         write(1, buf, nread);
-        fflush(stdout);
+        printf("\n");
 
         // Do nothing with it; only read.
         break;
@@ -307,7 +307,6 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
         req->handle(req, parsegraph_EVENT_WEBSOCKET_RESPOND, 0, 0);
         break;
     case parsegraph_EVENT_WEBSOCKET_RESPOND:
-        printf("Responding.\n");
         break;
     case parsegraph_EVENT_WEBSOCKET_MUST_WRITE:
         goto fail_connection;
@@ -347,7 +346,6 @@ void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, en
 
         break;
     case parsegraph_EVENT_RESPOND:
-        fprintf(stderr, "Responding...\n");
         memset(resp, 0, sizeof(resp));
 
         const unsigned char* header = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";

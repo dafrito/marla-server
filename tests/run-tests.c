@@ -222,7 +222,7 @@ int main(int argc, const char** argv)
                   }
 
                   parsegraph_Connection* cxn = parsegraph_Connection_new();
-                  if(1 != parsegraph_Client_init(cxn, ctx, infd)) {
+                  if(1 != parsegraph_SSL_init(cxn, ctx, infd)) {
                      perror("Unable to create connection");
                      abort();
                   }

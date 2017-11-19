@@ -1,2 +1,2 @@
 #!/bin/bash
-gcc -otest-client `pkg-config --cflags --libs openssl` test-client.c && ./test-client
+gcc -otest-client `pkg-config --cflags --libs apr-1 openssl` test-client.c && ./test-client

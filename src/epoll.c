@@ -84,12 +84,15 @@ make_socket_non_blocking (int sfd)
   return 0;
 }
 
+extern const char* SERVERPORT;
+
 static int
 create_and_bind (const char *port)
 {
   struct addrinfo hints;
   struct addrinfo *result, *rp;
   int s, sfd;
+  SERVERPORT = port;
 
   memset (&hints, 0, sizeof (struct addrinfo));
   hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */

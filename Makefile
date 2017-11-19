@@ -1,7 +1,7 @@
 all: librainback.a rainback
 .PHONY: all
 
-librainback.a: src/ring.c src/connection.c src/client.c src/default_request_handler.c src/ssl.c | src/rainback.h
+librainback.a: src/ring.c src/connection.c src/client.c src/default_request_handler.c src/ssl.c | src/rainback.h Makefile
 	$(CC) -c -g `pkg-config --cflags openssl apr-1 ncurses` $^
 	ar rcs $@ ring.o connection.o client.o default_request_handler.o ssl.o
 
@@ -11,7 +11,7 @@ rainback: src/epoll.c librainback.a | src/rainback.h
 certificate.pem key.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out certificate.pem
 
-PORT=4434
+PORT=4479
 
 kill: rainback.tmux
 	tmux -S rainback.tmux kill-server
@@ -29,6 +29,7 @@ check: certificate.pem tests/run-tests
 	cd tests || exit; \
 	./test-ring.sh || exit; \
 	./test-connection.sh $(PORT) || exit; \
+	./test-websocket.sh $(PORT) || exit; \
 	for i in seq 3; do \
 	./run-tests.sh $(PORT) || exit; \
 	./test_low.sh $(PORT) TEST || exit; \

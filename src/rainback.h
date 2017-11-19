@@ -57,6 +57,7 @@ parsegraph_CLIENT_REQUEST_DONE
 #define MAX_URI_LENGTH 255
 #define parsegraph_MAX_CHUNK_SIZE 0xFFFFFFFF
 #define parsegraph_MAX_CHUNK_SIZE_LINE 10
+#define MAX_WEBSOCKET_CONTROL_PAYLOAD 125
 
 #define parsegraph_MESSAGE_IS_CHUNKED -1
 #define parsegraph_MESSAGE_LENGTH_UNKNOWN -2
@@ -68,10 +69,16 @@ parsegraph_EVENT_ACCEPTING_REQUEST,
 parsegraph_EVENT_REQUEST_BODY,
 parsegraph_EVENT_READ,
 parsegraph_EVENT_RESPOND,
-parsegraph_EVENT_DESTROYING
+parsegraph_EVENT_DESTROYING,
+parsegraph_EVENT_WEBSOCKET_CLOSING,
+parsegraph_EVENT_WEBSOCKET_CLOSE_REASON,
+parsegraph_EVENT_WEBSOCKET_MUST_READ,
+parsegraph_EVENT_WEBSOCKET_MUST_WRITE,
+parsegraph_EVENT_WEBSOCKET_RESPOND
 };
 
 struct parsegraph_Connection;
+
 struct parsegraph_ClientRequest {
 int id;
 struct parsegraph_Connection* cxn;
@@ -83,8 +90,26 @@ long int totalContentLen;
 long int chunkSize;
 enum parsegraph_RequestStage stage;
 int expect_upgrade;
-char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1];
-char websocket_accept[2 * SHA_DIGEST_LENGTH + 1];
+unsigned char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1];
+unsigned char websocket_accept[2 * SHA_DIGEST_LENGTH + 1];
+unsigned char websocket_frame[7];
+int websocket_pingLen;
+unsigned char websocket_ping[MAX_WEBSOCKET_CONTROL_PAYLOAD];
+char websocket_pongLen;
+unsigned char websocket_pong[MAX_WEBSOCKET_CONTROL_PAYLOAD];
+unsigned char websocket_closeReason[MAX_WEBSOCKET_CONTROL_PAYLOAD];
+char websocket_closeReasonLen;
+int websocket_type;
+int websocket_fin;
+int needWebSocketClose;
+int doingPong;
+int doingWebSocketClose;
+uint64_t websocketFrameWritten;
+uint64_t websocketFrameOutLen;
+uint64_t websocketFrameRead;
+uint64_t websocketFrameLen;
+char websocketOutMask[4];
+char websocketMask[4];
 int expect_continue;
 int websocket_version;
 int expect_trailer;
@@ -153,5 +178,14 @@ int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd);
 
 // default_request_handler.c
 extern void(*default_request_handler)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
+
+// WebSocket
+int parsegraph_writeWebSocket(struct parsegraph_ClientRequest* req, unsigned char* data, int dataLen);
+int parsegraph_readWebSocket(struct parsegraph_ClientRequest* req, unsigned char* data, int dataLen);
+void parsegraph_putbackWebSocket(struct parsegraph_ClientRequest* req, int dataLen);
+int parsegraph_writeWebSocketHeader(struct parsegraph_ClientRequest* req, unsigned char opcode, uint64_t frameLen);
+void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen);
+static void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen);
+
 
 #endif // rainback_INCLUDED

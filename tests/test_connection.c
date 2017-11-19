@@ -238,16 +238,26 @@ int main(int argc, char* argv[])
     }
 
     const char* port = argv[1];
+    printf("test_simple:");
     test_simple(port);
+    printf("test_simple_lf:");
     test_simple_lf(port);
     test_simple_lf(port);
+    printf("test_simple_mixed_lf:");
     test_simple_mixed_lf(port);
+    printf("test_simple_leading_lf:");
     test_simple_leading_lf(port);
+    printf("test_simple_leading_crlf:");
     test_simple_leading_crlf(port);
+    printf("test_bad_method:");
     test_bad_method(port);
+    printf("test_no_host:");
     test_no_host(port);
+    printf("test_no_version:");
     test_no_version(port);
+    printf("test_no_target:");
     test_no_target(port);
+    printf("test_nothing:");
     test_nothing(port);
     printf("Tests finished.\n");
     return 0;

@@ -7,7 +7,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <errno.h>
-
 #include <openssl/sha.h>
 
 static int request_id = 1;
@@ -33,6 +32,25 @@ parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cx
     memset(req->method, 0, sizeof(req->method));
     memset(req->websocket_nonce, 0, sizeof(req->websocket_nonce));
     memset(req->websocket_accept, 0, sizeof(req->websocket_accept));
+    memset(req->websocket_frame, 0, sizeof(req->websocket_frame));
+    memset(req->websocket_ping, 0, sizeof req->websocket_ping);
+    req->websocket_pongLen = 0;
+    memset(req->websocket_pong, 0, sizeof req->websocket_pong);
+    memset(req->websocket_closeReason, 0, sizeof req->websocket_closeReason);
+    req->websocket_closeReasonLen = 0;
+
+    req->websocket_type = -1;
+    req->websocket_fin = 0;
+    req->needWebSocketClose = 0;
+    req->doingPong = 0;
+    req->doingWebSocketClose = 0;
+    req->websocketFrameWritten = 0;
+    req->websocketFrameLen = 0;
+    req->websocketFrameRead = 0;
+    req->websocketFrameOutLen = 0;
+    memset(req->websocketOutMask, 0, sizeof req->websocketOutMask);
+    memset(req->websocketMask, 0, sizeof req->websocketMask);
+    req->expect_continue = 0;
 
     req->websocket_version = 13;
 
@@ -79,9 +97,11 @@ void parsegraph_Client_handle(parsegraph_Connection* cxn, int event)
         char c;
         int nread = parsegraph_Connection_read(cxn, &c, 1);
         if(nread <= 0) {
-            parsegraph_Connection_putback(cxn, 1);
             parsegraph_clientWrite(cxn);
             break;
+        }
+        else if(nread > 0) {
+            parsegraph_Connection_putback(cxn, 1);
         }
 
         parsegraph_clientRead(cxn);
@@ -207,7 +227,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
             // A client MUST NOT send a message body in a TRACE request.
         }
         else {
-            printf("Request method is unknown, so no valid request.\n");
+            printf("Request method '%s' is unknown, so no valid request.\n", req->method);
             cxn->stage = parsegraph_CLIENT_COMPLETE;
             return;
         }
@@ -410,7 +430,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
             char* fieldName = fieldLine;
             fprintf(stderr, "HEADER: %s = %s\n", fieldName, fieldValue);
 
-            if(!strcmp(fieldName, "Content-Length")) {
+            if(!strcasecmp(fieldName, "Content-Length")) {
                 if(req->contentLen != -2) {
                     printf("Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                     cxn->stage = parsegraph_CLIENT_COMPLETE;
@@ -425,36 +445,36 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
                 }
                 req->contentLen = x;
             }
-            else if(!strcmp(fieldName, "Host")) {
+            else if(!strcasecmp(fieldName, "Host")) {
                 memset(req->host, 0, sizeof(req->host));
                 strncpy(req->host, fieldValue, sizeof(req->host) - 1);
             }
-            else if(!strcmp(fieldName, "Transfer-Encoding")) {
+            else if(!strcasecmp(fieldName, "Transfer-Encoding")) {
                 if(req->contentLen != -2) {
                     printf("Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                     cxn->stage = parsegraph_CLIENT_COMPLETE;
                     return;
                 }
 
-                if(!strcmp(fieldValue, "chunked")) {
+                if(!strcasecmp(fieldValue, "chunked")) {
                     req->contentLen = parsegraph_MESSAGE_IS_CHUNKED;
                 }
             }
-            else if(!strcmp(fieldName, "Connection")) {
+            else if(!strcasecmp(fieldName, "Connection")) {
                 char* sp;
                 char* fieldToken = strtok_r(fieldValue, ", ", &sp);
                 if(!fieldToken) {
                     fieldToken = fieldValue;
                 }
                 else while(fieldToken) {
-                    if(!strcmp(fieldToken, "close")) {
+                    if(!strcasecmp(fieldToken, "close")) {
                         req->contentLen = parsegraph_MESSAGE_USES_CLOSE;
                         req->close_after_done = 1;
                     }
-                    else if(!strcmp(fieldToken, "Upgrade")) {
+                    else if(!strcasecmp(fieldToken, "Upgrade")) {
                         req->expect_upgrade = 1;
                     }
-                    else if(strcmp(fieldToken, "keep-alive")) {
+                    else if(strcasecmp(fieldToken, "keep-alive")) {
                         printf("Connection is not understood, so no valid request.\n");
                         cxn->stage = parsegraph_CLIENT_COMPLETE;
                         return;
@@ -600,11 +620,11 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
             if(req->expect_upgrade && req->expect_websocket && req->websocket_nonce[0] != 0 && req->websocket_version == 13)
             {
                 // Test Websocket nonce.
-                char buf[MAX_FIELD_VALUE_LENGTH + 32 + 1];
+                unsigned char buf[MAX_FIELD_VALUE_LENGTH + 32 + 1];
                 memset(buf, 0, sizeof(buf));
                 strcpy(buf, req->websocket_nonce);
                 strcat(buf, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
-                char digest[SHA_DIGEST_LENGTH];
+                unsigned char digest[SHA_DIGEST_LENGTH];
                 memset(digest, 0, sizeof(digest));
                 SHA1(buf, strlen(buf), digest);
 
@@ -618,8 +638,8 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn)
                 BIO_get_mem_ptr(b64, &bptr);
 
                 char* buff = (char*)malloc(bptr->length);
-                memcpy(req->websocket_accept, bptr->data, bptr->length-1);
-                req->websocket_accept[bptr->length-1] = 0;
+                memcpy(req->websocket_accept, bptr->data, bptr->length);
+                req->websocket_accept[bptr->length] = 0;
                 BIO_free_all(b64);
 
                 req->stage = parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE;
@@ -977,6 +997,7 @@ read_chunk_size:
 
     if(req->stage == parsegraph_CLIENT_REQUEST_WEBSOCKET) {
         req->handle(req, parsegraph_EVENT_READ, 0, 0);
+        return;
     }
     if(req->stage == parsegraph_CLIENT_REQUEST_DONE || req->stage == parsegraph_CLIENT_REQUEST_RESPONDING) {
         return;
@@ -1007,6 +1028,12 @@ static void parsegraph_clientWrite(parsegraph_Connection* cxn)
 
     parsegraph_ClientRequest* req;
     while((req = cxn->current_request) != 0) {
+        if(req->stage == parsegraph_CLIENT_REQUEST_WEBSOCKET) {
+            // Check if the handler can respond.
+            req->handle(req, parsegraph_EVENT_WEBSOCKET_RESPOND, 0, 0);
+            return;
+        }
+
         if(req->stage <= parsegraph_CLIENT_REQUEST_READING_FIELD) {
             // Request premature; couldn't write.
             return;

@@ -186,7 +186,6 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
             }
 
             // Save the frame length.
-            printf("Receiving packet.\n");
             req->websocketFrameLen = payload_len;
             req->websocketFrameRead = 0;
         }

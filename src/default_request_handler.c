@@ -241,6 +241,9 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
                 req->handle(req, parsegraph_EVENT_WEBSOCKET_MUST_READ, 0, 0);
             }
         }
+
+        req->websocketFrameLen = 0;
+        req->websocketFrameRead = 0;
         break;
     case parsegraph_EVENT_WEBSOCKET_MUST_READ:
         nread = parsegraph_readWebSocket(req, buf, sizeof buf);

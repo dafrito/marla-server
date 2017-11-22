@@ -354,7 +354,7 @@ void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, en
             return;
         }
         int cs = 0;
-        int message_len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><head><script>function run() { WS=new WebSocket(\"wss://localhost:%s/\"); WS.onopen = function() { alert('Hello'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", SERVERPORT ? SERVERPORT : "443", req->id);
+        int message_len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><head><script>function run() { WS=new WebSocket(\"wss://localhost:%s/\"); WS.onopen = function() { alert('Hello'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 500); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", SERVERPORT ? SERVERPORT : "443", req->id);
         for(int i = 0; i <= message_len; ++i) {
             if((i == message_len) || (i && !(i & (sizeof(buf) - 2)))) {
                 if(i & (sizeof(buf) - 2)) {

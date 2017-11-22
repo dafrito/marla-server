@@ -136,6 +136,57 @@ create_and_bind (const char *port)
   return sfd;
 }
 
+static int
+create_and_connect(const char* port)
+{
+   struct addrinfo *result, *rp;
+   int sfd, s, j;
+   size_t len;
+   ssize_t nread;
+
+   /* Obtain address(es) matching host/port */
+
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_INET;    /* Allow IPv4 or IPv6 */
+    hints.ai_socktype = SOCK_STREAM; /* TCP socket */
+    hints.ai_flags = 0;
+    hints.ai_protocol = 0;          /* Any protocol */
+
+    s = getaddrinfo("localhost", port, &hints, &result);
+    if (s != 0) {
+       fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
+       exit(EXIT_FAILURE);
+    }
+
+    /* getaddrinfo() returns a list of address structures.
+      Try each address until we successfully connect(2).
+      If socket(2) (or connect(2)) fails, we (close the socket
+      and) try the next address. */
+
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        sfd = socket(rp->ai_family, rp->ai_socktype,
+                rp->ai_protocol);
+        if (sfd == -1)
+            continue;
+
+        if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1)
+            break;                  /* Success */
+
+        close(sfd);
+    }
+
+    if (rp == NULL) {               /* No address succeeded */
+        fprintf(stderr, "Could not connect\n");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("FOUND A BACKEND\n");
+    freeaddrinfo(result);           /* No longer needed */
+
+    return sfd;
+}
+
 void* terminal_operator(void* data)
 {
     /*setlocale(LC_ALL, "");
@@ -162,7 +213,7 @@ static int exit_value = EXIT_SUCCESS;
 
 int main(int argc, const char**argv)
 {
-    int sfd, s;
+    int sfd, backendfd, s;
     int efd;
     struct epoll_event *events;
 
@@ -177,8 +228,8 @@ int main(int argc, const char**argv)
     SSL_CTX *ctx = create_context();
     configure_context(ctx);
 
-    if(argc != 2) {
-        fprintf(stderr, "Usage: %s [port]\n", argv[0]);
+    if(argc != 3) {
+        fprintf(stderr, "Usage: %s [port] [backend-port]\n", argv[0]);
         exit_value = EXIT_FAILURE;
         goto end_terminal;
     }
@@ -202,6 +253,18 @@ int main(int argc, const char**argv)
         goto end_terminal;
     }
 
+    backendfd = create_and_connect(argv[2]);
+    if(backendfd == -1) {
+        exit_value = EXIT_FAILURE;
+        goto end_terminal;
+    }
+
+    s = make_socket_non_blocking(backendfd);
+    if(s == -1) {
+        exit_value = EXIT_FAILURE;
+        goto end_terminal;
+    }
+
     efd = epoll_create1(0);
     if(efd == -1) {
         perror("epoll_create");
@@ -214,7 +277,17 @@ int main(int argc, const char**argv)
     event.events = EPOLLIN | EPOLLET;
     s = epoll_ctl (efd, EPOLL_CTL_ADD, sfd, &event);
     if(s == -1) {
-        perror("epoll_ctl");
+        perror("Adding server file descriptor to epoll queue");
+        abort();
+        exit_value = EXIT_FAILURE;
+        goto end_terminal;
+    }
+
+    event.data.fd = backendfd;
+    event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+    s = epoll_ctl (efd, EPOLL_CTL_ADD, backendfd, &event);
+    if(s == -1) {
+        perror("Adding backend file descriptor to epoll queue");
         abort();
         exit_value = EXIT_FAILURE;
         goto end_terminal;
@@ -229,15 +302,16 @@ int main(int argc, const char**argv)
         goto destroy;
       }
       for(i = 0; i < n; i++) {
-        if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
-            // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
-            printf("epoll error: %d\n", events[i].events);
-            parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
-            parsegraph_Connection_destroy(source);
-            continue;
+        if (events[i].data.fd == backendfd) {
+            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                goto destroy;
+            }
         }
         else if (sfd == events[i].data.fd) {
             // Event is from server socket.
+            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                goto destroy;
+            }
 
             // Accept socket connections.
             while(1) {
@@ -301,6 +375,13 @@ int main(int argc, const char**argv)
             }
           else
             {
+                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                    // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
+                    printf("epoll error: %d\n", events[i].events);
+                    parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
+                    parsegraph_Connection_destroy(source);
+                    continue;
+                }
                 /* Connection is ready */
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
                 parsegraph_Connection_handle(cxn, events[i].events);

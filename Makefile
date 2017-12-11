@@ -1,35 +1,42 @@
-all: librainback.a rainback
+PORT=4479
+BACKEND_PORT=8081
+PREFIX=/home/$(shell whoami)
+LIBDIR=$(PREFIX)/lib
+
+CXXFLAGS=-I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
+
+all: rainback
 .PHONY: all
 
-librainback.a: src/ring.c src/connection.c src/client.c src/default_request_handler.c src/ssl.c | src/rainback.h Makefile
-	$(CC) -c -g `pkg-config --cflags openssl apr-1 ncurses` $^
-	ar rcs $@ ring.o connection.o client.o default_request_handler.o ssl.o
+librainback.so: src/ring.c src/connection.c src/client.c src/backend.c src/websocket_handler.c src/hooks.c src/default_request_handler.c src/ssl.c src/terminal.c src/server.c | src/rainback.h src/prepare.h Makefile
+	$(CC) $(CXXFLAGS) -shared -o$@ -g $^
 
-rainback: src/epoll.c librainback.a | src/rainback.h
-	$(CC) -g `pkg-config --cflags --libs openssl apr-1 ncurses` $^ -o$@ -lpthread
+rainback: src/main.c librainback.so | src/rainback.h src/prepare.h
+	$(CC) $(CXXFLAGS) src/main.c -o$@ -lpthread -L. -lrainback
 
 certificate.pem key.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out certificate.pem
-
-PORT=4479
 
 kill: rainback.tmux
 	tmux -S rainback.tmux kill-server
 .PHONY: kill
 
-run: rainback certificate.pem key.pem
-	tmux -S rainback.tmux new-s -d ./rainback $(PORT)
+run: rainback certificate.pem key.pem servermod/libservermod.so
+	tmux -S rainback.tmux new-s -d ./rainback $(PORT) $(BACKEND_PORT) servermod/libservermod.so?module_servermod_init
 .PHONY: run
+
+servermod/libservermod.so:
+	cd servermod && $(MAKE)
 
 tmux:
 	tmux -S rainback.tmux att
 .PHONY: tmux
 
-check: certificate.pem tests/run-tests
+check: certificate.pem tests/run-tests tests/test_ring tests/test_small_ring tests/test_ring_putback tests/test_connection tests/test_websocket
 	cd tests || exit; \
 	./test-ring.sh || exit; \
-	./test-connection.sh $(PORT) || exit; \
-	./test-websocket.sh $(PORT) || exit; \
+	./test_connection $(PORT) || exit; \
+	./test_websocket $(PORT) || exit; \
 	for i in seq 3; do \
 	./run-tests.sh $(PORT) || exit; \
 	./test_low.sh $(PORT) TEST || exit; \
@@ -37,13 +44,32 @@ check: certificate.pem tests/run-tests
 	done
 .PHONY: check
 
-tests/run-tests: tests/run-tests.c | src/rainback.h librainback.a
-	$(CC) -g `pkg-config --cflags --libs openssl apr-1` $^ -o$@ librainback.a -lpthread
+tests/test_connection: tests/test_connection.c
+	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+
+tests/test_ring: tests/test_ring.c
+	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+
+tests/test_small_ring: tests/test_small_ring.c
+	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+
+tests/test_ring_putback: tests/test_ring_putback.c
+	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+
+tests/run-tests: tests/run-tests.c | src/rainback.h librainback.so
+	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback -lpthread
+
+tests/test_websocket: tests/test_websocket.c
+	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
 
 clean:
-	rm -f librainback.a rainback *.o
+	rm -f librainback.so rainback *.o
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem
 	rm certificate.pem key.pem
 .PHONY: clean-certificate
+
+install: librainback.so
+	cp $^ $(LIBDIR)
+.PHONY: install

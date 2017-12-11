@@ -1,7 +1,21 @@
+#include "prepare.h"
 #include "rainback.h"
 #include <string.h>
 #include <unistd.h>
 #include <openssl/rand.h>
+
+AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
+                                int level, apr_status_t status, apr_pool_t *p,
+                                const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    char exp[512];
+    memset(exp, 0, sizeof(exp));
+    vsprintf(exp, fmt, args);
+    dprintf(3, exp);
+    va_end(args);
+}
 
 struct FixedSource {
 unsigned char* content;
@@ -31,7 +45,7 @@ static int writeSource(struct parsegraph_Connection* cxn, void* source, size_t l
     return len;
 }
 
-static int test_simple(const char* port)
+static int test_simple(struct parsegraph_Server* server, const char* port)
 {
     char source_str[1024];
     memset(source_str, 0, sizeof(source_str));
@@ -65,7 +79,7 @@ static int test_simple(const char* port)
     cxn->writeSource = writeSource;
 
     // Read from the source.
-    parsegraph_Connection_handle(cxn, 0);
+    parsegraph_Connection_handle(cxn, server, 0);
 
     for(int i = 0; i < 10; ++i) {
         source_str[0] = 0x81;
@@ -81,7 +95,7 @@ static int test_simple(const char* port)
         source_str[10] = 0x58;
         src.nread = 0;
         src.len = 11;
-        parsegraph_Connection_handle(cxn, 0);
+        parsegraph_Connection_handle(cxn, server, 0);
     }
 
     parsegraph_Connection_destroy(cxn);
@@ -94,8 +108,11 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    struct parsegraph_Server server;
+    parsegraph_Server_init(&server);
+
     const char* port = argv[1];
     printf("test_simple:");
-    test_simple(port);
+    test_simple(&server, port);
     return 0;
 }

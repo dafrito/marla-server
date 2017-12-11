@@ -1,21 +1,20 @@
 #include "prepare.h"
 
-int initialize_parsegraph_live_session(struct lws* wsi, parsegraph_live_server* server, parsegraph_live_session* session)
+int initialize_parsegraph_live_session(parsegraph_live_session* session)
 {
     session->envReceived = 0;
     session->errorBufSize = 255;
     memset(session->error, 0, session->errorBufSize + 1);
     session->closed = 0;
     session->initialData = 0;
-    session->processHead = server->receiveHead;
-    int rv = apr_pool_create(&session->pool, server->pool);
+    int rv = apr_pool_create(&session->pool, 0);
     if(0 != rv) {
         return -1;
     }
     return 0;
 }
 
-int parsegraph_prepareEnvironment(struct lws* wsi, parsegraph_live_session* session)
+int parsegraph_prepareEnvironment(parsegraph_live_session* session)
 {
     if(parsegraph_OK != parsegraph_beginTransaction(session->pool, worldStreamDBD, session->env.value)) {
         strcpy(session->error, "Failed to begin transaction for preparing environment.");
@@ -80,10 +79,10 @@ int parsegraph_prepareEnvironment(struct lws* wsi, parsegraph_live_session* sess
     return 0;
 }
 
-int parsegraph_printItem(struct lws* wsi, parsegraph_live_session* session, struct printing_item* level)
+int parsegraph_printItem(parsegraph_live_session* session, struct printing_item* level)
 {
     //fprintf(stderr, "PRINTING item\n");
-    static char buf[LWS_PRE + 65536];
+    static char buf[65536];
     if(!level || level->error) {
         return -2;
     }
@@ -130,9 +129,6 @@ int parsegraph_printItem(struct lws* wsi, parsegraph_live_session* session, stru
 
             //lwsl_err("stage 1 complete\n");
             level->stage = 1;
-            if(lws_send_pipe_choked(wsi)) {
-                goto choked;
-            }
         }
 
         if(level->stage == 1) {
@@ -222,7 +218,6 @@ int parsegraph_printItem(struct lws* wsi, parsegraph_live_session* session, stru
 
     return 0;
 choked:
-    lws_callback_on_writable(wsi);
     if(session->initialData->stage == 3) {
         return 0;
     }

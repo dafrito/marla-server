@@ -149,10 +149,10 @@ int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
     return nflushed;
 }
 
-extern void parsegraph_Client_handle(parsegraph_Connection* cxn, int event);
-void parsegraph_Connection_handle(parsegraph_Connection* cxn, int event)
+extern void parsegraph_Client_handle(parsegraph_Connection* cxn, struct parsegraph_Server* server, int event);
+void parsegraph_Connection_handle(parsegraph_Connection* cxn, struct parsegraph_Server* server, int event)
 {
-    parsegraph_Client_handle(cxn, event);
+    parsegraph_Client_handle(cxn, server, event);
 }
 
 void parsegraph_Connection_destroy(parsegraph_Connection* cxn)

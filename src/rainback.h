@@ -32,6 +32,7 @@ void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLe
 // client.c
 enum parsegraph_RequestStage {
 parsegraph_CLIENT_REQUEST_FRESH,
+parsegraph_BACKEND_REQUEST_FRESH,
 parsegraph_CLIENT_REQUEST_READING_METHOD,
 parsegraph_CLIENT_REQUEST_PAST_METHOD,
 parsegraph_CLIENT_REQUEST_READING_REQUEST_TARGET,
@@ -67,24 +68,34 @@ enum parsegraph_ClientEvent {
 parsegraph_EVENT_HEADER,
 parsegraph_EVENT_ACCEPTING_REQUEST,
 parsegraph_EVENT_REQUEST_BODY,
+parsegraph_EVENT_FORM_FIELD,
 parsegraph_EVENT_READ,
-parsegraph_EVENT_RESPOND,
-parsegraph_EVENT_DESTROYING,
-parsegraph_EVENT_WEBSOCKET_CLOSING,
-parsegraph_EVENT_WEBSOCKET_CLOSE_REASON,
+parsegraph_EVENT_WEBSOCKET_ESTABLISHED,
 parsegraph_EVENT_WEBSOCKET_MUST_READ,
 parsegraph_EVENT_WEBSOCKET_MUST_WRITE,
-parsegraph_EVENT_WEBSOCKET_RESPOND
+parsegraph_EVENT_WEBSOCKET_RESPOND,
+parsegraph_EVENT_RESPOND,
+parsegraph_EVENT_WEBSOCKET_CLOSING,
+parsegraph_EVENT_WEBSOCKET_CLOSE_REASON,
+parsegraph_EVENT_DESTROYING
 };
 
 struct parsegraph_Connection;
 
+struct parsegraph_BackendSource {
+int fd;
+};
+typedef struct parsegraph_BackendSource parsegraph_BackendSource;
+
 struct parsegraph_ClientRequest {
 int id;
 struct parsegraph_Connection* cxn;
+struct parsegraph_Server* server;
 char method[MAX_METHOD_LENGTH + 1];
 char host[MAX_FIELD_VALUE_LENGTH + 1];
 char uri[MAX_URI_LENGTH + 1];
+char error[parsegraph_BUFSIZE];
+char contentType[MAX_FIELD_VALUE_LENGTH + 1];
 long int contentLen;
 long int totalContentLen;
 long int chunkSize;
@@ -116,17 +127,28 @@ int expect_trailer;
 int expect_websocket;
 int close_after_done;
 void(*handle)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
+void* handleData;
 struct parsegraph_ClientRequest* next_request;
 };
 typedef struct parsegraph_ClientRequest parsegraph_ClientRequest;
 
-parsegraph_ClientRequest* parsegraph_ClientRequest_new();
+struct parsegraph_Connection;
+struct parsegraph_Server;
+
+parsegraph_ClientRequest* parsegraph_ClientRequest_new(struct parsegraph_Connection* cxn, struct parsegraph_Server* server);
 void parsegraph_ClientRequest_destroy(parsegraph_ClientRequest*);
 
-enum parsegraph_ClientStage {
+enum parsegraph_ConnectionStage {
 parsegraph_CLIENT_ACCEPTED, /* struct has been created and socket FD has been set */
 parsegraph_CLIENT_SECURED, /* SSL has been accepted */
+parsegraph_BACKEND_READY, /* Backend ready for requests */
 parsegraph_CLIENT_COMPLETE /* Done with connection */
+};
+
+enum parsegraph_ServerStatus {
+parsegraph_SERVER_STOPPED = 0,
+parsegraph_SERVER_STARTED = 1,
+parsegraph_SSL_INITIALIZED = 2,
 };
 
 // connection.c
@@ -136,7 +158,7 @@ struct parsegraph_Connection {
 int shouldDestroy;
 int wantsWrite;
 int wantsRead;
-enum parsegraph_ClientStage stage;
+enum parsegraph_ConnectionStage stage;
 
 // Requests
 parsegraph_ClientRequest* current_request;
@@ -162,7 +184,7 @@ parsegraph_Connection* parsegraph_Connection_new();
 void parsegraph_Connection_putback(parsegraph_Connection* cxn, size_t amount);
 void parsegraph_Connection_putbackWrite(parsegraph_Connection* cxn, size_t amount);
 int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t requested);
-void parsegraph_Connection_handle(parsegraph_Connection* cxn, int event);
+void parsegraph_Connection_handle(parsegraph_Connection* cxn, struct parsegraph_Server* server, int event);
 void parsegraph_Connection_destroy(parsegraph_Connection* cxn);
 int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed);
 int parsegraph_Connection_write(parsegraph_Connection* cxn, const char* source, size_t requested);
@@ -187,5 +209,62 @@ int parsegraph_writeWebSocketHeader(struct parsegraph_ClientRequest* req, unsign
 void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen);
 static void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen);
 
+void parsegraph_backendRead(parsegraph_Connection* cxn);
+void parsegraph_backendWrite(parsegraph_Connection* cxn);
+
+enum parsegraph_ServerModuleEvent {
+parsegraph_EVENT_SERVER_MODULE_START
+};
+
+enum parsegraph_ServerHookStatus {
+parsegraph_SERVER_HOOK_STATUS_OK = 0,
+parsegraph_SERVER_HOOK_STATUS_CLOSE = -1,
+parsegraph_SERVER_HOOK_STATUS_COMPLETE = 1
+};
+
+struct parsegraph_HookEntry {
+enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*);
+void* hookData;
+struct parsegraph_HookEntry* prevHook;
+struct parsegraph_HookEntry* nextHook;
+};
+
+struct parsegraph_HookList {
+struct parsegraph_HookEntry* firstHook;
+struct parsegraph_HookEntry* lastHook;
+};
+
+enum parsegraph_ServerHook {
+parsegraph_SERVER_HOOK_ROUTE = 0,
+parsegraph_SERVER_HOOK_MAX = 1
+};
+
+struct parsegraph_ServerModule;
+
+struct parsegraph_Server {
+pthread_mutex_t server_mutex;
+enum parsegraph_ServerStatus server_status;
+int efd;
+int sfd;
+int backendfd;
+pthread_t terminal_thread;
+struct parsegraph_ServerModule* first_module;
+struct parsegraph_ServerModule* last_module;
+struct parsegraph_HookList hooks[parsegraph_SERVER_HOOK_MAX];
+};
+
+struct parsegraph_ServerModule {
+const char* moduleDef;
+void* moduleHandle;
+void(*moduleFunc)(struct parsegraph_Server*, enum parsegraph_ServerModuleEvent);
+struct parsegraph_ServerModule* nextModule;
+struct parsegraph_ServerModule* prevModule;
+};
+void parsegraph_Server_init(struct parsegraph_Server* server);
+void parsegraph_Server_invokeHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, struct parsegraph_ClientRequest* req);
+int parsegraph_Server_removeHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*), void* hookData);
+void parsegraph_Server_addHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*), void* hookData);
+
+extern const char* SERVERPORT;
 
 #endif // rainback_INCLUDED

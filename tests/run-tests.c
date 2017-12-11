@@ -1,3 +1,4 @@
+#include "prepare.h"
 #include "rainback.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,19 @@
 #include <arpa/inet.h>
 
 #define MAXEVENTS 64
+
+AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
+                                int level, apr_status_t status, apr_pool_t *p,
+                                const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    char exp[512];
+    memset(exp, 0, sizeof(exp));
+    vsprintf(exp, fmt, args);
+    dprintf(3, exp);
+    va_end(args);
+}
 
 static const char* name = "rainback";
 
@@ -129,6 +143,9 @@ int main(int argc, const char** argv)
         exit(EXIT_FAILURE);
     }
 
+    struct parsegraph_Server server;
+    parsegraph_Server_init(&server);
+
     init_openssl();
     SSL_CTX *ctx = create_context();
     configure_context(ctx);
@@ -242,7 +259,7 @@ int main(int argc, const char** argv)
             {
                 /* Connection is ready */
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
-                parsegraph_Connection_handle(cxn , events[i].events);
+                parsegraph_Connection_handle(cxn, &server, events[i].events);
                 if(cxn->shouldDestroy) {
                   parsegraph_Connection_destroy(cxn);
                 }

@@ -1,4 +1,3 @@
-#include "prepare.h"
 #include "rainback.h"
 #include <stdio.h>
 #include <signal.h>
@@ -13,8 +12,13 @@
 #include <openssl/err.h>
 #include <arpa/inet.h>
 #include <pthread.h>
-#include <ncurses.h>
 #include <locale.h>
+#include <parsegraph_user.h>
+#include <parsegraph_environment.h>
+#include <parsegraph_List.h>
+#include <apr_pools.h>
+#include <dlfcn.h>
+#include <apr_dso.h>
 
 #define MAXEVENTS 64
 
@@ -33,169 +37,7 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-apr_pool_t* modpool = 0;
-ap_dbd_t* controlDBD = 0;
-ap_dbd_t* worldStreamDBD = 0;
-
-static int prepareDBD(ap_dbd_t** dbdPointer)
-{
-    ap_dbd_t* dbd = apr_palloc(modpool, sizeof(*dbd));
-    if(dbd == NULL) {
-        fprintf(stderr, "Failed initializing DBD memory");
-        return -1;
-    }
-    *dbdPointer = dbd;
-    int rv = apr_dbd_get_driver(modpool, "sqlite3", &dbd->driver);
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed creating DBD driver, APR status of %d.\n", rv);
-        return -1;
-    }
-    const char* db_path = "/home/dafrito/var/parsegraph/users.sqlite";
-    rv = apr_dbd_open(dbd->driver, modpool, db_path, &dbd->handle);
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed connecting to database at %s, APR status of %d.\n", db_path, rv);
-        return -1;
-    }
-    dbd->prepared = apr_hash_make(modpool);
-
-    // Prepare the database connection.
-    /*rv = parsegraph_prepareLoginStatements(modpool, dbd);
-    if(rv != 0) {
-        fprintf(stderr, "Failed preparing user SQL statements, status of %d.\n", rv);
-        return -1;
-    }
-
-    rv = parsegraph_List_prepareStatements(modpool, dbd);
-    if(rv != 0) {
-        fprintf(stderr, "Failed preparing list SQL statements, status of %d: %s\n", rv, apr_dbd_error(dbd->driver, dbd->handle, rv));
-        return -1;
-    }
-
-    parsegraph_EnvironmentStatus erv;
-    erv = parsegraph_prepareEnvironmentStatements(modpool, dbd);
-    if(erv != parsegraph_Environment_OK) {
-        fprintf(stderr, "Failed preparing environment SQL statements, status of %d.\n", rv);
-        return -1;
-    }*/
-
-    return 0;
-}
-
 static int pidFile;
-
-static int
-init_parsegraph_environment_ws()
-{
-    struct timeval time;
-    gettimeofday(&time,NULL);
-
-    // microsecond has 1 000 000
-    // Assuming you did not need quite that accuracy
-    // Also do not assume the system clock has that accuracy.
-    srand((time.tv_sec * 1000) + (time.tv_usec / 1000));
-
-    // Initialize the APR.
-    apr_status_t rv;
-    rv = apr_initialize();
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed initializing APR. APR status of %d.\n", rv);
-        return -1;
-    }
-
-    // Create the process-wide pool.
-    rv = apr_pool_create(&modpool, 0);
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed initializing APR pool for lwsws module: APR status of %d.\n", rv);
-        return -1;
-    }
-
-    // Load APR and DBD.
-    dlopen(NULL, RTLD_NOW|RTLD_GLOBAL);
-    dlopen("/usr/lib64/libaprutil-1.so", RTLD_NOW|RTLD_GLOBAL);
-    char rverr[255];
-    apr_dso_handle_t* res_handle;
-    rv = apr_dso_load(&res_handle, "/usr/lib64/apr-util-1/apr_dbd_sqlite3-1.so", modpool);
-    if(rv != APR_SUCCESS) {
-        apr_dso_error(res_handle, rverr, 255);
-        fprintf(stderr, "Failed loading DSO: %s", rverr);
-        return -1;
-    }
-
-    // Create the PID file.
-    pidFile = open("rainback.pid", O_WRONLY | O_TRUNC | O_CREAT, 0664);
-    if(pidFile < 0) {
-        fprintf(stderr, "Error %d while creating pid file: %s\n", errno, strerror(errno));
-        return -1;
-    }
-    char buf[256];
-    int written = snprintf(buf, sizeof(buf), "%d\n", getpid());
-    if(written < 0) {
-        fprintf(stderr, "Error %d while formatting pid number: %s\n", errno, strerror(errno));
-        return -1;
-    }
-    if(written > sizeof(buf) - 1) {
-        fprintf(stderr, "Buffer too small to write PID number.\n");
-        return -1;
-    }
-    int pidStrSize = written;
-    written = write(pidFile, buf, written);
-    if(written < 0) {
-        fprintf(stderr, "Error %d while formatting pid number: %s\n", errno, strerror(errno));
-        return -1;
-    }
-    if(written < pidStrSize) {
-        fprintf(stderr, "Partial write of PID to file not tolerated.\n");
-        return -1;
-    }
-    if(close(pidFile) < 0) {
-        fprintf(stderr, "Error %d while closing pid file: %s\n", errno, strerror(errno));
-        return -1;
-    }
-
-    // Initialize DBD.
-    rv = apr_dbd_init(modpool);
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed initializing DBD, APR status of %d.\n", rv);
-        return -1;
-    }
-
-    if(0 != prepareDBD(&controlDBD)) {
-        return -1;
-    }
-    if(0 != prepareDBD(&worldStreamDBD)) {
-        return -1;
-    }
-
-    return 0;
-}
-
-static int
-destroy_parsegraph_environment_ws()
-{
-    if(remove("rainback.pid") < 0) {
-        fprintf(stderr, "Error %d while removing pid file: %s\n", errno, strerror(errno));
-    }
-
-    // Close the world streaming DBD connection.
-    int rv = apr_dbd_close(worldStreamDBD->driver, worldStreamDBD->handle);
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed closing world streaming database connection, APR status of %d.\n", rv);
-        return -1;
-    }
-
-    // Close the control DBD connection.
-    rv = apr_dbd_close(controlDBD->driver, controlDBD->handle);
-    if(rv != APR_SUCCESS) {
-        fprintf(stderr, "Failed closing control database connection, APR status of %d.\n", rv);
-        return -1;
-    }
-
-    apr_pool_destroy(modpool);
-    modpool = NULL;
-
-    apr_terminate();
-    return 0;
-}
 
 static void init_openssl()
 {
@@ -406,13 +248,6 @@ int main(int argc, const char**argv)
         configure_context(ctx);
     }
 
-    // Initialize environment_ws
-    if(0 != init_parsegraph_environment_ws()) {
-        fprintf(stderr, "Failed to initialize environment_ws module");
-        exit_value = EXIT_FAILURE;
-        goto destroy;
-    }
-
     // Create epoll queue.
     server.efd = epoll_create1(0);
     if(server.efd == -1) {
@@ -464,8 +299,13 @@ int main(int argc, const char**argv)
             exit_value = EXIT_FAILURE;
             goto destroy;
         }
+
+        parsegraph_Connection* backend = parsegraph_Connection_new(&server);
+        parsegraph_Backend_init(backend, server.backendfd);
+        server.backend = backend;
+
         struct epoll_event event;
-        event.data.fd = server.backendfd;
+        event.data.ptr = backend;
         event.events = EPOLLIN | EPOLLOUT | EPOLLET;
         s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.backendfd, &event);
         if(s == -1) {
@@ -662,6 +502,10 @@ destroy:
         exit_value = EXIT_FAILURE;
     }
 destroy_without_unlock:
+    for(struct parsegraph_ServerModule* serverModule = server.first_module; serverModule != 0; serverModule = serverModule->nextModule) {
+        serverModule->moduleFunc(serverModule->moduleHandle, parsegraph_EVENT_SERVER_MODULE_STOP);
+    }
+
     free(events);
     if(use_ssl) {
         SSL_CTX_free(ctx);
@@ -669,7 +513,6 @@ destroy_without_unlock:
     }
     close(server.sfd);
     close(server.backendfd);
-    destroy_parsegraph_environment_ws();
     if(server.terminal_thread) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);

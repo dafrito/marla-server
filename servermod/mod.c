@@ -7,41 +7,6 @@ void(*default_handler)(struct parsegraph_ClientRequest*, enum parsegraph_ClientE
 void* default_handleData;
 };
 
-const char* parsegraph_nameClientEvent(enum parsegraph_ClientEvent ev)
-{
-    switch(ev) {
-    case parsegraph_EVENT_HEADER:
-        return "EVENT_HEADER";
-    case parsegraph_EVENT_ACCEPTING_REQUEST:
-        return "EVENT_ACCEPTING_REQUEST";
-    case parsegraph_EVENT_REQUEST_BODY:
-        return "EVENT_REQUEST_BODY";
-    case parsegraph_EVENT_FORM_FIELD:
-        return "EVENT_FORM_FIELD";
-    case parsegraph_EVENT_READ:
-        return "EVENT_READ";
-    case parsegraph_EVENT_WEBSOCKET_ESTABLISHED:
-        return "EVENT_WEBSOCKET_ESTABLISHED";
-    case parsegraph_EVENT_WEBSOCKET_MUST_READ:
-        return "EVENT_WEBSOCKET_MUST_READ";
-    case parsegraph_EVENT_WEBSOCKET_MUST_WRITE:
-        return "EVENT_WEBSOCKET_MUST_WRITE";
-    case parsegraph_EVENT_WEBSOCKET_RESPOND:
-        return "EVENT_WEBSOCKET_RESPOND";
-    case parsegraph_EVENT_GENERATE:
-        return "EVENT_GENERATE";
-    case parsegraph_EVENT_RESPOND:
-        return "EVENT_RESPOND";
-    case parsegraph_EVENT_WEBSOCKET_CLOSING:
-        return "EVENT_WEBSOCKET_CLOSING";
-    case parsegraph_EVENT_WEBSOCKET_CLOSE_REASON:
-        return "EVENT_WEBSOCKET_CLOSE_REASON";
-    case parsegraph_EVENT_DESTROYING:
-        return "EVENT_DESTROYING";
-    }
-    return "";
-}
-
 static void about_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
 {
     //fprintf(stderr, "about %s\n", parsegraph_nameClientEvent(ev));

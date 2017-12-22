@@ -1197,6 +1197,9 @@ static void parsegraph_clientWrite(parsegraph_Connection* cxn, struct parsegraph
                 return;
             }
 
+            // Allow the handler to change when WebSocket is going to be used.
+            parsegraph_Server_invokeHook(server, parsegraph_SERVER_HOOK_WEBSOCKET, req);
+
             req->stage = parsegraph_CLIENT_REQUEST_WEBSOCKET;
             return;
         }

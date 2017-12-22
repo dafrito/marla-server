@@ -248,9 +248,14 @@ static void parsegraph_default_request_handler(struct parsegraph_ClientRequest* 
 
 void parsegraph_backendRead(parsegraph_Connection* cxn);
 void parsegraph_backendWrite(parsegraph_Connection* cxn);
+void parsegraph_Backend_init(parsegraph_Connection* cxn, int fd);
+void parsegraph_Backend_enqueue(parsegraph_Connection* cxn, parsegraph_ClientRequest* req);
+void parsegraph_backendWrite(parsegraph_Connection* cxn);
+void parsegraph_backendRead(parsegraph_Connection* cxn);
 
 enum parsegraph_ServerModuleEvent {
-parsegraph_EVENT_SERVER_MODULE_START
+parsegraph_EVENT_SERVER_MODULE_START,
+parsegraph_EVENT_SERVER_MODULE_STOP
 };
 
 enum parsegraph_ServerHookStatus {
@@ -273,7 +278,8 @@ struct parsegraph_HookEntry* lastHook;
 
 enum parsegraph_ServerHook {
 parsegraph_SERVER_HOOK_ROUTE = 0,
-parsegraph_SERVER_HOOK_MAX = 1
+parsegraph_SERVER_HOOK_WEBSOCKET = 1,
+parsegraph_SERVER_HOOK_MAX = 2
 };
 
 struct parsegraph_ServerModule;
@@ -291,6 +297,7 @@ volatile enum parsegraph_ServerStatus server_status;
 volatile int efd;
 volatile int sfd;
 int backendfd;
+parsegraph_Connection* backend;
 pthread_t terminal_thread;
 struct parsegraph_ServerModule* first_module;
 struct parsegraph_ServerModule* last_module;
@@ -308,6 +315,7 @@ void parsegraph_Server_init(struct parsegraph_Server* server);
 void parsegraph_Server_invokeHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, struct parsegraph_ClientRequest* req);
 int parsegraph_Server_removeHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*), void* hookData);
 void parsegraph_Server_addHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*), void* hookData);
+const char* parsegraph_nameClientEvent(enum parsegraph_ClientEvent ev);
 
 extern const char* SERVERPORT;
 

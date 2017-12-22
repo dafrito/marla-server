@@ -10,6 +10,16 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 
+/*
+ *  %x0 denotes a continuation frame
+ *  %x1 denotes a text frame
+ *  %x2 denotes a binary frame
+ *  %x3-7 are reserved for further non-control frames
+ *  %x8 denotes a connection close
+ *  %x9 denotes a ping
+ *  %xA denotes a pong
+ *  %xB-F are reserved for further control frames
+ */
 int parsegraph_writeWebSocketHeader(struct parsegraph_ClientRequest* req, unsigned char opcode, uint64_t frameLen)
 {
     unsigned char out[7];
@@ -316,4 +326,3 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
 fail_connection:
     req->cxn->stage = parsegraph_CLIENT_COMPLETE;
 }
-

@@ -68,7 +68,7 @@ static int test_simple(struct parsegraph_Server* server, const char* port)
     BIO_free_all(b64);
 
     snprintf(source_str, sizeof(source_str) - 1, "GET / HTTP/1.1\r\nHost: localhost:%s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n", port, encodedhandkey);
-    parsegraph_Connection* cxn = parsegraph_Connection_new();
+    parsegraph_Connection* cxn = parsegraph_Connection_new(0);
     struct FixedSource src = {
         source_str,
         0,

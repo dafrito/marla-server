@@ -25,12 +25,30 @@
 // parsegraph_Connection {
 //     void* source;
 
-parsegraph_Connection* parsegraph_Connection_new()
+const char* parsegraph_nameConnectionStage(enum parsegraph_ConnectionStage stage)
+{
+    switch(stage) {
+    case parsegraph_CLIENT_ACCEPTED:
+        return "CLIENT_ACCEPTED";
+    case parsegraph_CLIENT_SECURED:
+        return "CLIENT_SECURED";
+    case parsegraph_BACKEND_READY:
+        return "BACKEND_READY";
+    case parsegraph_CLIENT_COMPLETE:
+        return "CLIENT_COMPLETE";
+    }
+}
+
+parsegraph_Connection* parsegraph_Connection_new(struct parsegraph_Server* server)
 {
     parsegraph_Connection* cxn = (parsegraph_Connection*)malloc(sizeof(*cxn));
     if(!cxn) {
         return 0;
     }
+
+    cxn->server = server;
+    cxn->prev_connection = 0;
+    cxn->next_connection = 0;
 
     // Initialize flags.
     cxn->shouldDestroy = 0;
@@ -38,6 +56,7 @@ parsegraph_Connection* parsegraph_Connection_new()
     cxn->wantsRead = 0;
 
     cxn->source = 0;
+    cxn->describeSource = 0;
     cxn->readSource = 0;
     cxn->writeSource = 0;
     cxn->acceptSource = 0;
@@ -52,6 +71,18 @@ parsegraph_Connection* parsegraph_Connection_new()
     cxn->requests_in_process = 0;
     cxn->latest_request = 0;
     cxn->current_request = 0;
+
+    if(cxn->server) {
+        if(!cxn->server->last_connection) {
+            cxn->server->first_connection = cxn;
+            cxn->server->last_connection = cxn;
+        }
+        else {
+            cxn->server->last_connection->next_connection = cxn;
+            cxn->prev_connection = cxn->server->last_connection;
+            cxn->server->last_connection = cxn;
+        }
+    }
 
     return cxn;
 }
@@ -161,6 +192,38 @@ void parsegraph_Connection_destroy(parsegraph_Connection* cxn)
         cxn->destroySource(cxn);
         cxn->destroySource = 0;
     }
+
+    if(cxn->prev_connection && cxn->next_connection) {
+        cxn->next_connection->prev_connection = cxn->prev_connection;
+        cxn->prev_connection->next_connection = cxn->next_connection;
+        cxn->next_connection = 0;
+        cxn->prev_connection = 0;
+    }
+    else if(cxn->prev_connection) {
+        if(cxn->server && cxn->server->last_connection == cxn) {
+            cxn->server->last_connection = cxn->prev_connection;
+        }
+        cxn->prev_connection->next_connection = 0;
+        cxn->next_connection = 0;
+        cxn->prev_connection = 0;
+    }
+    else if(cxn->next_connection) {
+        if(cxn->server && cxn->server->first_connection == cxn) {
+            cxn->server->first_connection = cxn->next_connection;
+        }
+        cxn->next_connection->prev_connection = 0;
+        cxn->next_connection = 0;
+        cxn->prev_connection = 0;
+    }
+    else {
+        if(cxn->server && cxn->server->first_connection == cxn) {
+            cxn->server->first_connection = cxn->next_connection;
+        }
+        if(cxn->server && cxn->server->last_connection == cxn) {
+            cxn->server->last_connection = cxn->prev_connection;
+        }
+    }
+
     parsegraph_Ring_free(cxn->input);
     parsegraph_Ring_free(cxn->output);
     /* Closing the descriptor will make epoll remove it

@@ -10,6 +10,65 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 
+int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_Ring* output)
+{
+    size_t remaining = cpr->message_len - cpr->written;
+    void* slotData;
+    size_t slotLen;
+    parsegraph_Ring_writeSlot(output, &slotData, &slotLen);
+    char* slot = slotData;
+
+    // Ignore slots of insufficient size.
+    if(slotLen < 5) {
+        if(slotLen > 0) {
+            parsegraph_Ring_putbackWrite(output, slotLen);
+        }
+        return -1;
+    }
+
+    // Incorporate message padding into chunk.
+    int suffix_len = 2;
+    int prefix_len = 3; // One byte plus \r\n
+    int padding = prefix_len + suffix_len;
+    if(slotLen - padding > 0xf) {
+        prefix_len = 4; // Two bytes plus \r\n
+        padding = prefix_len + suffix_len;
+        if(slotLen - padding > 0xff) {
+            prefix_len = 5; // Three bytes plus \r\n
+            padding = prefix_len + suffix_len;
+            if(slotLen - padding > 0xfff) {
+                prefix_len = 6; // Four bytes plus \r\n
+                padding = prefix_len + suffix_len;
+            }
+        }
+    }
+    if(slotLen - padding > remaining) {
+        parsegraph_Ring_putbackWrite(output, slotLen - padding - remaining);
+        slotLen = padding + remaining;
+    }
+
+    // Construct the chunk within the slot.
+    int true_prefix_size = snprintf(slot, prefix_len + 1, "%x\r\n", slotLen - padding);
+    if(true_prefix_size < 0) {
+        //fprintf(stderr, "Failed to generate chunk header.\n");
+        return -1;
+    }
+    if(true_prefix_size != prefix_len) {
+        //fprintf(stderr, "Realized prefix length %d must match the calculated prefix length %d for %d bytes remaining with slotLen of %d.\n", true_prefix_size, prefix_len, remaining, slotLen);
+        return -1;
+    }
+    memcpy(slot + true_prefix_size, cpr->resp + cpr->written, slotLen - padding);
+    slot[slotLen - suffix_len] = '\r';
+    slot[slotLen - suffix_len + 1] = '\n';
+
+    cpr->written += slotLen - padding;
+
+    if(cpr->written == cpr->message_len) {
+        cpr->stage = 3;
+    }
+    return 0;
+}
+
 static int percentDecodeEnplace(char* data, int datalen)
 {
     int d = 0;
@@ -58,6 +117,11 @@ char formValue[MAX_FIELD_VALUE_LENGTH + 1];
 long int valueLen;
 };
 
+static void makePage(struct parsegraph_ClientRequest* req, struct parsegraph_ChunkedPageRequest* cpr)
+{
+    cpr->message_len = snprintf(cpr->resp, sizeof(cpr->resp), "<!DOCTYPE html><html><head><script>function run() { WS=new WebSocket(\"ws://localhost:%s/\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", SERVERPORT ? SERVERPORT : "443", req->id);
+}
+
 void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
 {
     if(req->stage == parsegraph_CLIENT_REQUEST_WEBSOCKET) {
@@ -65,8 +129,8 @@ void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, en
         return;
     }
 
+    struct parsegraph_ChunkedPageRequest* cpr;
     int* acceptor;
-    unsigned char resp[parsegraph_BUFSIZE];
     unsigned char buf[parsegraph_BUFSIZE + 1];
     int nread;
     memset(buf, 0, sizeof buf);
@@ -86,7 +150,12 @@ void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, en
             memset(session->formValue, 0, sizeof(session->formValue));
         }
         else {
-            req->handleData = 0;
+            struct parsegraph_ChunkedPageRequest* cpr = malloc(sizeof(struct parsegraph_ChunkedPageRequest));
+            memset(cpr->resp, 0, sizeof(cpr->resp));
+            cpr->written = 0;
+            cpr->message_len = 0;
+            cpr->stage = 0;
+            req->handleData = cpr;
         }
         break;
     case parsegraph_EVENT_FORM_FIELD:
@@ -197,59 +266,61 @@ void parsegraph_default_request_handler(struct parsegraph_ClientRequest* req, en
         }
         break;
     case parsegraph_EVENT_READ:
-        nread = parsegraph_Connection_read(req->cxn, resp, parsegraph_BUFSIZE);
+        nread = parsegraph_Connection_read(req->cxn, buf, sizeof buf);
         if(nread <= 0) {
             return;
         }
 
         break;
+    case parsegraph_EVENT_GENERATE:
+        makePage(req, req->handleData);
+        break;
     case parsegraph_EVENT_RESPOND:
-        memset(resp, 0, sizeof(resp));
-
-        const unsigned char* header = "HTTP/1.1 404 Not Found\r\nTransfer-Encoding: chunked\r\n\r\n";
-        int nwritten = parsegraph_Connection_write(req->cxn, header, strlen(header));
-        if(nwritten <= 0) {
+        //fprintf(stderr, "Default responder\n");
+        cpr = req->handleData;
+        if(!req->handleData) {
+            fprintf(stderr, "No handle data.\n");
+            req->cxn->stage = parsegraph_CLIENT_COMPLETE;
             return;
         }
 
-        int cs = 0;
-        int message_len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><head><script>function run() { }, 500); }</script></head><body onload='run()'><h1>404 Not Found</h1><p>This is request %d</body></html>", req->id);
-
-        for(int i = 0; i <= message_len; ++i) {
-            if((i == message_len) || (i && !(i & (sizeof(buf) - 2)))) {
-                if(i & (sizeof(buf) - 2)) {
-                    buf[i & (sizeof(buf) - 2)] = 0;
-                }
-                int rv = snprintf(resp, 1023, "%x\r\n", cs);
-                if(rv < 0) {
-                    dprintf(3, "Failed to generate response.");
-                    req->cxn->stage = parsegraph_CLIENT_COMPLETE;
-                    return;
-                }
-                memcpy(resp + rv, buf, cs);
-                resp[rv + cs] = '\r';
-                resp[rv + cs + 1] = '\n';
-
-                int nwritten = parsegraph_Connection_write(req->cxn, resp, rv + cs + 2);
-                if(nwritten <= 0) {
-                    return;
-                }
-                cs = 0;
-            }
-            if(i == message_len) {
-                break;
-            }
-            buf[i & (sizeof(buf) - 2)] = buf[i];
-            ++cs;
+        if(cpr->stage == 0) {
+            req->handle(req, parsegraph_EVENT_GENERATE, 0, 0);
+            cpr->stage = 1;
         }
 
-        nwritten = parsegraph_Connection_write(req->cxn, "0\r\n\r\n", 5);
-        if(nwritten <= 0) {
-            return;
+        if(cpr->stage == 1) {
+            const unsigned char* header = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n";
+            int needed = strlen(header);
+            int nwritten = parsegraph_Connection_write(req->cxn, header, needed);
+            if(nwritten < needed) {
+                if(nwritten > 0) {
+                    parsegraph_Connection_putbackWrite(req->cxn, nwritten);
+                }
+                return;
+            }
+            cpr->stage = 2;
         }
 
-        // Mark connection as complete.
-        req->stage = parsegraph_CLIENT_REQUEST_DONE;
+        while(cpr->stage == 2) {
+            parsegraph_writeChunk(cpr, req->cxn->output);
+        }
+
+        if(cpr->stage == 3) {
+            int nwritten = parsegraph_Connection_write(req->cxn, "0\r\n\r\n", 5);
+            if(nwritten < 5) {
+                if(nwritten > 0) {
+                    parsegraph_Connection_putbackWrite(req->cxn, nwritten);
+                }
+                return;
+            }
+            cpr->stage = 4;
+        }
+
+        if(cpr->stage == 4) {
+            // Mark connection as complete.
+            req->stage = parsegraph_CLIENT_REQUEST_DONE;
+        }
         break;
     case parsegraph_EVENT_DESTROYING:
         if(req->handleData) {

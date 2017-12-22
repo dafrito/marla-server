@@ -1,7 +1,20 @@
 #include "rainback.h"
 
+int ensure_po2(size_t given)
+{
+    size_t candidate = 1;
+    while(candidate < given) {
+        candidate <<= 1;
+    }
+    return candidate == given;
+}
+
 parsegraph_Ring* parsegraph_Ring_new(size_t capacity)
 {
+    if(!ensure_po2(capacity)) {
+        fprintf(stderr, "Rings must not be created with non power-of-two sizes, but %d was given.\n", capacity);
+        abort();
+    }
     parsegraph_Ring* rv = malloc(sizeof(parsegraph_Ring));
     rv->capacity = capacity;
     rv->buf = calloc(capacity, 1);
@@ -56,6 +69,11 @@ int parsegraph_Ring_write(parsegraph_Ring* ring, const char* source, size_t size
 
 void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen)
 {
+    if(parsegraph_Ring_size(ring) == parsegraph_Ring_capacity(ring)) {
+        *slot = 0;
+        *slotLen = 0;
+        return;
+    }
     int capmask = ring->capacity - 1;
     size_t index = ring->write_index & capmask;
     *slot = ring->buf + index;
@@ -88,6 +106,9 @@ void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLe
     else if(windex < rindex) {
         // Write index < read index
         *slotLen = parsegraph_Ring_capacity(ring) - rindex;
+    }
+    else if(ring->write_index - ring->read_index > 0) {
+        *slotLen = ring->capacity;
     }
     else {
         *slotLen = 0;

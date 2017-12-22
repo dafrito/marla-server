@@ -15,7 +15,7 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-int main()
+int test_ring_read()
 {
     parsegraph_Ring* ring = parsegraph_Ring_new(parsegraph_BUFSIZE);
 
@@ -36,4 +36,55 @@ int main()
 
     parsegraph_Ring_free(ring);
     return 0;
+}
+
+int test_ring_write()
+{
+    parsegraph_Ring* ring = parsegraph_Ring_new(parsegraph_BUFSIZE);
+
+    void* slotData;
+    size_t slotLen;
+    parsegraph_Ring_writeSlot(ring, &slotData, &slotLen);
+
+    if(slotLen != parsegraph_BUFSIZE) {
+        fprintf(stderr, "slotLen must be equal to the BUFSIZE for an empty ring.\n");
+        return 1;
+    }
+    parsegraph_Ring_writeSlot(ring, &slotData, &slotLen);
+    if(slotLen != 0) {
+        fprintf(stderr, "writeSlot must not treat full rings as empty.\n");
+        return 1;
+    }
+
+    parsegraph_Ring_free(ring);
+    return 0;
+}
+
+int test_ring_readSlot()
+{
+    parsegraph_Ring* ring = parsegraph_Ring_new(parsegraph_BUFSIZE);
+    for(int i = 0; i < parsegraph_BUFSIZE; ++i) {
+        parsegraph_Ring_write(ring, "A", 1);
+    }
+
+    void* slotData;
+    size_t slotLen;
+    parsegraph_Ring_readSlot(ring, &slotData, &slotLen);
+    if(slotLen != parsegraph_BUFSIZE) {
+        fprintf(stderr, "slotLen must be equal to the BUFSIZE for a full ring.\n");
+        return 1;
+    }
+    parsegraph_Ring_readSlot(ring, &slotData, &slotLen);
+    if(slotLen != 0) {
+        fprintf(stderr, "readSlot must not treat empty rings as full.\n");
+        return 1;
+    }
+
+    parsegraph_Ring_free(ring);
+    return 0;
+}
+
+int main()
+{
+    return test_ring_read() || test_ring_write() || test_ring_readSlot();
 }

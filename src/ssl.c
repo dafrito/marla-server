@@ -23,6 +23,14 @@ static void common_SSL_return(parsegraph_Connection* cxn, int rv)
     }
 }
 
+static int describeSSLSource(parsegraph_Connection* cxn, char* sink, size_t len)
+{
+    parsegraph_SSLSource* cxnSource = cxn->source;
+    memset(sink, 0, len);
+    snprintf(sink, len, "FD %d SSL", cxnSource->fd);
+    return 0;
+}
+
 static int readSSLSource(parsegraph_Connection* cxn, void* sink, size_t len)
 {
     parsegraph_SSLSource* cxnSource = cxn->source;
@@ -98,6 +106,7 @@ int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd)
     cxn->acceptSource = acceptSSLSource;
     cxn->shutdownSource = shutdownSSLSource;
     cxn->destroySource = destroySSLSource;
+    cxn->describeSource = describeSSLSource;
     source->ctx = ctx;
     source->fd = fd;
     source->ssl = SSL_new(ctx);

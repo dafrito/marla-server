@@ -250,10 +250,10 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
         if(nread <= 0) {
             return;
         }
-        fprintf(stdout, "READ: ");
-        fflush(stdout);
-        write(1, buf, nread);
-        printf("\n");
+        //fprintf(stdout, "READ: ");
+        //fflush(stdout);
+        //write(1, buf, nread);
+        //printf("\n");
 
         // Do nothing with it; only read.
         break;

@@ -38,17 +38,26 @@ parsegraph_CLIENT_REQUEST_PAST_METHOD,
 parsegraph_CLIENT_REQUEST_READING_REQUEST_TARGET,
 parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET,
 parsegraph_CLIENT_REQUEST_READING_VERSION,
+parsegraph_BACKEND_REQUEST_WRITTEN,
+parsegraph_BACKEND_REQUEST_READING_HEADERS,
 parsegraph_CLIENT_REQUEST_READING_FIELD,
 parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE,
 parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE,
 parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY,
+parsegraph_BACKEND_REQUEST_READING_RESPONSE_BODY,
 parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE,
 parsegraph_CLIENT_REQUEST_READING_CHUNK_BODY,
 parsegraph_CLIENT_REQUEST_READING_TRAILER,
+parsegraph_BACKEND_REQUEST_READING_RESPONSE_TRAILER,
 parsegraph_CLIENT_REQUEST_RESPONDING,
+parsegraph_BACKEND_REQUEST_RESPONDING,
 parsegraph_CLIENT_REQUEST_WEBSOCKET,
-parsegraph_CLIENT_REQUEST_DONE
+parsegraph_BACKEND_REQUEST_DONE_READING,
+parsegraph_CLIENT_REQUEST_DONE,
+parsegraph_BACKEND_REQUEST_DONE
 };
+
+const char* parsegraph_nameRequestStage(enum parsegraph_RequestStage stage);
 
 #define MIN_METHOD_LENGTH 3
 #define MAX_METHOD_LENGTH 7
@@ -64,6 +73,13 @@ parsegraph_CLIENT_REQUEST_DONE
 #define parsegraph_MESSAGE_LENGTH_UNKNOWN -2
 #define parsegraph_MESSAGE_USES_CLOSE -3
 
+struct parsegraph_ChunkedPageRequest {
+unsigned char resp[16*parsegraph_BUFSIZE];
+int written;
+int message_len;
+int stage;
+};
+
 enum parsegraph_ClientEvent {
 parsegraph_EVENT_HEADER,
 parsegraph_EVENT_ACCEPTING_REQUEST,
@@ -74,6 +90,7 @@ parsegraph_EVENT_WEBSOCKET_ESTABLISHED,
 parsegraph_EVENT_WEBSOCKET_MUST_READ,
 parsegraph_EVENT_WEBSOCKET_MUST_WRITE,
 parsegraph_EVENT_WEBSOCKET_RESPOND,
+parsegraph_EVENT_GENERATE,
 parsegraph_EVENT_RESPOND,
 parsegraph_EVENT_WEBSOCKET_CLOSING,
 parsegraph_EVENT_WEBSOCKET_CLOSE_REASON,
@@ -89,6 +106,8 @@ typedef struct parsegraph_BackendSource parsegraph_BackendSource;
 
 struct parsegraph_ClientRequest {
 int id;
+int statusCode;
+char statusLine[MAX_FIELD_VALUE_LENGTH + 1];
 struct parsegraph_Connection* cxn;
 struct parsegraph_Server* server;
 char method[MAX_METHOD_LENGTH + 1];
@@ -129,6 +148,7 @@ int close_after_done;
 void(*handle)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
 void* handleData;
 struct parsegraph_ClientRequest* next_request;
+struct parsegraph_ClientRequest* backendPeer;
 };
 typedef struct parsegraph_ClientRequest parsegraph_ClientRequest;
 
@@ -145,11 +165,18 @@ parsegraph_BACKEND_READY, /* Backend ready for requests */
 parsegraph_CLIENT_COMPLETE /* Done with connection */
 };
 
+const char* parsegraph_nameConnectionStage(enum parsegraph_ConnectionStage);
+
 enum parsegraph_ServerStatus {
 parsegraph_SERVER_STOPPED = 0,
 parsegraph_SERVER_STARTED = 1,
-parsegraph_SSL_INITIALIZED = 2,
+parsegraph_SERVER_WAITING_FOR_INPUT = 2,
+parsegraph_SERVER_WAITING_FOR_LOCK = 3,
+parsegraph_SERVER_PROCESSING = 4,
+parsegraph_SERVER_DESTROYING = 5,
 };
+
+const char* parsegraph_nameServerStatus(enum parsegraph_ServerStatus);
 
 // connection.c
 struct parsegraph_Connection {
@@ -159,6 +186,10 @@ int shouldDestroy;
 int wantsWrite;
 int wantsRead;
 enum parsegraph_ConnectionStage stage;
+
+struct parsegraph_Server* server;
+struct parsegraph_Connection* prev_connection;
+struct parsegraph_Connection* next_connection;
 
 // Requests
 parsegraph_ClientRequest* current_request;
@@ -176,11 +207,12 @@ int(*writeSource)(struct parsegraph_Connection*, void*, size_t);
 void(*acceptSource)(struct parsegraph_Connection*);
 int(*shutdownSource)(struct parsegraph_Connection*);
 void(*destroySource)(struct parsegraph_Connection*);
+int(*describeSource)(struct parsegraph_Connection*, char*, size_t);
 struct epoll_event poll;
 };
 
 typedef struct parsegraph_Connection parsegraph_Connection;
-parsegraph_Connection* parsegraph_Connection_new();
+parsegraph_Connection* parsegraph_Connection_new(struct parsegraph_Server* server);
 void parsegraph_Connection_putback(parsegraph_Connection* cxn, size_t amount);
 void parsegraph_Connection_putbackWrite(parsegraph_Connection* cxn, size_t amount);
 int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t requested);
@@ -194,6 +226,11 @@ int fd;
 SSL_CTX* ctx;
 SSL* ssl;
 } parsegraph_SSLSource;
+
+typedef struct {
+int fd;
+} parsegraph_ClearTextSource;
+int parsegraph_cleartext_init(parsegraph_Connection* cxn, int fd);
 
 // ssl.c
 int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd);
@@ -242,10 +279,17 @@ parsegraph_SERVER_HOOK_MAX = 1
 struct parsegraph_ServerModule;
 
 struct parsegraph_Server {
+
+struct parsegraph_Connection* first_connection;
+struct parsegraph_Connection* last_connection;
+
+char serverport[64];
+char backendport[64];
+const char* backendPort;
 pthread_mutex_t server_mutex;
-enum parsegraph_ServerStatus server_status;
-int efd;
-int sfd;
+volatile enum parsegraph_ServerStatus server_status;
+volatile int efd;
+volatile int sfd;
 int backendfd;
 pthread_t terminal_thread;
 struct parsegraph_ServerModule* first_module;

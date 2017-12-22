@@ -3,12 +3,16 @@ BACKEND_PORT=8081
 PREFIX=/home/$(shell whoami)
 LIBDIR=$(PREFIX)/lib
 
-CXXFLAGS=-I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
+CXXFLAGS=-g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 
 all: rainback
+	cd servermod && $(MAKE)
 .PHONY: all
 
-librainback.so: src/ring.c src/connection.c src/client.c src/backend.c src/websocket_handler.c src/hooks.c src/default_request_handler.c src/ssl.c src/terminal.c src/server.c | src/rainback.h src/prepare.h Makefile
+servermod/libservermod.so:
+	cd servermod && $(MAKE)
+
+librainback.so: src/ring.c src/connection.c src/client.c src/backend.c src/websocket_handler.c src/hooks.c src/default_request_handler.c src/ssl.c src/cleartext.c src/terminal.c src/server.c | src/rainback.h src/prepare.h Makefile
 	$(CC) $(CXXFLAGS) -shared -o$@ -g $^
 
 rainback: src/main.c librainback.so | src/rainback.h src/prepare.h
@@ -24,9 +28,6 @@ kill: rainback.tmux
 run: rainback certificate.pem key.pem servermod/libservermod.so
 	tmux -S rainback.tmux new-s -d ./rainback $(PORT) $(BACKEND_PORT) servermod/libservermod.so?module_servermod_init
 .PHONY: run
-
-servermod/libservermod.so:
-	cd servermod && $(MAKE)
 
 tmux:
 	tmux -S rainback.tmux att
@@ -64,6 +65,7 @@ tests/test_websocket: tests/test_websocket.c
 
 clean:
 	rm -f librainback.so rainback *.o
+	cd servermod && $(MAKE) clean
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem

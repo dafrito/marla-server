@@ -18,6 +18,8 @@
 
 #define MAXEVENTS 64
 
+static int use_ssl = 0;
+
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
                                 const char *fmt, ...)
@@ -363,6 +365,11 @@ create_and_connect(const char* port)
     return sfd;
 }
 
+void on_sigusr1()
+{
+    // Do nothing, but don't ignore it, so that it interrupts epoll_wait
+}
+
 static int exit_value = EXIT_SUCCESS;
 extern void* terminal_operator(void* data);
 
@@ -386,52 +393,50 @@ int main(int argc, const char**argv)
     }
 
     // Do not die from SIGPIPE.
+    signal(SIGUSR1, on_sigusr1);
     signal(SIGPIPE, SIG_IGN);
 
     server.server_status = parsegraph_SERVER_STARTED;
 
     // Create the SSL context
-    init_openssl();
-    SSL_CTX *ctx = create_context();
-    configure_context(ctx);
+    SSL_CTX *ctx = 0;
+    if(use_ssl) {
+        init_openssl();
+        ctx = create_context();
+        configure_context(ctx);
+    }
 
     // Initialize environment_ws
     if(0 != init_parsegraph_environment_ws()) {
         fprintf(stderr, "Failed to initialize environment_ws module");
         exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        goto destroy;
     }
-
-    /*// Create terminal interface thread.
-    if(0 != pthread_create(&terminal_thread, 0, terminal_operator, server)) {
-        fprintf(stderr, "Failed to create terminal thread");
-        exit(EXIT_FAILURE);
-    }*/
 
     // Create epoll queue.
     server.efd = epoll_create1(0);
     if(server.efd == -1) {
-        perror("epoll_create");
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        perror("Creating main epoll queue for server");
+        exit(EXIT_FAILURE);
     }
 
     // Create the server socket
     server.sfd = create_and_bind(argv[1]);
     if(server.sfd == -1) {
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        perror("Creating main server socket for server");
+        exit(EXIT_FAILURE);
     }
+    strcpy(server.serverport, argv[1]);
     s = make_socket_non_blocking(server.sfd);
     if(s == -1) {
         exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        goto destroy;
     }
     s = listen(server.sfd, SOMAXCONN);
     if(s == -1) {
         perror ("listen");
         exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        goto destroy;
     }
     else {
         struct epoll_event event;
@@ -440,35 +445,36 @@ int main(int argc, const char**argv)
         s = epoll_ctl (server.efd, EPOLL_CTL_ADD, server.sfd, &event);
         if(s == -1) {
             perror("Adding server file descriptor to epoll queue");
-            abort();
             exit_value = EXIT_FAILURE;
-            goto end_terminal;
+            goto destroy;
         }
     }
 
     // Create the backend socket
     server.backendfd = create_and_connect(argv[2]);
     if(server.backendfd == -1) {
+        perror("Connecting to backend server");
         exit_value = EXIT_FAILURE;
-        goto end_terminal;
+        goto destroy;
     }
     else {
+        strcpy(server.backendport, argv[2]);
         s = make_socket_non_blocking(server.backendfd);
         if(s == -1) {
             exit_value = EXIT_FAILURE;
-            goto end_terminal;
+            goto destroy;
         }
         struct epoll_event event;
         event.data.fd = server.backendfd;
         event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-        s = epoll_ctl (server.efd, EPOLL_CTL_ADD, server.backendfd, &event);
+        s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.backendfd, &event);
         if(s == -1) {
             perror("Adding backend file descriptor to epoll queue");
-            abort();
             exit_value = EXIT_FAILURE;
-            goto end_terminal;
+            goto destroy;
         }
     }
+    server.backendPort = argv[2];
 
     if(argc > 3) {
         for(int n = 3; n < argc; ++n) {
@@ -513,102 +519,129 @@ int main(int argc, const char**argv)
     }
 
     events = (struct epoll_event*)calloc(MAXEVENTS, sizeof(struct epoll_event));
+
+    // Create terminal interface thread.
+    if(0 != pthread_create(&server.terminal_thread, 0, terminal_operator, &server)) {
+        fprintf(stderr, "Failed to create terminal thread");
+        exit(EXIT_FAILURE);
+    }
+
     while(1) {
         int n, i;
 
+        if(server.server_status == parsegraph_SERVER_DESTROYING) {
+            break;
+        }
+        server.server_status = parsegraph_SERVER_WAITING_FOR_INPUT;
         if(0 != pthread_mutex_unlock(&server.server_mutex)) {
             fprintf(stderr, "Failed to release server mutex");
             exit_value = EXIT_FAILURE;
-            goto end_terminal;
+            goto destroy_without_unlock;
+        }
+wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
+        if(n <= 0) {
+            if(server.server_status != parsegraph_SERVER_DESTROYING && (n == 0 || errno == EINTR)) {
+                goto wait;
+            }
+            server.server_status = parsegraph_SERVER_DESTROYING;
+            goto destroy;
         }
 
-      n = epoll_wait (server.efd, events, MAXEVENTS, -1);
-      if(n < 0) {
-        goto destroy;
-      }
-    if(0 != pthread_mutex_lock(&server.server_mutex)) {
-        fprintf(stderr, "Failed to acquire server mutex");
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
-    }
-      for(i = 0; i < n; i++) {
-        if (events[i].data.fd == server.backendfd) {
-            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
-            }
-            continue;
+        // Acquire the server's lock for processing.
+        if(0 != pthread_mutex_lock(&server.server_mutex)) {
+            fprintf(stderr, "Failed to acquire server mutex");
+            exit_value = EXIT_FAILURE;
+            goto destroy_without_unlock;
         }
-        else if (server.sfd == events[i].data.fd) {
-            // Event is from server socket.
-            if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
-                goto destroy;
+
+        // Set the status.
+        if(server.server_status == parsegraph_SERVER_DESTROYING) {
+            goto destroy;
+        }
+        server.server_status = parsegraph_SERVER_PROCESSING;
+
+        for(i = 0; i < n; i++) {
+            if(events[i].data.fd == server.backendfd) {
+                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                }
+                continue;
             }
+            else if (server.sfd == events[i].data.fd) {
+                // Event is from server socket.
+                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                    server.server_status = parsegraph_SERVER_DESTROYING;
+                    goto destroy;
+                }
 
-            // Accept socket connections.
-            while(1) {
-                struct sockaddr in_addr;
-                socklen_t in_len;
-                int infd;
-                char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
+                // Accept socket connections.
+                while(1) {
+                    struct sockaddr in_addr;
+                    socklen_t in_len;
+                    int infd;
+                    char hbuf[NI_MAXHOST], sbuf[NI_MAXSERV];
 
-                in_len = sizeof in_addr;
-                infd = accept(server.sfd, &in_addr, &in_len);
-                if(infd == -1) {
-                    if((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-                        // Done processing connections.
-                        break;
+                    in_len = sizeof in_addr;
+                    infd = accept(server.sfd, &in_addr, &in_len);
+                    if(infd == -1) {
+                        if((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+                            // Done processing connections.
+                            break;
+                        }
+                        else {
+                            perror("Error accepting connection");
+                            break;
+                        }
+                    }
+
+                    s = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
+                    if(s == 0) {
+                        //printf("Accepted connection on descriptor %d "
+                        //"(host=%s, port=%s)\n", infd, hbuf, sbuf);
+                    }
+
+                    /* Make the incoming socket non-blocking and add it to the
+                    list of fds to monitor. */
+                    s = make_socket_non_blocking (infd);
+                    if(s != 0) {
+                        close(infd);
+                        continue;
+                    }
+
+                    parsegraph_Connection* cxn = parsegraph_Connection_new(&server);
+                    if(!cxn) {
+                        perror("Unable to create connection");
+                        close(infd);
+                        continue;
+                    }
+                    if(use_ssl) {
+                        s = parsegraph_SSL_init(cxn, ctx, infd);
+                        if(s <= 0) {
+                            perror("Unable to initialize SSL connection");
+                            close(infd);
+                            continue;
+                        }
                     }
                     else {
-                        perror("Error accepting connection");
-                        break;
+                        parsegraph_cleartext_init(cxn, infd);
                     }
-                }
 
-                s = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
-                if(s == 0) {
-                    printf("Accepted connection on descriptor %d "
-                    "(host=%s, port=%s)\n", infd, hbuf, sbuf);
-                }
-
-                /* Make the incoming socket non-blocking and add it to the
-                list of fds to monitor. */
-                s = make_socket_non_blocking (infd);
-                if(s != 0) {
-                    close(infd);
-                    continue;
-                }
-
-                parsegraph_Connection* cxn = parsegraph_Connection_new(ctx, infd);
-                if(!cxn) {
-                    perror("Unable to create connection");
-                    close(infd);
-                    continue;
-                }
-                s = parsegraph_SSL_init(cxn, ctx, infd);
-                if(s <= 0) {
-                    perror("Unable to initialize SSL connection");
-                    close(infd);
-                    continue;
-                }
-
-                  struct epoll_event event;
-                  event.data.ptr = cxn;
-                  event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-                  s = epoll_ctl (server.efd, EPOLL_CTL_ADD, infd, &event);
-                  if (s == -1)
-                    {
-                      perror ("epoll_ctl");
-                      parsegraph_Connection_destroy(cxn);
-                      close(infd);
+                    struct epoll_event event;
+                    event.data.ptr = cxn;
+                    event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+                    s = epoll_ctl(server.efd, EPOLL_CTL_ADD, infd, &event);
+                    if(s == -1) {
+                        perror ("epoll_ctl");
+                        parsegraph_Connection_destroy(cxn);
+                        close(infd);
                         continue;
                     }
                 }
-              continue;
+                continue;
             }
-          else
-            {
+            else {
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
                     // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
-                    printf("epoll error: %d\n", events[i].events);
+                    //printf("epoll error: %d\n", events[i].events);
                     parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
                     parsegraph_Connection_destroy(source);
                     continue;
@@ -617,26 +650,28 @@ int main(int argc, const char**argv)
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
                 parsegraph_Connection_handle(cxn, &server, events[i].events);
                 if(cxn->shouldDestroy) {
-                  parsegraph_Connection_destroy(cxn);
+                    parsegraph_Connection_destroy(cxn);
                 }
             }
         }
     }
 
 destroy:
+    if(0 != pthread_mutex_unlock(&server.server_mutex)) {
+        //fprintf(stderr, "Failed to release server mutex");
+        exit_value = EXIT_FAILURE;
+    }
+destroy_without_unlock:
     free(events);
+    if(use_ssl) {
+        SSL_CTX_free(ctx);
+        cleanup_openssl();
+    }
     close(server.sfd);
     close(server.backendfd);
-    SSL_CTX_free(ctx);
-    cleanup_openssl();
     destroy_parsegraph_environment_ws();
-
-end_terminal:
-    if(0 != pthread_mutex_unlock(&server.server_mutex)) {
-        fprintf(stderr, "Failed to release server mutex");
-        exit_value = EXIT_FAILURE;
-        goto end_terminal;
+    if(server.terminal_thread) {
+        void* retval;
+        pthread_join(server.terminal_thread, &retval);
     }
-    //pthread_exit(&terminal_thread);
-    exit(exit_value);
 }

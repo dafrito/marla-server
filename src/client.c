@@ -9,6 +9,61 @@
 #include <errno.h>
 #include <openssl/sha.h>
 
+const char* parsegraph_nameRequestStage(enum parsegraph_RequestStage stage)
+{
+    switch(stage) {
+    case parsegraph_CLIENT_REQUEST_FRESH:
+        return "CLIENT_REQUEST_FRESH";
+    case parsegraph_BACKEND_REQUEST_FRESH:
+        return "BACKEND_REQUEST_FRESH";
+    case parsegraph_CLIENT_REQUEST_READING_METHOD:
+        return "CLIENT_REQUEST_READING_METHOD";
+    case parsegraph_CLIENT_REQUEST_PAST_METHOD:
+        return "CLIENT_REQUEST_PAST_METHOD";
+    case parsegraph_CLIENT_REQUEST_READING_REQUEST_TARGET:
+        return "CLIENT_REQUEST_READING_REQUEST_TARGET";
+    case parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET:
+        return "CLIENT_REQUEST_PAST_REQUEST_TARGET";
+    case parsegraph_CLIENT_REQUEST_READING_VERSION:
+        return "CLIENT_REQUEST_READING_VERSION";
+    case parsegraph_BACKEND_REQUEST_WRITTEN:
+        return "BACKEND_REQUEST_WRITTEN";
+    case parsegraph_BACKEND_REQUEST_READING_HEADERS:
+        return "BACKEND_REQUEST_READING_HEADERS";
+    case parsegraph_CLIENT_REQUEST_READING_FIELD:
+        return "CLIENT_REQUEST_READING_FIELD";
+    case parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE:
+        return "CLIENT_REQUEST_AWAITING_CONTINUE_WRITE";
+    case parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE:
+        return "CLIENT_REQUEST_AWAITING_UPGRADE_WRITE";
+    case parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY:
+        return "CLIENT_REQUEST_READING_REQUEST_BODY";
+    case parsegraph_BACKEND_REQUEST_READING_RESPONSE_BODY:
+        return "BACKEND_REQUEST_READING_RESPONSE_BODY";
+    case parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE:
+        return "CLIENT_REQUEST_READING_CHUNK_SIZE";
+    case parsegraph_CLIENT_REQUEST_READING_CHUNK_BODY:
+        return "CLIENT_REQUEST_READING_CHUNK_BODY";
+    case parsegraph_CLIENT_REQUEST_READING_TRAILER:
+        return "CLIENT_REQUEST_READING_TRAILER";
+    case parsegraph_BACKEND_REQUEST_READING_RESPONSE_TRAILER:
+        return "BACKEND_REQUEST_READING_RESPONSE_TRAILER";
+    case parsegraph_CLIENT_REQUEST_RESPONDING:
+        return "CLIENT_REQUEST_RESPONDING";
+    case parsegraph_BACKEND_REQUEST_RESPONDING:
+        return "BACKEND_REQUEST_RESPONDING";
+    case parsegraph_CLIENT_REQUEST_WEBSOCKET:
+        return "CLIENT_REQUEST_WEBSOCKET";
+    case parsegraph_BACKEND_REQUEST_DONE_READING:
+        return "BACKEND_REQUEST_DONE_READING";
+    case parsegraph_CLIENT_REQUEST_DONE:
+        return "CLIENT_REQUEST_DONE";
+    case parsegraph_BACKEND_REQUEST_DONE:
+        return "BACKEND_REQUEST_DONE";
+    }
+    return "?";
+}
+
 int parsegraph_ClientRequest_NEXT_ID = 1;
 
 parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cxn, struct parsegraph_Server* server)
@@ -16,6 +71,8 @@ parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cx
     parsegraph_ClientRequest* req = malloc(sizeof(parsegraph_ClientRequest));
     req->cxn = cxn;
     req->server = server;
+    req->statusCode = 0;
+    memset(req->statusLine, 0, sizeof req->statusLine);
 
     req->id = parsegraph_ClientRequest_NEXT_ID++;
 
@@ -134,6 +191,13 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn, struct parsegraph_
 {
     parsegraph_ClientRequest* req = 0;
     if(!cxn->current_request) {
+        char c;
+        int nread = parsegraph_Connection_read(cxn, &c, 1);
+        if(nread <= 0) {
+            return;
+        }
+        parsegraph_Connection_putback(cxn, 1);
+
         // No request yet made.
         req = parsegraph_ClientRequest_new(cxn, server);
         cxn->current_request = req;
@@ -213,6 +277,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn, struct parsegraph_
             return;
         }
 
+        memset(req->method + strlen(req->method), 0, sizeof(req->method) - strlen(req->method));
         req->stage = parsegraph_CLIENT_REQUEST_PAST_METHOD;
 
         if(!strcmp(req->method, "GET")) {
@@ -306,6 +371,7 @@ static void parsegraph_clientRead(parsegraph_Connection* cxn, struct parsegraph_
             // No space found in the fragment found, so incomplete read.
             return;
         }
+        memset(req->uri + strlen(req->uri), 0, sizeof(req->uri) - strlen(req->uri));
 
         //printf("Found URI: %s\n", req->uri);
 
@@ -1055,6 +1121,15 @@ static void parsegraph_clientWrite(parsegraph_Connection* cxn, struct parsegraph
         }
 
         if(req->stage == parsegraph_CLIENT_REQUEST_DONE) {
+            // Write current output.
+            while(parsegraph_Ring_size(cxn->output) > 0) {
+                int nflushed;
+                int rv = parsegraph_Connection_flush(cxn, &nflushed);
+                if(rv <= 0) {
+                    return;
+                }
+            }
+
             cxn->current_request = req->next_request;
             if(req->close_after_done) {
                 cxn->stage = parsegraph_CLIENT_COMPLETE;

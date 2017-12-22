@@ -84,7 +84,43 @@ int test_ring_readSlot()
     return 0;
 }
 
+int test_ring_nearFullReads()
+{
+    const int CAP = 16;
+    parsegraph_Ring* ring = parsegraph_Ring_new(CAP);
+    for(int i = 0; i < CAP-1; ++i) {
+        parsegraph_Ring_writec(ring, 1+i);
+    }
+    if(parsegraph_Ring_size(ring) != CAP-1) {
+        fprintf(stderr, "Ring's size must match the number of bytes written.\n");
+        return 1;
+    }
+    void* bytes;
+    size_t slotLen;
+    parsegraph_Ring_readSlot(ring, &bytes, &slotLen);
+    if(slotLen != CAP-1) {
+        fprintf(stderr, "Ring must return the same number of bytes as written.\n");
+        return 1;
+    }
+    for(int i = 0; i < CAP-1; ++i) {
+        char c = ((char*)bytes)[i];
+        if(c != 1+i) {
+            fprintf(stderr, "Ring must return bytes in the order written. (%d != %d\n", c, 1+i);
+            return 1;
+        }
+    }
+    parsegraph_Ring_readSlot(ring, &bytes, &slotLen);
+    if(slotLen != 0) {
+        fprintf(stderr, "Ring must, once all bytes are written, return empty read slots.\n");
+        return 1;
+    }
+    return 0;
+}
+
 int main()
 {
-    return test_ring_read() || test_ring_write() || test_ring_readSlot();
+    return test_ring_read() ||
+        test_ring_write() ||
+        test_ring_readSlot() ||
+        test_ring_nearFullReads();
 }

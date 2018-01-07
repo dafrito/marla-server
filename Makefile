@@ -3,12 +3,19 @@ BACKEND_PORT=8081
 PREFIX=/home/$(shell whoami)
 LIBDIR=$(PREFIX)/lib
 
-CXXFLAGS=-g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
+CFLAGS=-Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 
-all: rainback
+all: src/test-ring.sh src/test-connection.sh
+	cd src && ./test-ring.sh
+	cd src && ./test-connection.sh $(PORT)
 	cd servermod && $(MAKE)
 	cd environment_ws && $(MAKE)
+	$(MAKE) rainback
 .PHONY: all
+
+src/test-ring.sh: src/test_ring src/test_small_ring src/test_ring_putback src/test_ring_po2
+
+src/test-connection.sh: src/test_connection src/test_websocket src/test_chunks
 
 servermod/libservermod.so:
 	cd servermod && $(MAKE)
@@ -16,11 +23,11 @@ servermod/libservermod.so:
 environment_ws/libenvironment_ws.so:
 	cd environment_ws && $(MAKE)
 
-librainback.so: src/ring.c src/connection.c src/client.c src/backend.c src/websocket_handler.c src/hooks.c src/default_request_handler.c src/ssl.c src/cleartext.c src/terminal.c src/server.c | src/rainback.h Makefile
-	$(CC) $(CXXFLAGS) -shared -o$@ -g $^
+librainback.so: src/ring.o src/connection.o src/request.o src/client.o src/backend.o src/websocket_handler.o src/hooks.o src/chunks.o src/ssl.o src/cleartext.o src/terminal.o src/server.o | src/rainback.h
+	$(CC) $(CFLAGS) -o$@ -shared -lpthread $^
 
-rainback: src/main.c librainback.so | src/rainback.h
-	$(CC) $(CXXFLAGS) src/main.c -o$@ -lpthread -L. -lrainback
+rainback: src/main.c | librainback.so src/rainback.h Makefile
+	$(CC) $^ -o$@ -lpthread  -L. -lrainback $(CFLAGS)
 
 certificate.pem key.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out certificate.pem
@@ -37,40 +44,42 @@ tmux:
 	tmux -S rainback.tmux att
 .PHONY: tmux
 
-check: certificate.pem tests/run-tests tests/test_ring tests/test_small_ring tests/test_ring_putback tests/test_connection tests/test_websocket
-	cd tests || exit; \
-	./test-ring.sh || exit; \
-	./test_connection $(PORT) || exit; \
-	./test_websocket $(PORT) || exit; \
+check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks
+	cd src || exit; \
 	for i in seq 3; do \
-	./run-tests.sh $(PORT) || exit; \
+	echo Running connecting tests; \
+	echo Running low buffer-size tests; \
 	./test_low.sh $(PORT) TEST || exit; \
 	./test_low_lf.sh $(PORT) TEST || exit; \
 	done
 .PHONY: check
 
-tests/test_connection: tests/test_connection.c
-	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+src/test_ring: src/test_ring.c src/ring.o
+	$(CC) $(CFLAGS) -g $^ -o$@
 
-tests/test_ring: tests/test_ring.c
-	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+src/test_ring_po2: src/test_ring_po2.c src/ring.o
+	$(CC) $(CFLAGS) -g $^ -o$@
 
-tests/test_small_ring: tests/test_small_ring.c
-	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+src/test_small_ring: src/test_small_ring.c src/ring.o
+	$(CC) $(CFLAGS) -g $^ -o$@
 
-tests/test_ring_putback: tests/test_ring_putback.c
-	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+src/test_ring_putback: src/test_ring_putback.c src/ring.o
+	$(CC) $(CFLAGS) -g $^ -o$@
 
-tests/run-tests: tests/run-tests.c | src/rainback.h librainback.so
-	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback -lpthread
+src/test_connection: src/test_connection.c src/ring.o src/connection.o src/request.o src/client.o src/backend.o src/websocket_handler.o src/hooks.o src/chunks.o src/ssl.o src/cleartext.o src/terminal.o src/server.o | src/rainback.h Makefile
+	$(CC) $(CFLAGS) -g $^ -o$@
 
-tests/test_websocket: tests/test_websocket.c
-	$(CC) $(CXXFLAGS) -g $^ -o$@ -L. -lrainback
+src/test_websocket: src/test_websocket.c src/ring.o src/connection.o src/request.o src/client.o src/backend.o src/websocket_handler.o src/hooks.o src/chunks.o src/ssl.o src/cleartext.o src/terminal.o src/server.o | src/rainback.h Makefile
+	$(CC) $(CFLAGS) -g $^ -o$@
+
+src/test_chunks: src/test_chunks.c src/ring.o src/connection.o src/request.o src/client.o src/backend.o src/websocket_handler.o src/hooks.o src/chunks.o src/ssl.o src/cleartext.o src/terminal.o src/server.o | src/rainback.h Makefile
+	$(CC) $(CFLAGS) -g $^ -o$@
 
 clean:
-	rm -f librainback.so rainback *.o
+	rm -f librainback.so rainback *.o src/*.o rainback.a
 	cd servermod && $(MAKE) clean
 	cd environment_ws && $(MAKE) clean
+	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem

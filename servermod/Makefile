@@ -7,7 +7,7 @@ all: libservermod.so
 .PHONY: all
 
 libservermod.so: mod.c
-	$(CC) -o$@ $(CXXFLAGS) -shared -g `pkg-config --cflags openssl apr-1 ncurses` -I"../src" $^ -L.. -lrainback
+	$(CC) -o$@ $(CXXFLAGS) -shared -g `pkg-config --cflags openssl apr-1 ncurses` -I"../src" $^
 
 clean:
 	rm -f libservermod.so

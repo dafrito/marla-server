@@ -22,7 +22,8 @@
 
 #define MAXEVENTS 64
 
-static int use_ssl = 0;
+static int use_curses = 1;
+static int use_ssl = 1;
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
@@ -36,8 +37,6 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     dprintf(3, exp);
     va_end(args);
 }
-
-static int pidFile;
 
 static void init_openssl()
 {
@@ -106,15 +105,12 @@ make_socket_non_blocking (int sfd)
   return 0;
 }
 
-extern const char* SERVERPORT;
-
 static int
 create_and_bind (const char *port)
 {
   struct addrinfo hints;
   struct addrinfo *result, *rp;
   int s, sfd;
-  SERVERPORT = port;
 
   memset (&hints, 0, sizeof (struct addrinfo));
   hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
@@ -162,9 +158,7 @@ static int
 create_and_connect(const char* port)
 {
    struct addrinfo *result, *rp;
-   int sfd, s, j;
-   size_t len;
-   ssize_t nread;
+   int sfd, s;
 
    /* Obtain address(es) matching host/port */
 
@@ -215,11 +209,14 @@ void on_sigusr1()
 static int exit_value = EXIT_SUCCESS;
 extern void* terminal_operator(void* data);
 
+struct parsegraph_Server server;
+
 int main(int argc, const char**argv)
 {
     int s;
     struct epoll_event *events;
-    struct parsegraph_Server server;
+
+    apr_pool_initialize();
 
     parsegraph_Server_init(&server);
 
@@ -275,6 +272,7 @@ int main(int argc, const char**argv)
     }
     else {
         struct epoll_event event;
+        memset(&event, 0, sizeof(struct epoll_event));
         event.data.fd = server.sfd;
         event.events = EPOLLIN | EPOLLET;
         s = epoll_ctl (server.efd, EPOLL_CTL_ADD, server.sfd, &event);
@@ -305,6 +303,7 @@ int main(int argc, const char**argv)
         server.backend = backend;
 
         struct epoll_event event;
+        memset(&event, 0, sizeof(struct epoll_event));
         event.data.ptr = backend;
         event.events = EPOLLIN | EPOLLOUT | EPOLLET;
         s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.backendfd, &event);
@@ -329,7 +328,7 @@ int main(int argc, const char**argv)
             strncpy(modulename, arg, loc - arg);
             void* loaded = dlopen(modulename, RTLD_NOW|RTLD_GLOBAL);
             if(!loaded) {
-                fprintf(stderr, "Failed to open module \"%s\"\nUsage: %s [port] [backend-port] modulepath?modulefunc...\n", modulename, argv[0]);
+                fprintf(stderr, "Failed to open module \"%s\": %s\nUsage: %s [port] [backend-port] modulepath?modulefunc...\n", modulename, dlerror(), argv[0]);
                 exit(EXIT_FAILURE);
             }
             void* loadedFunc = dlsym(loaded, loc + 1);
@@ -359,9 +358,10 @@ int main(int argc, const char**argv)
     }
 
     events = (struct epoll_event*)calloc(MAXEVENTS, sizeof(struct epoll_event));
+    memset(events, 0, sizeof(struct epoll_event)*MAXEVENTS);
 
     // Create terminal interface thread.
-    if(0 != pthread_create(&server.terminal_thread, 0, terminal_operator, &server)) {
+    if(use_curses && 0 != pthread_create(&server.terminal_thread, 0, terminal_operator, &server)) {
         fprintf(stderr, "Failed to create terminal thread");
         exit(EXIT_FAILURE);
     }
@@ -466,6 +466,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     }
 
                     struct epoll_event event;
+                    memset(&event, 0, sizeof(struct epoll_event));
                     event.data.ptr = cxn;
                     event.events = EPOLLIN | EPOLLOUT | EPOLLET;
                     s = epoll_ctl(server.efd, EPOLL_CTL_ADD, infd, &event);
@@ -488,7 +489,16 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 }
                 /* Connection is ready */
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
-                parsegraph_Connection_handle(cxn, &server, events[i].events);
+                if(events[i].events & EPOLLIN) {
+                    cxn->wantsRead = 0;
+                    // Available for read.
+                    parsegraph_clientRead(cxn);
+                }
+                if(events[i].events & EPOLLOUT) {
+                    // Available for write.
+                    cxn->wantsWrite = 0;
+                    parsegraph_clientWrite(cxn);
+                }
                 if(cxn->shouldDestroy) {
                     parsegraph_Connection_destroy(cxn);
                 }
@@ -513,8 +523,9 @@ destroy_without_unlock:
     }
     close(server.sfd);
     close(server.backendfd);
-    if(server.terminal_thread) {
+    if(use_curses && server.terminal_thread) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);
     }
+    apr_pool_terminate();
 }

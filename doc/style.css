@@ -1,0 +1,42 @@
+nav.toc {
+    float: left;
+    position: fixed;
+    width: 38%;
+    top: 1%;
+    max-height: 98%;
+    overflow: auto;
+}
+
+main.content {
+    float: right;
+    padding-left: 1em;
+    box-sizing: border-box;
+    width: 62%;
+}
+
+th, td {
+    border: 1px solid grey;
+    padding: .2em;
+}
+
+table {
+    border-collapse: collapse;
+}
+
+body {
+    -max-width: 50%;
+    -margin: auto;
+}
+
+@media only screen and (max-width: 980px) {
+nav.toc {
+    width: auto;
+    position: static;
+    float: left;
+}
+
+main.content {
+    width: auto;
+    float: right;
+}
+}

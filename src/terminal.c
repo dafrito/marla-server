@@ -116,8 +116,8 @@ void* terminal_operator(void* data)
             clear();
             int len;
             int y = 0;
-            int WINY, WINX;
-            getmaxyx(stdscr, WINY, WINX);
+            //int WINY, WINX;
+            //getmaxyx(stdscr, WINY, WINX);
 
             struct tm *tmp;
             time_t t = time(NULL);
@@ -155,6 +155,9 @@ void* terminal_operator(void* data)
                 len = snprintf(buf, sizeof buf, "%d request%s served", (parsegraph_ClientRequest_NEXT_ID-1), parsegraph_ClientRequest_NEXT_ID == 2 ? "" : "s");
                 addnstr(buf, len);
             }
+            else if(mode == TerminalPageMode_Log) {
+                addnstr(server->logbuf, server->logindex);
+            }
             else if(mode == TerminalPageMode_Connections) {
                 struct parsegraph_Connection* cxn = server->first_connection;
 
@@ -162,8 +165,8 @@ void* terminal_operator(void* data)
                 while(cxn) {
                     cxn->describeSource(cxn, sourceStr, sizeof(sourceStr));
                     move(++y, 0);
-                    if(cxn->requests_in_process > 1) {
-                        len = snprintf(buf, sizeof buf, "%s | %4d request | input %4d ri %4d wi %4d cap | output %4d ri %4d wi %4d cap | %s | %s | %s",
+                    if(cxn->requests_in_process > 0) {
+                        len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s | %s | %s",
                             parsegraph_nameConnectionStage(cxn->stage),
                             cxn->requests_in_process,
                             cxn->input->write_index & (cxn->input->capacity-1),
@@ -173,26 +176,12 @@ void* terminal_operator(void* data)
                             cxn->output->read_index & (cxn->output->capacity-1),
                             cxn->output->capacity,
                             sourceStr,
-                            (cxn->current_request ? parsegraph_nameRequestStage(cxn->current_request->stage) : ""),
-                            (cxn->latest_request ? parsegraph_nameRequestStage(cxn->latest_request->stage) : "")
-                        );
-                    }
-                    else if(cxn->requests_in_process == 1) {
-                        len = snprintf(buf, sizeof buf, "%s | %4d request | input %4d ri %4d wi %4d cap | output %4d ri %4d wi %4d cap | %s | %s",
-                            parsegraph_nameConnectionStage(cxn->stage),
-                            cxn->requests_in_process,
-                            cxn->input->write_index & (cxn->input->capacity-1),
-                            cxn->input->read_index & (cxn->input->capacity-1),
-                            cxn->input->capacity,
-                            cxn->output->write_index & (cxn->output->capacity-1),
-                            cxn->output->read_index & (cxn->output->capacity-1),
-                            cxn->output->capacity,
-                            sourceStr,
-                            (cxn->current_request ? parsegraph_nameRequestStage(cxn->current_request->stage) : "")
+                            (cxn->current_request ? parsegraph_nameRequestWriteStage(cxn->current_request->writeStage) : ""),
+                            (cxn->latest_request ? parsegraph_nameRequestReadStage(cxn->latest_request->readStage) : "")
                         );
                     }
                     else {
-                        len = snprintf(buf, sizeof buf, "%s | %4d request | input %4d ri %4d wi %4d cap | output %4d ri %4d wi %4d cap | %s",
+                        len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s",
                             parsegraph_nameConnectionStage(cxn->stage),
                             cxn->requests_in_process,
                             cxn->input->write_index & (cxn->input->capacity-1),
@@ -235,4 +224,5 @@ void* terminal_operator(void* data)
     nocbreak();
     echo();
     endwin();
+    return 0;
 }

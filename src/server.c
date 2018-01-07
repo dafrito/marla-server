@@ -30,6 +30,8 @@ void parsegraph_Server_init(struct parsegraph_Server* server)
     server->last_module = 0;
     memset(server->serverport, 0, sizeof server->serverport);
     memset(server->backendport, 0, sizeof server->backendport);
+    memset(server->logbuf, 0, sizeof server->logbuf);
+    server->logindex = 0;
 
     server->first_connection = 0;
     server->last_connection = 0;
@@ -40,3 +42,10 @@ void parsegraph_Server_init(struct parsegraph_Server* server)
         hookList->lastHook = 0;
     }
 }
+
+void parsegraph_Server_log(struct parsegraph_Server* server, const char* output, size_t len)
+{
+    memcpy(server->logbuf + server->logindex, output, len);
+    server->logindex += len;
+}
+

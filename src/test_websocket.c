@@ -45,6 +45,30 @@ static int writeSource(struct parsegraph_Connection* cxn, void* source, size_t l
     return len;
 }
 
+static int describeSource(parsegraph_Connection* cxn, char* sink, size_t len)
+{
+    struct FixedSource* src = cxn->source;
+    memset(sink, 0, len);
+    snprintf(sink, len, "Fixed(%d, %d)", src->nread, src->len);
+    return 0;
+}
+
+static void acceptSource(parsegraph_Connection* cxn)
+{
+    // Accepted and secured.
+    cxn->stage = parsegraph_CLIENT_SECURED;
+}
+
+static int shutdownSource(parsegraph_Connection* cxn)
+{
+    return 0;
+}
+
+static void destroySource(parsegraph_Connection* cxn)
+{
+    // Noop.
+}
+
 static int test_simple(struct parsegraph_Server* server, const char* port)
 {
     char source_str[1024];
@@ -68,18 +92,23 @@ static int test_simple(struct parsegraph_Server* server, const char* port)
     BIO_free_all(b64);
 
     snprintf(source_str, sizeof(source_str) - 1, "GET / HTTP/1.1\r\nHost: localhost:%s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n", port, encodedhandkey);
-    parsegraph_Connection* cxn = parsegraph_Connection_new(0);
+    parsegraph_Connection* cxn = parsegraph_Connection_new(server);
     struct FixedSource src = {
-        source_str,
+        (unsigned char*)source_str,
         0,
         strlen(source_str)
     };
     cxn->source = &src;
     cxn->readSource = readSource;
     cxn->writeSource = writeSource;
+    cxn->acceptSource = acceptSource;
+    cxn->shutdownSource = shutdownSource;
+    cxn->destroySource = destroySource;
+    cxn->describeSource = describeSource;
 
     // Read from the source.
-    parsegraph_Connection_handle(cxn, server, 0);
+    parsegraph_clientRead(cxn);
+    parsegraph_clientWrite(cxn);
 
     for(int i = 0; i < 10; ++i) {
         source_str[0] = 0x81;
@@ -95,10 +124,12 @@ static int test_simple(struct parsegraph_Server* server, const char* port)
         source_str[10] = 0x58;
         src.nread = 0;
         src.len = 11;
-        parsegraph_Connection_handle(cxn, server, 0);
+        parsegraph_clientRead(cxn);
+        parsegraph_clientWrite(cxn);
     }
 
     parsegraph_Connection_destroy(cxn);
+    return 0;
 }
 
 int main(int argc, char* argv[])
@@ -113,6 +144,5 @@ int main(int argc, char* argv[])
 
     const char* port = argv[1];
     printf("test_simple:");
-    test_simple(&server, port);
-    return 0;
+    return test_simple(&server, port);
 }

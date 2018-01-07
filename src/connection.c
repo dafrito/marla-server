@@ -37,10 +37,15 @@ const char* parsegraph_nameConnectionStage(enum parsegraph_ConnectionStage stage
     case parsegraph_CLIENT_COMPLETE:
         return "CLIENT_COMPLETE";
     }
+    return "?";
 }
 
 parsegraph_Connection* parsegraph_Connection_new(struct parsegraph_Server* server)
 {
+    if(!server) {
+        fprintf(stderr, "A connection must be provided a server when constructed.\n");
+        abort();
+    }
     parsegraph_Connection* cxn = (parsegraph_Connection*)malloc(sizeof(*cxn));
     if(!cxn) {
         return 0;
@@ -54,6 +59,7 @@ parsegraph_Connection* parsegraph_Connection_new(struct parsegraph_Server* serve
     cxn->shouldDestroy = 0;
     cxn->wantsWrite = 0;
     cxn->wantsRead = 0;
+    cxn->flushed = 0;
 
     cxn->source = 0;
     cxn->describeSource = 0;
@@ -87,7 +93,7 @@ parsegraph_Connection* parsegraph_Connection_new(struct parsegraph_Server* serve
     return cxn;
 }
 
-int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t requested)
+int parsegraph_Connection_read(parsegraph_Connection* cxn, unsigned char* sink, size_t requested)
 {
     parsegraph_Ring* const input = cxn->input;
 
@@ -109,6 +115,9 @@ int parsegraph_Connection_read(parsegraph_Connection* cxn, char* sink, size_t re
         }
 
         // Refill buffer.
+        if(cxn->wantsRead) {
+            break;
+        }
         void* ringBuf;
         size_t slotLen;
         parsegraph_Ring_writeSlot(input, &ringBuf, &slotLen);
@@ -143,7 +152,7 @@ void parsegraph_Connection_putbackWrite(parsegraph_Connection* cxn, size_t amoun
     return parsegraph_Ring_putbackWrite(cxn->output, amount);
 }
 
-int parsegraph_Connection_write(parsegraph_Connection* cxn, const char* source, size_t requested)
+int parsegraph_Connection_write(parsegraph_Connection* cxn, const void* source, size_t requested)
 {
     return parsegraph_Ring_write(cxn->output, source, requested);
 }
@@ -164,9 +173,11 @@ int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
             if(outnflushed) {
                 *outnflushed = nflushed;
             }
-            return nsslwritten;
+            cxn->flushed += nflushed;
+            return nflushed;
         }
         nflushed += nsslwritten;
+        //fprintf(stderr, "%s: %d bytes flushed to source.\n", __FUNCTION__, nsslwritten);
         parsegraph_Ring_putback(cxn->output, len - nsslwritten);
         if(nsslwritten < len) {
             // Partial write.
@@ -177,20 +188,22 @@ int parsegraph_Connection_flush(parsegraph_Connection* cxn, int* outnflushed)
     if(outnflushed) {
         *outnflushed = nflushed;
     }
+    cxn->flushed += nflushed;
     return nflushed;
-}
-
-extern void parsegraph_Client_handle(parsegraph_Connection* cxn, struct parsegraph_Server* server, int event);
-void parsegraph_Connection_handle(parsegraph_Connection* cxn, struct parsegraph_Server* server, int event)
-{
-    parsegraph_Client_handle(cxn, server, event);
 }
 
 void parsegraph_Connection_destroy(parsegraph_Connection* cxn)
 {
+    //fprintf(stderr, "Destroying connection.\n");
     if(cxn->destroySource) {
         cxn->destroySource(cxn);
         cxn->destroySource = 0;
+    }
+
+    for(parsegraph_ClientRequest* req = cxn->current_request; req != 0;) {
+        parsegraph_ClientRequest* nextReq = req->next_request;
+        parsegraph_ClientRequest_destroy(req);
+        req = nextReq;
     }
 
     if(cxn->prev_connection && cxn->next_connection) {
@@ -226,7 +239,6 @@ void parsegraph_Connection_destroy(parsegraph_Connection* cxn)
 
     parsegraph_Ring_free(cxn->input);
     parsegraph_Ring_free(cxn->output);
-    /* Closing the descriptor will make epoll remove it
-     from the set of descriptors which are monitored. */
+
     free(cxn);
 }

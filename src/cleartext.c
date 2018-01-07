@@ -33,6 +33,10 @@ static int readSource(parsegraph_Connection* cxn, void* sink, size_t len)
 static int writeSource(parsegraph_Connection* cxn, void* source, size_t len)
 {
     parsegraph_ClearTextSource* cxnSource = cxn->source;
+
+    //char logbuf[1024];
+    //memcpy(logbuf, source, len > 1024 ? 1024 : len);
+    //parsegraph_Server_log(cxn->server, logbuf, len > 1024 ? 1024 : len);
     int nwritten = write(cxnSource->fd, source, len);
     if(nwritten <= 0) {
         if(errno == EAGAIN || errno == EWOULDBLOCK) {

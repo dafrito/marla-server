@@ -23,13 +23,13 @@ int test_ring_read()
     int linelen = strlen(line) + 1;
     parsegraph_Ring_write(ring, line, linelen);
 
-    char out[parsegraph_BUFSIZE];
-    int nread = parsegraph_Ring_read(ring, out, parsegraph_BUFSIZE);
+    unsigned char out[parsegraph_BUFSIZE];
+    size_t nread = parsegraph_Ring_read(ring, out, parsegraph_BUFSIZE);
     if(nread != linelen) {
-        fprintf(stderr, "nread(%d) must be equal to the linelen(%d)\n", nread, linelen);
+        fprintf(stderr, "nread(%ld) must be equal to the linelen(%d)\n", nread, linelen);
         return 1;
     }
-    if(strcmp(line, out)) {
+    if(memcmp(line, out, nread)) {
         fprintf(stderr, "Strings are not equal");
         return 1;
     }
@@ -52,7 +52,7 @@ int test_ring_write()
     }
     parsegraph_Ring_writeSlot(ring, &slotData, &slotLen);
     if(slotLen != 0) {
-        fprintf(stderr, "writeSlot must not treat full rings as empty.\n");
+        fprintf(stderr, "writeSlot must not treat full rings as empty. Size reported was %ld\n", parsegraph_Ring_size(ring));
         return 1;
     }
 
@@ -114,6 +114,56 @@ int test_ring_nearFullReads()
         fprintf(stderr, "Ring must, once all bytes are written, return empty read slots.\n");
         return 1;
     }
+
+    parsegraph_Ring_free(ring);
+    return 0;
+}
+
+int test_ring_emptyWrite()
+{
+    const int CAP = 16;
+    char buf[CAP];
+    const char* given = "abcd" "efgh" "ijkl" "mnop";
+    memcpy(buf, given, 16);
+    parsegraph_Ring* ring = parsegraph_Ring_new(CAP);
+    parsegraph_Ring_write(ring,buf, 16);
+    parsegraph_Ring_write(ring,buf, 0);
+
+    char in[CAP + 1];
+    if(16 != parsegraph_Ring_read(ring, (unsigned char*)in, 16)) {
+        fprintf(stderr, "Ring must read the full ring.\n");
+        return 1;
+    }
+    in[CAP] = 0;
+    if(strcmp(given, in)) {
+        fprintf(stderr, "Empty write must not affect ring state.\n");
+        return 1;
+    }
+
+    parsegraph_Ring_free(ring);
+    return 0;
+}
+
+int test_ring_simplify()
+{
+    const int CAP = 1024;
+    unsigned char buf[CAP];
+    const char* given = "abcd" "efgh" "ijkl" "mnop";
+    memcpy(buf, given, 16);
+    parsegraph_Ring* ring = parsegraph_Ring_new(CAP);
+    parsegraph_Ring_write(ring,buf, 16);
+    parsegraph_Ring_read(ring,buf,4);
+    parsegraph_Ring_simplify(ring);
+
+    if(ring->read_index != 0) {
+        return 1;
+    }
+    parsegraph_Ring_read(ring,buf,12);
+    buf[12] = 0;
+    if(strcmp("efghijklmnop", (char*)buf)) {
+        return 1;
+    }
+    parsegraph_Ring_simplify(ring);
     return 0;
 }
 
@@ -122,5 +172,7 @@ int main()
     return test_ring_read() ||
         test_ring_write() ||
         test_ring_readSlot() ||
-        test_ring_nearFullReads();
+        test_ring_nearFullReads() ||
+        test_ring_emptyWrite() ||
+        test_ring_simplify();
 }

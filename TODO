@@ -1,0 +1,1 @@
+[ ] Move the WebSocket stuff in ClientRequest to a different struct, and create a mode so that ClientRequest can union it with the HTTP request members.

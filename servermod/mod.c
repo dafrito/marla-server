@@ -1,27 +1,17 @@
 #include "rainback.h"
 
-static const char* FORM_HTML;
-
-struct HandleData {
-void(*default_handler)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
-void* default_handleData;
-};
-
-static void about_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
+static void makeAboutPage(struct parsegraph_ChunkedPageRequest* cpr)
 {
-    //fprintf(stderr, "about %s\n", parsegraph_nameClientEvent(ev));
-    unsigned char resp[parsegraph_BUFSIZE];
-    unsigned char buf[parsegraph_BUFSIZE + 1];
-    int nread;
-    memset(buf, 0, sizeof buf);
-    struct HandleData* hd = (struct HandleData*)req->handleData;
-    struct parsegraph_ChunkedPageRequest* cpr;
+    char buf[1024];
+    int len;
 
-    switch(ev) {
-    case parsegraph_EVENT_GENERATE:
-        cpr = req->handleData;
-        cpr->message_len = snprintf(cpr->resp, sizeof(cpr->resp),
-            "<!DOCTYPE html>"
+    // Generate the page.
+    switch(cpr->handleStage) {
+    case 0:
+        len = snprintf(buf, sizeof buf, "<!DOCTYPE html>");
+        break;
+    case 1:
+        len = snprintf(buf, sizeof buf,
             "<html><head>"
             "<script>"
             "function run() { WS=new WebSocket(\"ws://localhost:%s/\");"
@@ -39,82 +29,45 @@ static void about_request_handler(struct parsegraph_ClientRequest* req, enum par
             "<p>"
             "<a href='/contact'>Contact us!</a>"
             "</body></html>",
-            SERVERPORT ? SERVERPORT : "443",
-            req->id
+            cpr->req->cxn->server->serverport,
+            cpr->req->id
         );
         break;
     default:
-        if(hd) {
-            void* myData = req->handleData;
-            req->handleData = hd->default_handleData;
-            hd->default_handler(req, ev, data, datalen);
-            hd->default_handleData = req->handleData;
-            req->handleData = myData;
+        return;
+    }
+
+    // Write the generated page.
+    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten + cpr->index < len) {
+        if(nwritten > 0) {
+            cpr->index += nwritten;
         }
-        break;
+    }
+    else {
+        // Move to the next stage.
+        cpr->handleStage = ((int)cpr->handleStage) + 1;
+        cpr->index = 0;
     }
 }
 
-static void contact_request_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
+static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
 {
-    unsigned char resp[parsegraph_BUFSIZE];
-    unsigned char buf[parsegraph_BUFSIZE + 1];
-    int nread;
-    memset(buf, 0, sizeof buf);
-    struct HandleData* hd = (struct HandleData*)req->handleData;
-    struct parsegraph_ChunkedPageRequest* cpr;
+    char buf[1024];
+    int len;
 
-    switch(ev) {
-    case parsegraph_EVENT_GENERATE:
-        cpr = req->handleData;
-        const char* str = FORM_HTML;
-        cpr->message_len = strlen(str);
-        strcpy(cpr->resp, str);
+    // Generate the page.
+    switch(cpr->handleStage) {
+    case 0:
+        len = snprintf(buf, sizeof buf, "<!DOCTYPE html>");
         break;
-    default:
-        if(hd) {
-            void* myData = req->handleData;
-            req->handleData = hd->default_handleData;
-            hd->default_handler(req, ev, data, datalen);
-            hd->default_handleData = req->handleData;
-            req->handleData = myData;
-        }
-        break;
-    }
-}
-
-static enum parsegraph_ServerHookStatus routeHook(struct parsegraph_ClientRequest* req, void* hookData)
-{
-    if(!strcmp(req->uri, "/about")) {
-        struct HandleData* hd = malloc(sizeof *hd);
-        hd->default_handler = req->handle;
-        hd->default_handleData = req->handleData;
-        req->handleData = hd;
-        req->handle = about_request_handler;
-    }
-    else if(!strcmp(req->uri, "/contact")) {
-        struct HandleData* hd = malloc(sizeof *hd);
-        hd->default_handler = req->handle;
-        hd->default_handleData = req->handleData;
-        req->handleData = hd;
-        req->handle = contact_request_handler;
-    }
-    return parsegraph_SERVER_HOOK_STATUS_OK;
-}
-
-void module_servermod_init(struct parsegraph_Server* server, enum parsegraph_ServerModuleEvent e)
-{
-    parsegraph_Server_addHook(server, parsegraph_SERVER_HOOK_ROUTE, routeHook, 0);
-    //printf("Module servermod loaded.\n");
-}
-
-static const char* FORM_HTML = "<!DOCTYPE html>"
-    "<html>"
+    case 1:
+        len = snprintf(buf, sizeof buf, "<html>"
     "<head>"
     "<title>Hello, world!</title>"
     "<style>"
     "body > div {"
-    "width: 50%;"
+    "width: 50%%;"
     "margin: auto;"
     "overflow: hidden;"
     "background: #888;"
@@ -122,7 +75,7 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
 
     ".content {"
     "float: left;"
-    "width: 66%;"
+    "width: 66%%;"
     "}"
 
     ".title {"
@@ -131,10 +84,13 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
     "}"
 
     ".list {"
-    "clear:both;float: left; width: 34%; background:"
+    "clear:both;float: left; width: 34%%; background:"
     "}"
     "</style>"
-    "</head>"
+    "</head>");
+        break;
+    case 2:
+        len = snprintf(buf, sizeof buf,
     "<body>"
     "<div>"
     "<div class=\"title\">"
@@ -154,100 +110,97 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
     "</div>"
     "<div class=\"content\">"
     "No <b>time</b>!<br><br><br>"
-    "<div class=\"container\">"
+    "<div class=\"container\">");
+        break;
+    case 3:
+        len = snprintf(buf, sizeof buf,
+        "<form class=\"well form-horizontal\" method=\"post\" id=\"contact_form\">"
+        "<fieldset>"
 
-    "<form class=\"well form-horizontal\" method=\"post\" id=\"contact_form\">"
-    "<fieldset>"
+        "<!-- Form Name -->"
+        "<legend>Contact Us Today!</legend>"
 
-    "<!-- Form Name -->"
-    "<legend>Contact Us Today!</legend>"
+        "<!-- Text input-->"
 
-    "<!-- Text input-->"
-
-    "<div class=\"form-group\">"
-      "<label class=\"col-md-4 control-label\">First Name</label>  "
-      "<div class=\"col-md-4 inputGroupContainer\">"
-      "<div class=\"input-group\">"
-      "<span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-user\"></i></span>\""
-      "<input  name=\"first_name\" placeholder=\"First Name\" class=\"form-control\"  type=\"text\">"
+        "<div class=\"form-group\">"
+          "<label class=\"col-md-4 control-label\">First Name</label>  "
+          "<div class=\"col-md-4 inputGroupContainer\">"
+          "<div class=\"input-group\">"
+          "<span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-user\"></i></span>\""
+          "<input  name=\"first_name\" placeholder=\"First Name\" class=\"form-control\"  type=\"text\">"
+            "</div>"
+          "</div>"
+        "</div>");
+        break;
+    case 4:
+        len = snprintf(buf, sizeof buf,
+        "<div class=\"form-group\">"
+         " <label class=\"col-md-4 control-label\" >Last Name</label> "
+          "  <div class=\"col-md-4 inputGroupContainer\">"
+           " <div class=\"input-group\">"
+          "<span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-user\"></i></span>"
+          "<input name=\"last_name\" placeholder=\"Last Name\" class=\"form-control\"  type=\"text\">"
+           " </div>"
+          "</div>"
         "</div>"
-      "</div>"
-    "</div>"
-
-    "<!-- Text input-->"
-
-    "<div class=\"form-group\">"
-     " <label class=\"col-md-4 control-label\" >Last Name</label> "
-      "  <div class=\"col-md-4 inputGroupContainer\">"
-       " <div class=\"input-group\">"
-      "<span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-user\"></i></span>"
-      "<input name=\"last_name\" placeholder=\"Last Name\" class=\"form-control\"  type=\"text\">"
-       " </div>"
-      "</div>"
-    "</div>"
-
-    "<!-- Text input-->"
-        "   <div class=\"form-group\">"
-      "<label class=\"col-md-4 control-label\">E-Mail</label>"  
-       " <div class=\"col-md-4 inputGroupContainer\">"
-        "<div class=\"input-group\">"
-         "   <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-envelope\"></i></span>"
-      "<input name=\"email\" placeholder=\"E-Mail Address\" class=\"form-control\"  type=\"text\">"
-       " </div>"
-     " </div>"
-    "</div>"
-
-
-    "<!-- Text input-->"
-
-    "<div class=\"form-group\">"
-     " <label class=\"col-md-4 control-label\">Phone#</label>"  
-      "  <div class=\"col-md-4 inputGroupContainer\">"
-       " <div class=\"input-group\">"
-           " <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-earphone\"></i></span>"
-      "<input name=\"phone\" placeholder=\"(845)555-1212\" class=\"form-control\" type=\"text\">"
-      "  </div>"
-      "</div>"
-    "</div>"
-
-    "<!-- Text input-->"
-
-    "<div class=\"form-group\">"
-     " <label class=\"col-md-4 control-label\">Address 1</label>"  
-      "  <div class=\"col-md-4 inputGroupContainer\">"
-       " <div class=\"input-group\">"
-        "    <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-home\"></i></span>"
-      "<input name=\"address 1\" placeholder=\"Address 1\" class=\"form-control\" type=\"text\">"
-       " </div>"
-      "</div>"
-    "</div>"
-
-    "<!-- Text input-->"
-
-    "<div class=\"form-group\">"
-     " <label class=\"col-md-4 control-label\">Address 2</label>"  
-      "  <div class=\"col-md-4 inputGroupContainer\">"
-       " <div class=\"input-group\">"
-        "    <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-home\"></i></span>"
-      "<input name=\"address 2\" placeholder=\"Address 2\" class=\"form-control\" type=\"text\">"
-       " </div>"
-      "</div>"
-    "</div>"
-
-    "<!-- Text input-->"
-
-    "<div class=\"form-group\">"
-     " <label class=\"col-md-4 control-label\">City</label>"  
-      "  <div class=\"col-md-4 inputGroupContainer\">"
-       " <div class=\"input-group\">"
-        "    <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-home\"></i></span>"
-      "<input name=\"city\" placeholder=\"city\" class=\"form-control\"  type=\"text\">"
-       " </div>"
-      "</div>"
-    "</div>"
-
-    "<!-- Select Basic -->"
-
+            "   <div class=\"form-group\">"
+          "<label class=\"col-md-4 control-label\">E-Mail</label>"  
+           " <div class=\"col-md-4 inputGroupContainer\">"
+            "<div class=\"input-group\">"
+             "   <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-envelope\"></i></span>"
+          "<input name=\"email\" placeholder=\"E-Mail Address\" class=\"form-control\"  type=\"text\">"
+           " </div>"
+         " </div>"
+        "</div>");
+        break;
+    case 5:
+        len = snprintf(buf, sizeof buf,
+            "<div class=\"form-group\">"
+             " <label class=\"col-md-4 control-label\">Phone#</label>"  
+              "  <div class=\"col-md-4 inputGroupContainer\">"
+               " <div class=\"input-group\">"
+                   " <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-earphone\"></i></span>"
+              "<input name=\"phone\" placeholder=\"(845)555-1212\" class=\"form-control\" type=\"text\">"
+              "  </div>"
+              "</div>"
+            "</div>");
+        break;
+    case 6:
+        len = snprintf(buf, sizeof buf,
+            "<div class=\"form-group\">"
+             " <label class=\"col-md-4 control-label\">Address 1</label>"  
+              "  <div class=\"col-md-4 inputGroupContainer\">"
+               " <div class=\"input-group\">"
+                "    <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-home\"></i></span>"
+              "<input name=\"address 1\" placeholder=\"Address 1\" class=\"form-control\" type=\"text\">"
+               " </div>"
+              "</div>"
+            "</div>"
+            "<div class=\"form-group\">"
+             " <label class=\"col-md-4 control-label\">Address 2</label>"  
+              "  <div class=\"col-md-4 inputGroupContainer\">"
+               " <div class=\"input-group\">"
+                "    <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-home\"></i></span>"
+          );
+          break;
+    case 7:
+        len = snprintf(buf, sizeof buf,
+              "<input name=\"address 2\" placeholder=\"Address 2\" class=\"form-control\" type=\"text\">"
+               " </div>"
+              "</div>"
+            "</div>"
+            "<div class=\"form-group\">"
+             " <label class=\"col-md-4 control-label\">City</label>"  
+              "  <div class=\"col-md-4 inputGroupContainer\">"
+               " <div class=\"input-group\">"
+                "    <span class=\"input-group-addon\"><i class=\"glyphicon glyphicon-home\"></i></span>"
+              "<input name=\"city\" placeholder=\"city\" class=\"form-control\"  type=\"text\">"
+               " </div>"
+              "</div>"
+            "</div>");
+        break;
+    case 8:
+        len = snprintf(buf, sizeof buf,
     "<div class=\"form-group\"> "
      " <label class=\"col-md-4 control-label\">State</label>"
       "  <div class=\"input-group\">"
@@ -272,7 +225,10 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
           "<option>Iowa</option>"
           "<option>Kansas</option>"
           "<option>Kentucky</option>"
-          "<option>Louisiana</option>"
+          "<option>Louisiana</option>");
+          break;
+    case 9:
+        len = snprintf(buf, sizeof buf,
           "<option>Maine</option>"
           "<option>Maryland</option>"
           "<option>Massachusetts</option>"
@@ -308,8 +264,10 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
         "</select>"
       "</div>"
     "</div>"
-    "</div>"
-
+    "</div>");
+    break;
+    case 10:
+        len = snprintf(buf, sizeof buf,
     "<div class=\"form-group\">"
      " <label class=\"col-md-4 control-label\">Zip Code</label>"
       "  <div class=\"col-md-4 inputGroupContainer\">"
@@ -328,7 +286,10 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
          "                           <label>"
           "                              <input type=\"radio\" name=\"gender\" value=\"male\" /> Male"
            "                         </label>"
-            "                    </div>"
+            "                    </div>");
+        break;
+    case 11:
+        len = snprintf(buf, sizeof buf,
                    "             <div class=\"radio\">"
                     "                <label>"
                      "                   <input type=\"radio\" 	name=\"gender\" value=\"female\" /> Female"
@@ -341,14 +302,101 @@ static const char* FORM_HTML = "<!DOCTYPE html>"
                           "  </div>"
                         "</div>"
 
-    "<input type=submit value=Submit><input>"
+    "<input type=submit value=Submit><input>");
+        break;
+    case 12:
+        len = snprintf(buf, sizeof buf,
+            "</fieldset>"
+            "</form>"
+            "</div>"
+            "</div>"
+            "</div>"
+            "</div>"
+            "</body>"
+            "</html>");
+        break;
+    default:
+        return;
+    }
 
-    "</fieldset>"
-    "</form>"
-    "</div>"
-    "</div>"
-    "</div>"
-    "</div>"
-    "</body>"
-    "</html>";
+    // Write the generated page.
+    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten + cpr->index < len) {
+        if(nwritten > 0) {
+            cpr->index += nwritten;
+        }
+    }
+    else {
+        // Move to the next stage.
+        cpr->handleStage = ((int)cpr->handleStage) + 1;
+        cpr->index = 0;
+    }
+}
+
+static void makeCounterPage(struct parsegraph_ChunkedPageRequest* cpr)
+{
+    char buf[1024];
+    int len;
+
+    // Generate the page.
+    switch(cpr->handleStage) {
+    case 0:
+        len = snprintf(buf, sizeof buf, "<!DOCTYPE html>");
+        break;
+    case 1:
+        len = snprintf(buf, sizeof buf, "<html><head><meta charset=\"UTF-8\"><script>function run() { WS=new WebSocket(\"ws://localhost:%s/\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", cpr->req->cxn->server->serverport, cpr->req->id);
+        break;
+    default:
+        return;
+    }
+
+    // Write the generated page.
+    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten < len) {
+        if(nwritten > 0) {
+            cpr->index += nwritten;
+        }
+    }
+    else {
+        // Move to the next stage.
+        cpr->handleStage = ((int)cpr->handleStage) + 1;
+        cpr->index = 0;
+    }
+}
+
+static enum parsegraph_ServerHookStatus routeHook(struct parsegraph_ClientRequest* req, void* hookData)
+{
+    struct parsegraph_ChunkedPageRequest* cpr;
+    if(!strcmp(req->uri, "/about")) {
+        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr->handler = makeAboutPage;
+        req->handle = parsegraph_chunkedRequestHandler;
+        req->handleData = cpr;
+    }
+    else if(!strcmp(req->uri, "/contact")) {
+        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr->handler = makeContactPage;
+        req->handle = parsegraph_chunkedRequestHandler;
+        req->handleData = cpr;
+    }
+    else {
+        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr->handler = makeCounterPage;
+        req->handle = parsegraph_chunkedRequestHandler;
+        req->handleData = cpr;
+    }
+    return parsegraph_SERVER_HOOK_STATUS_OK;
+}
+
+void module_servermod_init(struct parsegraph_Server* server, enum parsegraph_ServerModuleEvent e)
+{
+    switch(e) {
+    case parsegraph_EVENT_SERVER_MODULE_START:
+        parsegraph_Server_addHook(server, parsegraph_SERVER_HOOK_ROUTE, routeHook, 0);
+        //printf("Module servermod loaded.\n");
+        break;
+    case parsegraph_EVENT_SERVER_MODULE_STOP:
+        break;
+    }
+}
 

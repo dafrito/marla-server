@@ -86,7 +86,6 @@ const char* SERVERPORT = 0;
 
 void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
 {
-    unsigned char resp[parsegraph_BUFSIZE];
     unsigned char buf[parsegraph_BUFSIZE + 1];
     int nread;
     memset(buf, 0, sizeof buf);
@@ -186,7 +185,7 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
 
             // Read the mask.
             if(mask) {
-                nread = parsegraph_Connection_read(req->cxn, req->websocketMask, 4);
+                nread = parsegraph_Connection_read(req->cxn, (unsigned char*)req->websocketMask, 4);
                 if(nread < 4) {
                     if(nread > 0) {
                         parsegraph_Connection_putback(req->cxn, nread);
@@ -316,10 +315,10 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
         // Check if the handler can respond.
         req->handle(req, parsegraph_EVENT_WEBSOCKET_RESPOND, 0, 0);
         break;
-    case parsegraph_EVENT_WEBSOCKET_RESPOND:
-        break;
     case parsegraph_EVENT_WEBSOCKET_MUST_WRITE:
         goto fail_connection;
+    default:
+        break;
     }
 
     return;

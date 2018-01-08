@@ -482,22 +482,38 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
             else {
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
                     // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
-                    //printf("epoll error: %d\n", events[i].events);
+                    if(events[i].events & EPOLLRDHUP) {
+                        continue;
+                    }
                     parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
                     parsegraph_Connection_destroy(source);
                     continue;
                 }
                 /* Connection is ready */
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
-                if(events[i].events & EPOLLIN) {
-                    cxn->wantsRead = 0;
-                    // Available for read.
-                    parsegraph_clientRead(cxn);
+                if(cxn->stage == parsegraph_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+                    if(events[i].events & EPOLLIN) {
+                        cxn->wantsRead = 0;
+                    }
+                    if(events[i].events & EPOLLOUT) {
+                        cxn->wantsWrite = 0;
+                    }
+                    // Client needs shutdown.
+                    if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
+                        cxn->shouldDestroy = 1;
+                    }
                 }
-                if(events[i].events & EPOLLOUT) {
-                    // Available for write.
-                    cxn->wantsWrite = 0;
-                    parsegraph_clientWrite(cxn);
+                else {
+                    if(events[i].events & EPOLLIN) {
+                        cxn->wantsRead = 0;
+                        // Available for read.
+                        parsegraph_clientRead(cxn);
+                    }
+                    if(events[i].events & EPOLLOUT) {
+                        // Available for write.
+                        cxn->wantsWrite = 0;
+                        parsegraph_clientWrite(cxn);
+                    }
                 }
                 if(cxn->shouldDestroy) {
                     parsegraph_Connection_destroy(cxn);

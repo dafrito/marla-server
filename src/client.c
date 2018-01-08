@@ -858,13 +858,6 @@ int parsegraph_clientRead(parsegraph_Connection* cxn)
 {
     //fprintf(stderr, "parsegraph_clientRead\n");
     parsegraph_clientAccept(cxn);
-    if(cxn->stage == parsegraph_CLIENT_COMPLETE) {
-        // Client needs shutdown.
-        if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
-            cxn->shouldDestroy = 1;
-        }
-        return -1;
-    }
 
     // Read in backend requests.
     if(cxn->stage == parsegraph_BACKEND_READY) {
@@ -966,6 +959,13 @@ int parsegraph_clientRead(parsegraph_Connection* cxn)
         parsegraph_killClientRequest(req, "Unexpected request stage.\n");
         return -1;
     }
+    if(cxn->stage == parsegraph_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+        // Client needs shutdown.
+        if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
+            cxn->shouldDestroy = 1;
+        }
+        return -1;
+    }
 }
 
 int parsegraph_clientWrite(parsegraph_Connection* cxn)
@@ -973,13 +973,6 @@ int parsegraph_clientWrite(parsegraph_Connection* cxn)
     //fprintf(stderr, "parsegraph_clientWrite\n");
     parsegraph_clientAccept(cxn);
     if(cxn->stage != parsegraph_CLIENT_SECURED) {
-        return -1;
-    }
-    if(cxn->stage == parsegraph_CLIENT_COMPLETE) {
-        // Client needs shutdown.
-        if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
-            cxn->shouldDestroy = 1;
-        }
         return -1;
     }
 
@@ -1130,8 +1123,17 @@ int parsegraph_clientWrite(parsegraph_Connection* cxn)
         }
         parsegraph_ClientRequest_destroy(req);
         --cxn->requests_in_process;
-        return 0;
+        if(cxn->stage != parsegraph_CLIENT_COMPLETE) {
+            return 0;
+        }
     }
 
+    if(cxn->stage == parsegraph_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+        // Client needs shutdown.
+        if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
+            cxn->shouldDestroy = 1;
+        }
+        return -1;
+    }
     return 0;
 }

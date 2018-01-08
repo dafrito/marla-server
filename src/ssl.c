@@ -17,6 +17,18 @@ static void common_SSL_return(parsegraph_Connection* cxn, int rv)
     case SSL_ERROR_WANT_READ:
         cxn->wantsRead = 1;
         break;
+    case SSL_ERROR_SYSCALL:
+        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+            cxn->wantsWrite = 1;
+            cxn->wantsRead = 1;
+        }
+        else if(errno != 0) {
+            cxn->shouldDestroy = 1;
+        }
+        else {
+            return;
+        }
+        break;
     default:
         cxn->shouldDestroy = 1;
         break;

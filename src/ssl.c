@@ -97,6 +97,9 @@ static int shutdownSSLSource(parsegraph_Connection* cxn)
     }
     if(rv < 0) {
         common_SSL_return(cxn, rv);
+        if(SSL_get_error(cxnSource->ssl, rv) == SSL_ERROR_SYSCALL && errno == 0) {
+            return 0;
+        }
     }
     return rv;
 }

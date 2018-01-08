@@ -21,8 +21,10 @@ static void common_SSL_return(parsegraph_Connection* cxn, int rv)
         if(errno == EAGAIN || errno == EWOULDBLOCK) {
             cxn->wantsWrite = 1;
             cxn->wantsRead = 1;
+            //fprintf(stderr, "SSL connection is asynchronously awating input because of syscall: %d %d %d\n", rv, SSL_get_error(cxnSource->ssl, rv), errno);
         }
         else if(errno != 0) {
+            //fprintf(stderr, "SSL connection needs destruction because of syscall: %d %d %d\n", rv, SSL_get_error(cxnSource->ssl, rv), errno);
             cxn->shouldDestroy = 1;
         }
         else {
@@ -30,6 +32,7 @@ static void common_SSL_return(parsegraph_Connection* cxn, int rv)
         }
         break;
     default:
+        //fprintf(stderr, "SSL connection needs destruction: %d %d\n", rv, SSL_get_error(cxnSource->ssl, rv));
         cxn->shouldDestroy = 1;
         break;
     }
@@ -88,18 +91,22 @@ static int shutdownSSLSource(parsegraph_Connection* cxn)
     parsegraph_SSLSource* cxnSource = cxn->source;
     int rv = SSL_shutdown(cxnSource->ssl);
     if(rv == 1) {
+        //fprintf(stderr, "SSL Shutdown completed\n");
         return rv;
     }
     if(rv == 0) {
         rv = SSL_shutdown(cxnSource->ssl);
         common_SSL_return(cxn, rv);
+        //fprintf(stderr, "SSL Shutdown not yet finished. %d\n", rv);
         return rv;
     }
     if(rv < 0) {
         common_SSL_return(cxn, rv);
         if(SSL_get_error(cxnSource->ssl, rv) == SSL_ERROR_SYSCALL && errno == 0) {
+            //fprintf(stderr, "SSL Shutdown not yet finished\n");
             return 0;
         }
+        //fprintf(stderr, "SSL Shutdown failed\n");
     }
     return rv;
 }

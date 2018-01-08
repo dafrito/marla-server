@@ -485,6 +485,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     if(events[i].events & EPOLLRDHUP) {
                         continue;
                     }
+                    //fprintf(stderr, "epoll error: %d\n", events[i].events);
                     parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
                     parsegraph_Connection_destroy(source);
                     continue;
@@ -492,6 +493,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 /* Connection is ready */
                 parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
                 if(cxn->stage == parsegraph_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+                    //fprintf(stderr, "Attempting shutdown for connection\n");
                     if(events[i].events & EPOLLIN) {
                         cxn->wantsRead = 0;
                     }
@@ -501,6 +503,9 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     // Client needs shutdown.
                     if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
                         cxn->shouldDestroy = 1;
+                    }
+                    if(cxn->shouldDestroy) {
+                        //fprintf(stderr, "Connection should be destroyed\n");
                     }
                 }
                 else {
@@ -517,6 +522,9 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 }
                 if(cxn->shouldDestroy) {
                     parsegraph_Connection_destroy(cxn);
+                }
+                else {
+                    //fprintf(stderr, "Waiting for connection to become available.\n");
                 }
             }
         }

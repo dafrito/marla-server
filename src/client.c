@@ -1081,7 +1081,7 @@ int parsegraph_clientWrite(parsegraph_Connection* cxn)
             int nflushed;
             int rv = parsegraph_Connection_flush(cxn, &nflushed);
             if(rv <= 0) {
-                fprintf(stderr, "Responder choked.\n");
+                //fprintf(stderr, "Responder choked.\n");
                 return rv;
             }
         }
@@ -1094,6 +1094,7 @@ int parsegraph_clientWrite(parsegraph_Connection* cxn)
     }
 
     if(req->writeStage == parsegraph_CLIENT_REQUEST_DONE_WRITING) {
+        //fprintf(stderr, "Done writing!\n");
         // Write current output.
         while(parsegraph_Ring_size(cxn->output) > 0) {
             int nflushed;
@@ -1111,6 +1112,7 @@ int parsegraph_clientWrite(parsegraph_Connection* cxn)
             cxn->current_request = req->next_request;
         }
         if(req->close_after_done) {
+            //fprintf(stderr, "CLOSING AFTER DONE.\n");
             cxn->stage = parsegraph_CLIENT_COMPLETE;
         }
         parsegraph_ClientRequest_destroy(req);

@@ -1,13 +1,5 @@
 #include "rainback.h"
-#include <math.h>
 #include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <errno.h>
-#include <openssl/sha.h>
 
 static int parsegraph_processClientFields(parsegraph_ClientRequest* req)
 {

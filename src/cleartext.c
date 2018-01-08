@@ -1,10 +1,5 @@
 #include "rainback.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <errno.h>
 
 static int describeSource(parsegraph_Connection* cxn, char* sink, size_t len)
 {

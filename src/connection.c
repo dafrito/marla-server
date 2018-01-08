@@ -1,10 +1,4 @@
 #include "rainback.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <errno.h>
 
 // SSL source
     // int parsegraph_Source_New(SSL_CTX* ctx, int fd)

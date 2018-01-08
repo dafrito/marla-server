@@ -1,91 +1,4 @@
 #include "rainback.h"
-#include <math.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <unistd.h>
-#include <errno.h>
-#include <openssl/err.h>
-#include <openssl/rand.h>
-
-void parsegraph_measureChunk_new(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
-{
-    size_t suffix_len = 2;
-
-    // |                                                                      | avail<=0xf    | avail>0xf && avail<=0xff | avail>0xff && avail<=0xfff | avail>=0x1000 |
-    // +----------------------------------------------------------------------+---------------+--------------------------+----------------------------+---------------+
-    // | slotLen - 3 - suffix_len <= 0xf                                      | use           | use                      | use                        | use           |
-    // | slotLen - suffix_len - 3 > 0xf && slotLen - 4 - suffix_len <= 0xff   | demote        | use                      | use                        | use           |
-    // | slotLen - 5 - suffix_len <= 0xfff && slotLen - 4 - suffix_len > 0xff | demote        | demote                   | use                        | use           |
-    // | slotLen - 5 - suffix_len > 0xfff                                     | demote        | demote                   | demote                     | use           |
-
-    for(;;) {
-        if(slotLen - 3 - suffix_len < 0xf) {
-            *prefix_len = 3;
-            break;
-        }
-        if(slotLen - suffix_len - 3 >= 0xf && slotLen - 4 - suffix_len < 0xff) {
-            if(avail <= 0xf) {
-                // Demote
-                slotLen = avail + 5;
-                continue;
-            }
-            *prefix_len = 4;
-        }
-        if(slotLen - 5 - suffix_len < 0xfff && slotLen - 4 - suffix_len >= 0xff) {
-            if(avail <= 0xff) {
-                // Demote
-                slotLen = avail + 6;
-                continue;
-            }
-            *prefix_len = 5;
-        }
-        if(slotLen - 5 - suffix_len >= 0xfff) {
-            if(avail <= 0xfff) {
-                // Demote
-                slotLen = avail + 7;
-                continue;
-            }
-            *prefix_len = 6;
-        }
-        break;
-    }
-    *availUsed = slotLen - *prefix_len - suffix_len;
-}
-
-void parsegraph_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
-{
-    // Incorporate message padding into chunk.
-    size_t suffix_len = 2;
-    *prefix_len = 3; // One byte plus \r\n
-    size_t padding = *prefix_len + suffix_len;
-
-    if(slotLen - padding -1 > 0xf && avail > 0xf) {
-        *prefix_len = 4; // Two bytes plus \r\n
-        padding = *prefix_len + suffix_len;
-        if(slotLen - padding -1 > 0xff && avail > 0xff) {
-            *prefix_len = 5; // Three bytes plus \r\n
-            padding = *prefix_len + suffix_len;
-            if(slotLen - padding -1 > 0xfff && avail > 0xfff) {
-                *prefix_len = 7; // Four bytes plus \r\n
-                padding = *prefix_len + suffix_len;
-            }
-        }
-    }
-    if(avail + padding < slotLen) {
-        slotLen = avail + padding;
-    }
-
-    if(slotLen - padding > 0xff && *prefix_len == 4) {
-        slotLen = 0xff + padding;
-    }
-    else if(slotLen - padding > 0xf && *prefix_len == 3) {
-        slotLen = 0xf + padding;
-    }
-    *availUsed = slotLen - *prefix_len - suffix_len;
-}
 
 const char* parsegraph_nameChunkResponseStage(enum parsegraph_ChunkResponseStage stage)
 {
@@ -120,10 +33,36 @@ struct parsegraph_ChunkedPageRequest* parsegraph_ChunkedPageRequest_new(size_t b
     return cpr;
 }
 
-void parsegraph_ChunkedPageRequest_free(struct parsegraph_ChunkedPageRequest* cpr)
+void parsegraph_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
 {
-    parsegraph_Ring_free(cpr->input);
-    free(cpr);
+    // Incorporate message padding into chunk.
+    size_t suffix_len = 2;
+    *prefix_len = 3; // One byte plus \r\n
+    size_t padding = *prefix_len + suffix_len;
+
+    if(slotLen - padding -1 > 0xf && avail > 0xf) {
+        *prefix_len = 4; // Two bytes plus \r\n
+        padding = *prefix_len + suffix_len;
+        if(slotLen - padding -1 > 0xff && avail > 0xff) {
+            *prefix_len = 5; // Three bytes plus \r\n
+            padding = *prefix_len + suffix_len;
+            if(slotLen - padding -1 > 0xfff && avail > 0xfff) {
+                *prefix_len = 7; // Four bytes plus \r\n
+                padding = *prefix_len + suffix_len;
+            }
+        }
+    }
+    if(avail + padding < slotLen) {
+        slotLen = avail + padding;
+    }
+
+    if(slotLen - padding > 0xff && *prefix_len == 4) {
+        slotLen = 0xff + padding;
+    }
+    else if(slotLen - padding > 0xf && *prefix_len == 3) {
+        slotLen = 0xf + padding;
+    }
+    *availUsed = slotLen - *prefix_len - suffix_len;
 }
 
 int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_Ring* output)
@@ -196,6 +135,12 @@ int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_
     //write(0, "CHUNK: ", 7);
     //write(0, slot, slotLen);
     return 0;
+}
+
+void parsegraph_ChunkedPageRequest_free(struct parsegraph_ChunkedPageRequest* cpr)
+{
+    parsegraph_Ring_free(cpr->input);
+    free(cpr);
 }
 
 int parsegraph_ChunkedPageRequest_process(struct parsegraph_ChunkedPageRequest* cpr)

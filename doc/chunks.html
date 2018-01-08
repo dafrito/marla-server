@@ -45,10 +45,15 @@ Creates and returns a new parsegraph_ChunkedPageRequest using the given input bu
 Writes a chunk from the parsegraph_ChunkedPageRequest's generated input ring to the given output ring.
 <p>
 Returns 0 and sets the stage to parsegraph_CHUNK_RESPONSE_TRAILER if no more data is to be written.
+<h2>void parsegraph_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)</h2>
+Measures into the given prefix_len and availUsed, the size of a chunk that will best fit the
+given slot.
 <h2>void parsegraph_ChunkedPageRequest_free(struct parsegraph_ChunkedPageRequest* cpr)</h2>
 Destroys the given parsegraph_ChunkedPageRequest.
-<h2>void parsegraph_processChunkedPageRequest(struct parsegraph_ClientRequest* req, struct parsegraph_ChunkedPageRequest* cpr)</h2>
+<h2>int parsegraph_ChunkedPageRequest_process(struct parsegraph_ChunkedPageRequest* cpr)</h2>
 Writes the given parsegraph_ChunkedPageRequest to the given parsegraph_ClientRequest.
+<h2>void parsegraph_chunkedRequestHandler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)</h2>
+A request handler, for use with a parsegraph_ClientRequest.
 </main>
 <nav class=toc>
 <h3>Chunked transfer encoding - Rainback</h3>
@@ -57,8 +62,9 @@ Writes the given parsegraph_ChunkedPageRequest to the given parsegraph_ClientReq
 <li>const char* <b>parsegraph_nameChunkResponseStage</b>(enum parsegraph_ChunkResponseStage stage)
 <li>struct parsegraph_ChunkedPageRequest* <b>parsegraph_ChunkedPageRequest_new</b>()
 <li>int <b>parsegraph_writeChunk</b>(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_Ring* output)
+<li>void <b>parsegraph_measureChunk</b>(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
 <li>void <b>parsegraph_ChunkedPageRequest_free</b>(struct parsegraph_ChunkedPageRequest* cpr)
-<li>void <b>parsegraph_processChunkedPageRequest</b>(struct parsegraph_ClientRequest* req, struct parsegraph_ChunkedPageRequest* cpr)
+<li>void <b>parsegraph_ChunkedPageRequest_process</b>(struct parsegraph_ChunkedPageRequest* cpr)
 </ul>
 </nav>
 </body>

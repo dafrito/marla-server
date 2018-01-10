@@ -1,5 +1,6 @@
 #ifndef parsegraph_environment_ws_prepare_INCLUDED
 #define parsegraph_environment_ws_prepare_INCLUDED
+
 #include <string.h>
 #include <parsegraph_user.h>
 #include <parsegraph_environment.h>
@@ -8,7 +9,7 @@
 #include <dlfcn.h>
 #include <apr_dso.h>
 
-#include "rainback.h"
+#include "marla.h"
 
 #define MAX_MESSAGE_QUEUE 512
 #define MAX_INIT_LENGTH 4096
@@ -48,8 +49,6 @@ struct parsegraph_live_session {
     parsegraph_GUID env;
     size_t envReceived;
     struct printing_item* initialData;
-    void(*default_handler)(struct parsegraph_ClientRequest*, enum parsegraph_ClientEvent, void*, int);
-    void* default_handleData;
 };
 typedef struct parsegraph_live_session parsegraph_live_session;
 
@@ -60,7 +59,7 @@ typedef struct parsegraph_live_server {
 } parsegraph_live_server;
 
 int initialize_parsegraph_live_session(parsegraph_live_session* session);
-int parsegraph_printItem(parsegraph_ClientRequest* req, parsegraph_live_session* session, struct printing_item* level);
+int parsegraph_printItem(marla_ClientRequest* req, parsegraph_live_session* session, struct printing_item* level);
 int parsegraph_prepareEnvironment(parsegraph_live_session* session);
 
 #endif // parsegraph_environment_ws_prepare_INCLUDED

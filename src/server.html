@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table
+{
+border-collapse: collapse;
+}
+table td, table th
+{
+border: 1px solid grey;
+}
+</style>
+<title>Server - Rainback</title>
+<link rel=stylesheet type=text/css href="style.css">
+</head>
+<body>
+<main class=content>
+<h1>Server - Rainback</h1>
+<h2>#define marla_LOGBUFSIZE 32*1024</h2>
+The size of the server's log buffer.
+<h2>struct marla_Server</h2>
+<table>
+<tr><td>struct marla_Connection* first_connection<td>Server's first active connection
+<tr><td>struct marla_Connection* last_connection<td>Server's last active connection
+<tr><td>marla_Ring* log<td>Log buffer
+<tr><td>char logaddress[1024]<td>TCP URL of the logging server
+<tr><td>int logfd<td>Logging file descriptor
+<tr><td>char serverport[64]<td>Server port, copied from command-line.
+<tr><td>char backendport[64]<td>Backend port, as passed from commandline.
+<tr><td>const char* backendPort<td>Backend port, as passed from command-line.
+<tr><td>pthread_mutex_t server_mutex<td>Server mutex. Lock before using the server.
+<tr><td>volatile enum marla_ServerStatus server_status<td>Server status
+<tr><td>volatile int efd<td>
+<tr><td>volatile int sfd<td>
+<tr><td>int backendfd<td>Backend file descriptor
+<tr><td>marla_Connection* backend<td>Backend connection
+<tr><td>pthread_t terminal_thread<td>Terminal UI thread
+<tr><td>struct marla_ServerModule* first_module<td>Server's first module
+<tr><td>struct marla_ServerModule* last_module<td>Server's last module
+<tr><td>struct marla_HookList hooks[marla_SERVER_HOOK_MAX]<td>Server's hook list
+</table>
+<h2>enum marla_ServerModuleEvent</h2>
+<table>
+<tr><td>marla_EVENT_SERVER_MODULE_START,
+<tr><td>marla_EVENT_SERVER_MODULE_STOP
+</table>
+
+<h2>enum marla_ServerHookStatus</h2>
+<table>
+<tr><td>marla_SERVER_HOOK_STATUS_OK = 0,
+<tr><td>marla_SERVER_HOOK_STATUS_CLOSE = -1,
+<tr><td>marla_SERVER_HOOK_STATUS_COMPLETE = 1
+</table>
+
+<h2>struct marla_HookEntry</h2>
+<table>
+<tr><td>enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*)
+<tr><td>void* hookData;
+<tr><td>struct marla_HookEntry* prevHook;
+<tr><td>struct marla_HookEntry* nextHook;
+</table>
+
+<h2>struct marla_HookList</h2>
+<table>
+<tr><td>struct marla_HookEntry* firstHook;
+<tr><td>struct marla_HookEntry* lastHook;
+</table>
+
+<h2>enum marla_ServerHook</h2>
+<table>
+<tr><td>marla_SERVER_HOOK_ROUTE = 0
+<tr><td>marla_SERVER_HOOK_WEBSOCKET = 1
+<tr><td>marla_SERVER_HOOK_MAX = 2
+</table>
+
+<h2>enum marla_ServerStatus</h2>
+<table>
+<tr><td>marla_SERVER_STOPPED = 0
+<tr><td>marla_SERVER_STARTED = 1
+<tr><td>marla_SERVER_WAITING_FOR_INPUT = 2
+<tr><td>marla_SERVER_WAITING_FOR_LOCK = 3
+<tr><td>marla_SERVER_PROCESSING = 4
+<tr><td>marla_SERVER_DESTROYING = 5
+</table>
+
+<h2>const char* marla_nameServerStatus(enum marla_ServerStatus)</h2>
+
+<h2>struct marla_ServerModule</h2>
+<table>
+<tr><td>const char* moduleDef
+<tr><td>void* moduleHandle
+<tr><td>void(*moduleFunc)(struct marla_Server*, enum marla_ServerModuleEvent)
+<tr><td>struct marla_ServerModule* nextModule
+<tr><td>struct marla_ServerModule* prevModule
+</table>
+<h2>void marla_Server_init(struct marla_Server* server)</h2>
+Initializes a marla_Server in the given memory.
+<h2>void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)</h2>
+Runs the server's hooks for the given hook and request.
+<h2>int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)</h2>
+Removes up to one hook.
+<h2>void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)</h2>
+Adds one hook.
+<h2>void marla_Server_log(struct marla_Server* server, const char* output, size_t len)</h2>
+Logs the given string to the server's log.
+</main>
+<nav class=toc>
+<h3>Server - Rainback</h3>
+<ul>
+<li>#define <b>marla_LOGBUFSIZE</b>
+<li>struct <b>marla_Server</b>
+<li>enum <b>marla_ServerModuleEvent</b>
+<li>enum <b>marla_ServerHookStatus</b>
+<li>struct <b>marla_HookEntry</b>
+<li>struct <b>marla_HookList</b>
+<li>enum <b>marla_ServerHook</b>
+<li>enum <b>marla_ServerStatus</b>
+<li>const char* <b>marla_nameServerStatus</b>(enum marla_ServerStatus)
+<li>struct <b>marla_ServerModule</b>
+<li>void <b>marla_Server_init</b>(struct marla_Server* server)
+<li>void <b>marla_Server_invokeHook</b>(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)
+<li>int <b>marla_Server_removeHook</b>(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+<li>void <b>marla_Server_addHook</b>(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+<li>void <b>marla_Server_log</b>(struct marla_Server* server, const char* output, size_t len)
+</ul>
+</nav>
+</body>
+</html>

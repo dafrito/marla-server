@@ -1,51 +1,83 @@
-#include "rainback.h"
+#include <math.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <errno.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include "marla.h"
 
-const char* parsegraph_nameServerStatus(enum parsegraph_ServerStatus ss)
+const char* marla_nameServerStatus(enum marla_ServerStatus ss)
 {
     switch(ss) {
-    case parsegraph_SERVER_STOPPED:
+    case marla_SERVER_STOPPED:
         return "SERVER_STOPPED";
-    case parsegraph_SERVER_STARTED:
+    case marla_SERVER_STARTED:
         return "SERVER_STARTED";
-    case parsegraph_SERVER_WAITING_FOR_INPUT:
+    case marla_SERVER_WAITING_FOR_INPUT:
         return "SERVER_WAITING_FOR_INPUT";
-    case parsegraph_SERVER_WAITING_FOR_LOCK:
+    case marla_SERVER_WAITING_FOR_LOCK:
         return "SERVER_WAITING_FOR_LOCK";
-    case parsegraph_SERVER_PROCESSING:
+    case marla_SERVER_PROCESSING:
         return "SERVER_PROCESSING";
-    case parsegraph_SERVER_DESTROYING:
+    case marla_SERVER_DESTROYING:
         return "SERVER_DESTROYING";
     }
     return "";
 }
 
-void parsegraph_Server_init(struct parsegraph_Server* server)
+void marla_Server_init(struct marla_Server* server)
 {
-    server->server_status = parsegraph_SERVER_STOPPED;
+    server->server_status = marla_SERVER_STOPPED;
     pthread_mutex_init(&server->server_mutex, 0);
+    server->logfd = 0;
+    server->wantsLogWrite = 0;
     server->efd = 0;
     server->sfd = 0;
     server->backendfd = 0;
     server->first_module = 0;
     server->last_module = 0;
+    server->log = marla_Ring_new(marla_LOGBUFSIZE);
     memset(server->serverport, 0, sizeof server->serverport);
     memset(server->backendport, 0, sizeof server->backendport);
-    memset(server->logbuf, 0, sizeof server->logbuf);
-    server->logindex = 0;
 
     server->first_connection = 0;
     server->last_connection = 0;
 
-    for(int i = 0; i < parsegraph_SERVER_HOOK_MAX; ++i) {
-        struct parsegraph_HookList* hookList = server->hooks + i;
+    for(int i = 0; i < marla_SERVER_HOOK_MAX; ++i) {
+        struct marla_HookList* hookList = server->hooks + i;
         hookList->firstHook = 0;
         hookList->lastHook = 0;
     }
 }
 
-void parsegraph_Server_log(struct parsegraph_Server* server, const char* output, size_t len)
+void marla_Server_flushLog(struct marla_Server* server)
 {
-    memcpy(server->logbuf + server->logindex, output, len);
-    server->logindex += len;
+    if(server->wantsLogWrite || server->logfd == 0) {
+        return;
+    }
+    void* readSlot;
+    size_t slotLen;
+    marla_Ring_readSlot(server->log, &readSlot, &slotLen);
+    if(slotLen == 0) {
+        // Nothing to write.
+        return;
+    }
+    int true_written = write(server->logfd, readSlot, slotLen);
+    if(true_written <= 0) {
+        server->wantsLogWrite = 1;
+        marla_Ring_putbackRead(server->log, slotLen);
+        return;
+    }
+    if(true_written < slotLen) {
+        marla_Ring_putbackRead(server->log, slotLen - true_written);
+    }
 }
 
+void marla_Server_free(struct marla_Server* server)
+{
+    marla_Ring_free(server->log);
+}

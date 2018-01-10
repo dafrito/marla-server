@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <stdio.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -22,7 +22,7 @@
 
 #define MAXEVENTS 64
 
-static int use_curses = 1;
+static int use_curses = 0;
 static int use_ssl = 1;
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
@@ -155,7 +155,7 @@ create_and_bind (const char *port)
 }
 
 static int
-create_and_connect(const char* port)
+create_and_connect(const char* node, const char* port)
 {
    struct addrinfo *result, *rp;
    int sfd, s;
@@ -169,7 +169,7 @@ create_and_connect(const char* port)
     hints.ai_flags = 0;
     hints.ai_protocol = 0;          /* Any protocol */
 
-    s = getaddrinfo("localhost", port, &hints, &result);
+    s = getaddrinfo(node, port, &hints, &result);
     if (s != 0) {
        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
        exit(EXIT_FAILURE);
@@ -209,25 +209,29 @@ void on_sigusr1()
 static int exit_value = EXIT_SUCCESS;
 extern void* terminal_operator(void* data);
 
-struct parsegraph_Server server;
+struct marla_Server server;
 
 int main(int argc, const char**argv)
 {
     int s;
     struct epoll_event *events;
 
+    const size_t MIN_ARGS = 4;
+
     apr_pool_initialize();
 
-    parsegraph_Server_init(&server);
+    marla_Server_init(&server);
 
     if(0 != pthread_mutex_lock(&server.server_mutex)) {
         fprintf(stderr, "Failed to acquire server mutex");
         exit(EXIT_FAILURE);
     }
 
+    marla_logEnterc(&server, "Server initializations", "Initializing server");
+
     // Validate command-line.
-    if(argc < 3) {
-        fprintf(stderr, "Usage: %s [port] [backend-port] modulepath?modulefunc modulepath?modulefunc\n", argv[0]);
+    if(argc < MIN_ARGS) {
+        fprintf(stderr, "Usage: %s [port] [backend-port] [logging-port] modulepath?modulefunc modulepath?modulefunc\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -235,11 +239,12 @@ int main(int argc, const char**argv)
     signal(SIGUSR1, on_sigusr1);
     signal(SIGPIPE, SIG_IGN);
 
-    server.server_status = parsegraph_SERVER_STARTED;
+    server.server_status = marla_SERVER_STARTED;
 
     // Create the SSL context
     SSL_CTX *ctx = 0;
     if(use_ssl) {
+        marla_logMessage(&server, "Using SSL.");
         init_openssl();
         ctx = create_context();
         configure_context(ctx);
@@ -249,6 +254,7 @@ int main(int argc, const char**argv)
     server.efd = epoll_create1(0);
     if(server.efd == -1) {
         perror("Creating main epoll queue for server");
+        marla_logLeave(&server, "Failed to create epoll queue.");
         exit(EXIT_FAILURE);
     }
 
@@ -256,18 +262,22 @@ int main(int argc, const char**argv)
     server.sfd = create_and_bind(argv[1]);
     if(server.sfd == -1) {
         perror("Creating main server socket for server");
+        marla_logLeave(&server, "Failed to create server socket.");
         exit(EXIT_FAILURE);
     }
     strcpy(server.serverport, argv[1]);
+    marla_logMessagef(&server, "Server is using port %s", server.serverport);
     s = make_socket_non_blocking(server.sfd);
     if(s == -1) {
         exit_value = EXIT_FAILURE;
+        marla_logLeave(&server, "Failed to make server socket non-blocking.");
         goto destroy;
     }
     s = listen(server.sfd, SOMAXCONN);
     if(s == -1) {
         perror ("listen");
         exit_value = EXIT_FAILURE;
+        marla_logLeave(&server, "Failed to listen to server socket.");
         goto destroy;
     }
     else {
@@ -279,27 +289,31 @@ int main(int argc, const char**argv)
         if(s == -1) {
             perror("Adding server file descriptor to epoll queue");
             exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to add server socket to epoll queue.");
             goto destroy;
         }
     }
 
     // Create the backend socket
-    server.backendfd = create_and_connect(argv[2]);
+    server.backendfd = create_and_connect("localhost", argv[2]);
     if(server.backendfd == -1) {
         perror("Connecting to backend server");
         exit_value = EXIT_FAILURE;
+        marla_logLeave(&server, "Failed to connect to backend server.");
         goto destroy;
     }
     else {
         strcpy(server.backendport, argv[2]);
+        marla_logMessagef(&server, "Server is using backend on port %s", server.backendport);
         s = make_socket_non_blocking(server.backendfd);
         if(s == -1) {
             exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to make backend server non-blocking.");
             goto destroy;
         }
 
-        parsegraph_Connection* backend = parsegraph_Connection_new(&server);
-        parsegraph_Backend_init(backend, server.backendfd);
+        marla_Connection* backend = marla_Connection_new(&server);
+        marla_Backend_init(backend, server.backendfd);
         server.backend = backend;
 
         struct epoll_event event;
@@ -310,17 +324,49 @@ int main(int argc, const char**argv)
         if(s == -1) {
             perror("Adding backend file descriptor to epoll queue");
             exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to add backend server to epoll queue.");
             goto destroy;
         }
     }
-    server.backendPort = argv[2];
 
-    if(argc > 3) {
-        for(int n = 3; n < argc; ++n) {
+    // Create the logging socket
+    server.logfd = create_and_connect("localhost", argv[3]);
+    if(server.logfd == -1) {
+        perror("Connecting to logging server");
+        exit_value = EXIT_FAILURE;
+        marla_logLeave(&server, "Failed to connect to logging server.");
+        goto destroy;
+    }
+    else {
+        strcpy(server.logaddress, argv[3]);
+        marla_logMessagef(&server, "Server is logging on port %s", server.logaddress);
+        s = make_socket_non_blocking(server.logfd);
+        if(s == -1) {
+            exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to make logging server non-blocking.");
+            goto destroy;
+        }
+
+        struct epoll_event event;
+        memset(&event, 0, sizeof(struct epoll_event));
+        event.data.fd = server.logfd;
+        event.events = EPOLLOUT | EPOLLET;
+        s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.logfd, &event);
+        if(s == -1) {
+            perror("Adding logging file descriptor to epoll queue");
+            exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to add logging server to epoll queue.");
+            goto destroy;
+        }
+    }
+
+    if(argc > MIN_ARGS) {
+        for(int n = MIN_ARGS; n < argc; ++n) {
             const char* arg = argv[n];
             char* loc = index(arg, '?');
             if(loc == 0) {
                 fprintf(stderr, "A module symbol must be provided.\nUsage: %s [port] [backend-port] modulepath?modulefunc...\n", argv[0]);
+                marla_logLeave(&server, "Failed to read module symbol.");
                 exit(EXIT_FAILURE);
             }
             char modulename[1024];
@@ -329,17 +375,19 @@ int main(int argc, const char**argv)
             void* loaded = dlopen(modulename, RTLD_NOW|RTLD_GLOBAL);
             if(!loaded) {
                 fprintf(stderr, "Failed to open module \"%s\": %s\nUsage: %s [port] [backend-port] modulepath?modulefunc...\n", modulename, dlerror(), argv[0]);
+                marla_logLeave(&server, "Failed to open module.");
                 exit(EXIT_FAILURE);
             }
             void* loadedFunc = dlsym(loaded, loc + 1);
             if(!loadedFunc) {
                 fprintf(stderr, "Failed to locate function \"%s\"\nUsage: %s [port] [backend-port] modulepath?modulefunc...\n", loc + 1, argv[0]);
+                marla_logLeave(&server, "Failed to locate module initializer.");
                 exit(EXIT_FAILURE);
             }
-            void(*moduleFunc)(struct parsegraph_Server*, enum parsegraph_ServerModuleEvent) = loadedFunc;
-            moduleFunc(&server, parsegraph_EVENT_SERVER_MODULE_START);
+            void(*moduleFunc)(struct marla_Server*, enum marla_ServerModuleEvent) = loadedFunc;
+            moduleFunc(&server, marla_EVENT_SERVER_MODULE_START);
 
-            struct parsegraph_ServerModule* serverModule = malloc(sizeof *serverModule);
+            struct marla_ServerModule* serverModule = malloc(sizeof *serverModule);
             serverModule->moduleFunc = moduleFunc;
             serverModule->moduleDef = arg;
             serverModule->moduleHandle = loaded;
@@ -363,16 +411,21 @@ int main(int argc, const char**argv)
     // Create terminal interface thread.
     if(use_curses && 0 != pthread_create(&server.terminal_thread, 0, terminal_operator, &server)) {
         fprintf(stderr, "Failed to create terminal thread");
+        marla_logLeave(&server, "Failed to create terminal thread");
         exit(EXIT_FAILURE);
     }
+    else {
+        marla_logMessage(&server, "curses disabled.");
+    }
+    marla_logLeave(&server, "Entering event loop.");
 
     while(1) {
         int n, i;
 
-        if(server.server_status == parsegraph_SERVER_DESTROYING) {
+        if(server.server_status == marla_SERVER_DESTROYING) {
             break;
         }
-        server.server_status = parsegraph_SERVER_WAITING_FOR_INPUT;
+        server.server_status = marla_SERVER_WAITING_FOR_INPUT;
         if(0 != pthread_mutex_unlock(&server.server_mutex)) {
             fprintf(stderr, "Failed to release server mutex");
             exit_value = EXIT_FAILURE;
@@ -380,10 +433,10 @@ int main(int argc, const char**argv)
         }
 wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
         if(n <= 0) {
-            if(server.server_status != parsegraph_SERVER_DESTROYING && (n == 0 || errno == EINTR)) {
+            if(server.server_status != marla_SERVER_DESTROYING && (n == 0 || errno == EINTR)) {
                 goto wait;
             }
-            server.server_status = parsegraph_SERVER_DESTROYING;
+            server.server_status = marla_SERVER_DESTROYING;
             goto destroy;
         }
 
@@ -395,21 +448,39 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
         }
 
         // Set the status.
-        if(server.server_status == parsegraph_SERVER_DESTROYING) {
+        if(server.server_status == marla_SERVER_DESTROYING) {
+            marla_logMessagec(&server, "Server processing", "Server is being destroyed.");
             goto destroy;
         }
-        server.server_status = parsegraph_SERVER_PROCESSING;
+        server.server_status = marla_SERVER_PROCESSING;
 
         for(i = 0; i < n; i++) {
             if(events[i].data.fd == server.backendfd) {
+                marla_logEnterc(&server, "Server processing", "Received backend event.");
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                }
+                marla_logLeave(&server, "");
+                continue;
+            }
+            else if(events[i].data.fd == server.logfd) {
+                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                    if(events[i].events & EPOLLRDHUP) {
+                        continue;
+                    }
+                    //fprintf(stderr, "epoll error on logfd: %d\n", events[i].events);
+                    continue;
+                }
+                if(events[i].events & EPOLLOUT) {
+                    server.wantsLogWrite = 0;
+                    marla_Server_flushLog(&server);
                 }
                 continue;
             }
             else if (server.sfd == events[i].data.fd) {
                 // Event is from server socket.
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
-                    server.server_status = parsegraph_SERVER_DESTROYING;
+                    server.server_status = marla_SERVER_DESTROYING;
+                    marla_logMessage(&server, "Server socket died. Destroying server.");
                     goto destroy;
                 }
 
@@ -424,7 +495,6 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     infd = accept(server.sfd, &in_addr, &in_len);
                     if(infd == -1) {
                         if((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-                            // Done processing connections.
                             break;
                         }
                         else {
@@ -435,8 +505,8 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
 
                     s = getnameinfo(&in_addr, in_len, hbuf, sizeof(hbuf), sbuf, sizeof(sbuf), NI_NUMERICHOST | NI_NUMERICSERV);
                     if(s == 0) {
-                        //printf("Accepted connection on descriptor %d "
-                        //"(host=%s, port=%s)\n", infd, hbuf, sbuf);
+                        marla_logMessagecf(&server, "Server socket connections", "Accepted connection on descriptor %d "
+                        "(host=%s, port=%s)\n", infd, hbuf, sbuf);
                     }
 
                     /* Make the incoming socket non-blocking and add it to the
@@ -447,14 +517,14 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                         continue;
                     }
 
-                    parsegraph_Connection* cxn = parsegraph_Connection_new(&server);
+                    marla_Connection* cxn = marla_Connection_new(&server);
                     if(!cxn) {
                         perror("Unable to create connection");
                         close(infd);
                         continue;
                     }
                     if(use_ssl) {
-                        s = parsegraph_SSL_init(cxn, ctx, infd);
+                        s = marla_SSL_init(cxn, ctx, infd);
                         if(s <= 0) {
                             perror("Unable to initialize SSL connection");
                             close(infd);
@@ -462,7 +532,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                         }
                     }
                     else {
-                        parsegraph_cleartext_init(cxn, infd);
+                        marla_cleartext_init(cxn, infd);
                     }
 
                     struct epoll_event event;
@@ -472,7 +542,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     s = epoll_ctl(server.efd, EPOLL_CTL_ADD, infd, &event);
                     if(s == -1) {
                         perror ("epoll_ctl");
-                        parsegraph_Connection_destroy(cxn);
+                        marla_Connection_destroy(cxn);
                         close(infd);
                         continue;
                     }
@@ -485,21 +555,32 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     if(events[i].events & EPOLLRDHUP) {
                         continue;
                     }
+                    marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
+                    if(events[i].events & EPOLLHUP) {
+                        marla_Connection_destroy(cxn);
+                        continue;
+                    }
+                    marla_Connection_destroy(cxn);
                     //fprintf(stderr, "epoll error: %d\n", events[i].events);
-                    parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
-                    parsegraph_Connection_destroy(source);
+                    marla_logMessagef(&server, "Epoll error %d (EPOLLERR=%d, EPOLLHUP=%d)", events[i].events, events[i].events&EPOLLERR, events[i].events&EPOLLHUP);
                     continue;
                 }
+                marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
+                {
+                    char buf[marla_BUFSIZE];
+                    memset(buf, 0, sizeof buf);
+                    cxn->describeSource(cxn, buf, sizeof buf);
+                    marla_logEntercf(&server, "Client processing", "Received client socket event on %s.", buf);
+                }
                 /* Connection is ready */
-                parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
-                if(cxn->stage == parsegraph_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+                if(events[i].events & EPOLLIN) {
+                    cxn->wantsRead = 0;
+                }
+                if(events[i].events & EPOLLOUT) {
+                    cxn->wantsWrite = 0;
+                }
+                if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
                     //fprintf(stderr, "Attempting shutdown for connection\n");
-                    if(events[i].events & EPOLLIN) {
-                        cxn->wantsRead = 0;
-                    }
-                    if(events[i].events & EPOLLOUT) {
-                        cxn->wantsWrite = 0;
-                    }
                     // Client needs shutdown.
                     if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
                         cxn->shouldDestroy = 1;
@@ -508,23 +589,40 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                         //fprintf(stderr, "Connection should be destroyed\n");
                     }
                 }
-                else {
+                else if(marla_clientAccept(cxn) == 0) {
                     if(events[i].events & EPOLLIN) {
                         cxn->wantsRead = 0;
                         // Available for read.
-                        parsegraph_clientRead(cxn);
+                        marla_clientRead(cxn);
                     }
                     if(events[i].events & EPOLLOUT) {
                         // Available for write.
                         cxn->wantsWrite = 0;
-                        parsegraph_clientWrite(cxn);
+                        marla_clientWrite(cxn);
+                    }
+                }
+
+                // Double-check if the shutdown needs to be run.
+                if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+                    //fprintf(stderr, "Attempting shutdown for connection\n");
+                    // Client needs shutdown.
+                    if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
+                        cxn->shouldDestroy = 1;
+                    }
+                    if(cxn->shouldDestroy) {
+                        //fprintf(stderr, "Connection should be destroyed\n");
                     }
                 }
                 if(cxn->shouldDestroy) {
-                    parsegraph_Connection_destroy(cxn);
+                    marla_Connection_destroy(cxn);
+                    marla_logLeave(&server, "Destroying connection.");
                 }
                 else {
                     //fprintf(stderr, "Waiting for connection to become available.\n");
+                    char buf[marla_BUFSIZE];
+                    memset(buf, 0, sizeof buf);
+                    cxn->describeSource(cxn, buf, sizeof buf);
+                    marla_logLeavef(&server, "Waiting for %s to become available.", buf);
                 }
             }
         }
@@ -536,8 +634,8 @@ destroy:
         exit_value = EXIT_FAILURE;
     }
 destroy_without_unlock:
-    for(struct parsegraph_ServerModule* serverModule = server.first_module; serverModule != 0; serverModule = serverModule->nextModule) {
-        serverModule->moduleFunc(serverModule->moduleHandle, parsegraph_EVENT_SERVER_MODULE_STOP);
+    for(struct marla_ServerModule* serverModule = server.first_module; serverModule != 0; serverModule = serverModule->nextModule) {
+        serverModule->moduleFunc(serverModule->moduleHandle, marla_EVENT_SERVER_MODULE_STOP);
     }
 
     free(events);
@@ -546,7 +644,9 @@ destroy_without_unlock:
         cleanup_openssl();
     }
     close(server.sfd);
+    close(server.logfd);
     close(server.backendfd);
+    marla_Server_free(&server);
     if(use_curses && server.terminal_thread) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);

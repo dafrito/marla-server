@@ -1,5 +1,4 @@
-#include "prepare.h"
-#include "rainback.h"
+#include "marla.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +26,7 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-static const char* name = "rainback";
+static const char* name = "marla";
 
 static void init_openssl()
 {
@@ -143,8 +142,8 @@ int main(int argc, const char** argv)
         exit(EXIT_FAILURE);
     }
 
-    struct parsegraph_Server server;
-    parsegraph_Server_init(&server);
+    struct marla_Server server;
+    marla_Server_init(&server);
 
     init_openssl();
     SSL_CTX *ctx = create_context();
@@ -193,8 +192,8 @@ int main(int argc, const char** argv)
         if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
             // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
             fprintf (stderr, "epoll error\n");
-            parsegraph_Connection* source = (parsegraph_Connection*)events[i].data.ptr;
-            parsegraph_Connection_destroy(source);
+            marla_Connection* source = (marla_Connection*)events[i].data.ptr;
+            marla_Connection_destroy(source);
             fsync(3);
             continue;
         }
@@ -238,8 +237,8 @@ int main(int argc, const char** argv)
                     abort ();
                   }
 
-                  parsegraph_Connection* cxn = parsegraph_Connection_new();
-                  if(1 != parsegraph_SSL_init(cxn, ctx, infd)) {
+                  marla_Connection* cxn = marla_Connection_new();
+                  if(1 != marla_SSL_init(cxn, ctx, infd)) {
                      perror("Unable to create connection");
                      abort();
                   }
@@ -258,10 +257,10 @@ int main(int argc, const char** argv)
           else
             {
                 /* Connection is ready */
-                parsegraph_Connection* cxn = (parsegraph_Connection*)events[i].data.ptr;
-                parsegraph_Connection_handle(cxn, &server, events[i].events);
+                marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
+                marla_Connection_handle(cxn, &server, events[i].events);
                 if(cxn->shouldDestroy) {
-                  parsegraph_Connection_destroy(cxn);
+                  marla_Connection_destroy(cxn);
                 }
             }
         }

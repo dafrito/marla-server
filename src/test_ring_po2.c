@@ -1,5 +1,5 @@
-#include "prepare.h"
-#include "rainback.h"
+#include "marla.h"
+#include <httpd.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 
     char* endptr;
     long cap = strtol(argv[1], &endptr, 10);
-    parsegraph_Ring* ring = parsegraph_Ring_new(cap);
-    parsegraph_Ring_free(ring);
+    marla_Ring* ring = marla_Ring_new(cap);
+    marla_Ring_free(ring);
     return 0;
 }

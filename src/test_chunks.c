@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <string.h>
 #include <unistd.h>
 #include <apr_pools.h>
@@ -15,7 +15,7 @@
 #include <apr_dbd.h>
 #include <mod_dbd.h>
 
-static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
+static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -284,7 +284,7 @@ static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 
     // Write the generated page.
-    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
     if(cpr->index + nwritten < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -297,7 +297,7 @@ static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 }
 
-static void makeShortPage(struct parsegraph_ChunkedPageRequest* cpr)
+static void makeShortPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len = 1024;
@@ -308,7 +308,7 @@ static void makeShortPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 
     // Write the generated page.
-    size_t nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    size_t nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
     cpr->index += nwritten;
 }
 
@@ -325,85 +325,85 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-static int readDuplexSource(struct parsegraph_Connection* cxn, void* sink, size_t len)
+static int readDuplexSource(struct marla_Connection* cxn, void* sink, size_t len)
 {
-    parsegraph_Ring* ring = ((parsegraph_Ring**)cxn->source)[0];
-    return parsegraph_Ring_read(ring, sink, len);
+    marla_Ring* ring = ((marla_Ring**)cxn->source)[0];
+    return marla_Ring_read(ring, sink, len);
 }
 
-static int writeDuplexSource(struct parsegraph_Connection* cxn, void* source, size_t len)
+static int writeDuplexSource(struct marla_Connection* cxn, void* source, size_t len)
 {
     return len;
-    //parsegraph_Ring* outputRing = ((parsegraph_Ring**)cxn->source)[1];
+    //marla_Ring* outputRing = ((marla_Ring**)cxn->source)[1];
     //write(0, source, len);
-    //return parsegraph_Ring_write(outputRing, source, len);
+    //return marla_Ring_write(outputRing, source, len);
 }
 
-static void destroyDuplexSource(struct parsegraph_Connection* cxn)
+static void destroyDuplexSource(struct marla_Connection* cxn)
 {
-    parsegraph_Ring** rings = ((parsegraph_Ring**)cxn->source);
-    parsegraph_Ring_free(rings[0]);
-    parsegraph_Ring_free(rings[1]);
+    marla_Ring** rings = ((marla_Ring**)cxn->source);
+    marla_Ring_free(rings[0]);
+    marla_Ring_free(rings[1]);
 }
 
-static int test_chunk_math(struct parsegraph_Server* server)
+static int test_chunk_math(struct marla_Server* server)
 {
     // Create the test input.
     char source_str[1024];
     memset(source_str, 0, sizeof(source_str));
     int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET / HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server->serverport);
-    parsegraph_Ring* ring = parsegraph_Ring_new(parsegraph_BUFSIZE);
-    parsegraph_Ring_write(ring, source_str, nwritten);
+    marla_Ring* ring = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring_write(ring, source_str, nwritten);
 
-    parsegraph_Ring* outputRing = parsegraph_Ring_new(parsegraph_BUFSIZE);
-    parsegraph_Ring* rings[2];
+    marla_Ring* outputRing = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring* rings[2];
     rings[0] = ring;
     rings[1] = outputRing;
 
     // Create the connection.
-    parsegraph_Connection* cxn = parsegraph_Connection_new(server);
+    marla_Connection* cxn = marla_Connection_new(server);
     cxn->source = &rings;
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;
     cxn->destroySource = destroyDuplexSource;
-    struct parsegraph_ClientRequest* req = parsegraph_ClientRequest_new(cxn);
+    struct marla_ClientRequest* req = marla_ClientRequest_new(cxn);
     cxn->current_request = req;
     cxn->latest_request = req;
     ++cxn->requests_in_process;
-    parsegraph_ChunkedPageRequest* cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+    marla_ChunkedPageRequest* cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
     cpr->handler = makeShortPage;
     size_t expectedCumul = 1024 + strlen("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n") + 5 + 7 + 6;
 
     for(;;) {
-        if(cpr->stage == parsegraph_CHUNK_RESPONSE_DONE) {
+        if(cpr->stage == marla_CHUNK_RESPONSE_DONE) {
             fprintf(stderr, "Breaking. Sanity!\n");
             break;
         }
-        if(0 == parsegraph_ChunkedPageRequest_process(cpr)) {
-            if(cpr->stage != parsegraph_CHUNK_RESPONSE_DONE) {
+        if(0 == marla_ChunkedPageRequest_process(cpr)) {
+            if(cpr->stage != marla_CHUNK_RESPONSE_DONE) {
                 fprintf(stderr, "Breaking. Insanity!\n %d", cpr->stage);
                 return 1;
             }
             break;
         }
 
-        if(0 > parsegraph_Connection_flush(cxn, 0)) {
+        if(0 > marla_Connection_flush(cxn, 0)) {
             fprintf(stderr, "Flush returned negative value.\n");
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
         if(cxn->flushed > expectedCumul) {
             fprintf(stderr, "Breaking. Crashing nflushed=%ld, expected=%ld, delta=%d\n", cxn->flushed, expectedCumul, (int)expectedCumul-(int)cxn->flushed);
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
         if(cxn->flushed == expectedCumul) {
-            if(cpr->stage != parsegraph_CHUNK_RESPONSE_DONE) {
+            if(cpr->stage != marla_CHUNK_RESPONSE_DONE) {
                 fprintf(stderr, "Breaking. Insanity!\n");
-                parsegraph_Connection_destroy(cxn);
-                parsegraph_ChunkedPageRequest_free(cpr);
+                marla_Connection_destroy(cxn);
+                marla_ChunkedPageRequest_free(cpr);
                 return 1;
             }
             else {
@@ -412,10 +412,10 @@ static int test_chunk_math(struct parsegraph_Server* server)
             break;
         }
     }
-    parsegraph_ChunkedPageRequest_free(cpr);
+    marla_ChunkedPageRequest_free(cpr);
     {
         int nflushed;
-        parsegraph_Connection_flush(cxn, &nflushed);
+        marla_Connection_flush(cxn, &nflushed);
     }
     cxn->flushed = 0;
     expectedCumul = 1024 + strlen("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n") + 5 + 7 + 6 + 6;
@@ -423,106 +423,106 @@ static int test_chunk_math(struct parsegraph_Server* server)
     for(int j = 0; j < 1024; ++j) {
         //fprintf(stderr, "j=%d start\n", j);
         int nflushed;
-        parsegraph_Connection_flush(cxn, &nflushed);
+        marla_Connection_flush(cxn, &nflushed);
         cxn->flushed = 0;
-        parsegraph_Ring_write(cxn->output, source_str, j);
+        marla_Ring_write(cxn->output, source_str, j);
 
-        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
         cpr->handler = makeShortPage;
         while(cxn->flushed < expectedCumul) {
-            if(cpr->stage == parsegraph_CHUNK_RESPONSE_DONE) {
+            if(cpr->stage == marla_CHUNK_RESPONSE_DONE) {
                 break;
             }
             int nflushed;
-            if(0 > parsegraph_Connection_flush(cxn, &nflushed)) {
+            if(0 > marla_Connection_flush(cxn, &nflushed)) {
                 fprintf(stderr, "Flush returned negative value.\n");
-                parsegraph_Connection_destroy(cxn);
-                parsegraph_ChunkedPageRequest_free(cpr);
+                marla_Connection_destroy(cxn);
+                marla_ChunkedPageRequest_free(cpr);
                 return 1;
             }
-            parsegraph_ChunkedPageRequest_process(cpr);
+            marla_ChunkedPageRequest_process(cpr);
 
-            if(0 > parsegraph_Connection_flush(cxn, &nflushed)) {
+            if(0 > marla_Connection_flush(cxn, &nflushed)) {
                 fprintf(stderr, "Flush returned negative value.\n");
-                parsegraph_Connection_destroy(cxn);
-                parsegraph_ChunkedPageRequest_free(cpr);
+                marla_Connection_destroy(cxn);
+                marla_ChunkedPageRequest_free(cpr);
                 return 1;
             }
             if(cxn->flushed - j > expectedCumul + 4) {
                 fprintf(stderr, "j=%d, cxn->flushed=%ld, expected=%ld\n", j, cxn->flushed - j, expectedCumul);
-                parsegraph_Connection_destroy(cxn);
-                parsegraph_ChunkedPageRequest_free(cpr);
+                marla_Connection_destroy(cxn);
+                marla_ChunkedPageRequest_free(cpr);
                 return 1;
             }
         }
-        parsegraph_ChunkedPageRequest_free(cpr);
+        marla_ChunkedPageRequest_free(cpr);
     }
 
     //Realized prefix length 4 must match the calculated prefix length 5 for 347 bytes avail with slotLen of 262 (7 padding).
 
-    parsegraph_Connection_destroy(cxn);
-    parsegraph_ChunkedPageRequest_free(cpr);
+    marla_Connection_destroy(cxn);
+    marla_ChunkedPageRequest_free(cpr);
     return 0;
 }
 
-static int test_chunks(struct parsegraph_Server* server)
+static int test_chunks(struct marla_Server* server)
 {
     // Create the test input.
     char source_str[1024];
     memset(source_str, 0, sizeof(source_str));
     int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET / HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server->serverport);
-    parsegraph_Ring* ring = parsegraph_Ring_new(parsegraph_BUFSIZE);
-    parsegraph_Ring_write(ring, source_str, nwritten);
+    marla_Ring* ring = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring_write(ring, source_str, nwritten);
 
-    parsegraph_Ring* outputRing = parsegraph_Ring_new(parsegraph_BUFSIZE);
-    parsegraph_Ring* rings[2];
+    marla_Ring* outputRing = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring* rings[2];
     rings[0] = ring;
     rings[1] = outputRing;
 
     // Create the connection.
-    parsegraph_Connection* cxn = parsegraph_Connection_new(server);
+    marla_Connection* cxn = marla_Connection_new(server);
     cxn->source = &rings;
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;
     cxn->destroySource = destroyDuplexSource;
-    struct parsegraph_ClientRequest* req = parsegraph_ClientRequest_new(cxn);
+    struct marla_ClientRequest* req = marla_ClientRequest_new(cxn);
     cxn->current_request = req;
     cxn->latest_request = req;
     ++cxn->requests_in_process;
-    parsegraph_ChunkedPageRequest* cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+    marla_ChunkedPageRequest* cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
     cpr->handler = makeShortPage;
     size_t expectedCumul = 1024 + strlen("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n") + 5 + 7 + 6;
 
     for(;;) {
-        if(cpr->stage == parsegraph_CHUNK_RESPONSE_DONE) {
+        if(cpr->stage == marla_CHUNK_RESPONSE_DONE) {
             fprintf(stderr, "Breaking. Sanity!\n");
             break;
         }
-        if(0 == parsegraph_ChunkedPageRequest_process(cpr)) {
-            if(cpr->stage != parsegraph_CHUNK_RESPONSE_DONE) {
+        if(0 == marla_ChunkedPageRequest_process(cpr)) {
+            if(cpr->stage != marla_CHUNK_RESPONSE_DONE) {
                 fprintf(stderr, "Breaking. Insanity!\n %d", cpr->stage);
                 return 1;
             }
             break;
         }
 
-        if(0 > parsegraph_Connection_flush(cxn, 0)) {
+        if(0 > marla_Connection_flush(cxn, 0)) {
             fprintf(stderr, "Flush returned negative value.\n");
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
         if(cxn->flushed > expectedCumul) {
             fprintf(stderr, "Breaking. Crashing nflushed=%ld, expected=%ld, delta=%d\n", cxn->flushed, expectedCumul, (int)expectedCumul-(int)cxn->flushed);
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
         if(cxn->flushed == expectedCumul) {
-            if(cpr->stage != parsegraph_CHUNK_RESPONSE_DONE) {
+            if(cpr->stage != marla_CHUNK_RESPONSE_DONE) {
                 fprintf(stderr, "Breaking. Insanity!\n");
-                parsegraph_Connection_destroy(cxn);
-                parsegraph_ChunkedPageRequest_free(cpr);
+                marla_Connection_destroy(cxn);
+                marla_ChunkedPageRequest_free(cpr);
                 return 1;
             }
             else {
@@ -531,78 +531,78 @@ static int test_chunks(struct parsegraph_Server* server)
             break;
         }
     }
-    parsegraph_ChunkedPageRequest_free(cpr);
+    marla_ChunkedPageRequest_free(cpr);
     {
         int nflushed;
-        parsegraph_Connection_flush(cxn, &nflushed);
+        marla_Connection_flush(cxn, &nflushed);
     }
     cxn->flushed = 0;
-    cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+    cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
     cpr->handler = makeShortPage;
     expectedCumul = 1024 + strlen("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n") + 5 + 7 + 6 + 6;
     for(;;) {
-        if(cpr->stage == parsegraph_CHUNK_RESPONSE_DONE) {
+        if(cpr->stage == marla_CHUNK_RESPONSE_DONE) {
             break;
         }
-        parsegraph_ChunkedPageRequest_process(cpr);
+        marla_ChunkedPageRequest_process(cpr);
 
         int nflushed;
-        if(0 > parsegraph_Connection_flush(cxn, &nflushed)) {
+        if(0 > marla_Connection_flush(cxn, &nflushed)) {
             fprintf(stderr, "Flush returned negative value.\n");
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
         if(cxn->flushed > expectedCumul) {
             fprintf(stderr, "nflushed=%ld, expected=%ld\n", cxn->flushed, expectedCumul);
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
         if(cxn->flushed == expectedCumul) {
             break;
         }
     }
-    parsegraph_Connection_destroy(cxn);
-    parsegraph_ChunkedPageRequest_free(cpr);
+    marla_Connection_destroy(cxn);
+    marla_ChunkedPageRequest_free(cpr);
     return 0;
 }
 
-static int test_chunked_response(struct parsegraph_Server* server)
+static int test_chunked_response(struct marla_Server* server)
 {
     // Create the test input.
     char source_str[1024];
     memset(source_str, 0, sizeof(source_str));
     int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET / HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server->serverport);
-    parsegraph_Ring* ring = parsegraph_Ring_new(parsegraph_BUFSIZE);
-    parsegraph_Ring_write(ring, source_str, nwritten);
+    marla_Ring* ring = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring_write(ring, source_str, nwritten);
 
-    parsegraph_Ring* outputRing = parsegraph_Ring_new(parsegraph_BUFSIZE);
-    parsegraph_Ring* rings[2];
+    marla_Ring* outputRing = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring* rings[2];
     rings[0] = ring;
     rings[1] = outputRing;
 
     // Create the connection.
-    parsegraph_Connection* cxn = parsegraph_Connection_new(server);
+    marla_Connection* cxn = marla_Connection_new(server);
     cxn->source = &rings;
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;
     cxn->destroySource = destroyDuplexSource;
-    struct parsegraph_ClientRequest* req = parsegraph_ClientRequest_new(cxn);
+    struct marla_ClientRequest* req = marla_ClientRequest_new(cxn);
     cxn->current_request = req;
     cxn->latest_request = req;
     ++cxn->requests_in_process;
-    parsegraph_ChunkedPageRequest* cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+    marla_ChunkedPageRequest* cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
     cpr->handler = makeContactPage;
     //size_t expectedCumul = 1024 + strlen("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n") + 5 + 7 + 6;
 
     for(;;) {
-        if(cpr->stage == parsegraph_CHUNK_RESPONSE_DONE) {
+        if(cpr->stage == marla_CHUNK_RESPONSE_DONE) {
             fprintf(stderr, "Breaking. Sanity!\n");
             break;
         }
-        if(0 == parsegraph_ChunkedPageRequest_process(cpr)) {
-            if(cpr->stage != parsegraph_CHUNK_RESPONSE_DONE) {
+        if(0 == marla_ChunkedPageRequest_process(cpr)) {
+            if(cpr->stage != marla_CHUNK_RESPONSE_DONE) {
                 fprintf(stderr, "Breaking. Insanity!\n %d", cpr->stage);
                 return 1;
             }
@@ -610,19 +610,19 @@ static int test_chunked_response(struct parsegraph_Server* server)
         }
 
         int nflushed;
-        if(0 > parsegraph_Connection_flush(cxn, &nflushed)) {
+        if(0 > marla_Connection_flush(cxn, &nflushed)) {
             fprintf(stderr, "Flush returned negative value.\n");
-            parsegraph_Connection_destroy(cxn);
-            parsegraph_ChunkedPageRequest_free(cpr);
+            marla_Connection_destroy(cxn);
+            marla_ChunkedPageRequest_free(cpr);
             return 1;
         }
     }
-    parsegraph_ChunkedPageRequest_free(cpr);
+    marla_ChunkedPageRequest_free(cpr);
     {
         int nflushed;
-        parsegraph_Connection_flush(cxn, &nflushed);
+        marla_Connection_flush(cxn, &nflushed);
     }
-    parsegraph_Connection_destroy(cxn);
+    marla_Connection_destroy(cxn);
     return 0;
 }
 
@@ -633,8 +633,8 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    struct parsegraph_Server server;
-    parsegraph_Server_init(&server);
+    struct marla_Server server;
+    marla_Server_init(&server);
     strcpy(server.serverport, argv[1]);
 
     int failed = 0;

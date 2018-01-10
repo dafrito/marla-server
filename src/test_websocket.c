@@ -1,8 +1,8 @@
-#include "prepare.h"
-#include "rainback.h"
+#include "marla.h"
 #include <string.h>
 #include <unistd.h>
 #include <openssl/rand.h>
+#include <httpd.h>
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
@@ -23,7 +23,7 @@ int nread;
 int len;
 };
 
-static int readSource(struct parsegraph_Connection* cxn, void* sink, size_t len)
+static int readSource(struct marla_Connection* cxn, void* sink, size_t len)
 {
     struct FixedSource* src = cxn->source;
     int slen = src->len;
@@ -39,13 +39,13 @@ static int readSource(struct parsegraph_Connection* cxn, void* sink, size_t len)
     return nwritten;
 }
 
-static int writeSource(struct parsegraph_Connection* cxn, void* source, size_t len)
+static int writeSource(struct marla_Connection* cxn, void* source, size_t len)
 {
     //write(1, source, len);
     return len;
 }
 
-static int describeSource(parsegraph_Connection* cxn, char* sink, size_t len)
+static int describeSource(marla_Connection* cxn, char* sink, size_t len)
 {
     struct FixedSource* src = cxn->source;
     memset(sink, 0, len);
@@ -53,23 +53,23 @@ static int describeSource(parsegraph_Connection* cxn, char* sink, size_t len)
     return 0;
 }
 
-static void acceptSource(parsegraph_Connection* cxn)
+static void acceptSource(marla_Connection* cxn)
 {
     // Accepted and secured.
-    cxn->stage = parsegraph_CLIENT_SECURED;
+    cxn->stage = marla_CLIENT_SECURED;
 }
 
-static int shutdownSource(parsegraph_Connection* cxn)
+static int shutdownSource(marla_Connection* cxn)
 {
     return 0;
 }
 
-static void destroySource(parsegraph_Connection* cxn)
+static void destroySource(marla_Connection* cxn)
 {
     // Noop.
 }
 
-static int test_simple(struct parsegraph_Server* server, const char* port)
+static int test_simple(struct marla_Server* server, const char* port)
 {
     char source_str[1024];
     memset(source_str, 0, sizeof(source_str));
@@ -92,7 +92,7 @@ static int test_simple(struct parsegraph_Server* server, const char* port)
     BIO_free_all(b64);
 
     snprintf(source_str, sizeof(source_str) - 1, "GET / HTTP/1.1\r\nHost: localhost:%s\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n", port, encodedhandkey);
-    parsegraph_Connection* cxn = parsegraph_Connection_new(server);
+    marla_Connection* cxn = marla_Connection_new(server);
     struct FixedSource src = {
         (unsigned char*)source_str,
         0,
@@ -107,8 +107,8 @@ static int test_simple(struct parsegraph_Server* server, const char* port)
     cxn->describeSource = describeSource;
 
     // Read from the source.
-    parsegraph_clientRead(cxn);
-    parsegraph_clientWrite(cxn);
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
 
     for(int i = 0; i < 10; ++i) {
         source_str[0] = 0x81;
@@ -124,11 +124,11 @@ static int test_simple(struct parsegraph_Server* server, const char* port)
         source_str[10] = 0x58;
         src.nread = 0;
         src.len = 11;
-        parsegraph_clientRead(cxn);
-        parsegraph_clientWrite(cxn);
+        marla_clientRead(cxn);
+        marla_clientWrite(cxn);
     }
 
-    parsegraph_Connection_destroy(cxn);
+    marla_Connection_destroy(cxn);
     return 0;
 }
 
@@ -139,8 +139,8 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    struct parsegraph_Server server;
-    parsegraph_Server_init(&server);
+    struct marla_Server server;
+    marla_Server_init(&server);
 
     const char* port = argv[1];
     printf("test_simple:");

@@ -1,6 +1,6 @@
-#include "rainback.h"
+#include "marla.h"
 
-static void makeAboutPage(struct parsegraph_ChunkedPageRequest* cpr)
+static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -8,13 +8,12 @@ static void makeAboutPage(struct parsegraph_ChunkedPageRequest* cpr)
     // Generate the page.
     switch(cpr->handleStage) {
     case 0:
-        len = snprintf(buf, sizeof buf, "<!DOCTYPE html>");
+        len = snprintf(buf, sizeof buf, "<!DOCTYPE html><html><head><meta charset=\"UTF-8\">");
         break;
     case 1:
         len = snprintf(buf, sizeof buf,
-            "<html><head>"
             "<script>"
-            "function run() { WS=new WebSocket(\"ws://localhost:%s/\");"
+            "function run() { WS=new WebSocket(\"wss://localhost:%s/environment/live\");"
             "WS.onopen = function() { console.log('Hello'); };"
             "setInterval(function() {"
                 "WS.send('Hello');"
@@ -38,7 +37,7 @@ static void makeAboutPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 
     // Write the generated page.
-    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
     if(nwritten + cpr->index < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -51,7 +50,7 @@ static void makeAboutPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 }
 
-static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
+static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -320,7 +319,7 @@ static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 
     // Write the generated page.
-    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
     if(nwritten + cpr->index < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -333,7 +332,7 @@ static void makeContactPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 }
 
-static void makeCounterPage(struct parsegraph_ChunkedPageRequest* cpr)
+static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -344,14 +343,14 @@ static void makeCounterPage(struct parsegraph_ChunkedPageRequest* cpr)
         len = snprintf(buf, sizeof buf, "<!DOCTYPE html>");
         break;
     case 1:
-        len = snprintf(buf, sizeof buf, "<html><head><meta charset=\"UTF-8\"><script>function run() { WS=new WebSocket(\"ws://localhost:%s/\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", cpr->req->cxn->server->serverport, cpr->req->id);
+        len = snprintf(buf, sizeof buf, "<html><head><meta charset=\"UTF-8\"><script>function run() { WS=new WebSocket(\"wss://localhost:%s/\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", cpr->req->cxn->server->serverport, cpr->req->id);
         break;
     default:
         return;
     }
 
     // Write the generated page.
-    int nwritten = parsegraph_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
     if(nwritten < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -364,38 +363,38 @@ static void makeCounterPage(struct parsegraph_ChunkedPageRequest* cpr)
     }
 }
 
-static enum parsegraph_ServerHookStatus routeHook(struct parsegraph_ClientRequest* req, void* hookData)
+static enum marla_ServerHookStatus routeHook(struct marla_ClientRequest* req, void* hookData)
 {
-    struct parsegraph_ChunkedPageRequest* cpr;
+    struct marla_ChunkedPageRequest* cpr;
     if(!strcmp(req->uri, "/about")) {
-        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
         cpr->handler = makeAboutPage;
-        req->handle = parsegraph_chunkedRequestHandler;
+        req->handle = marla_chunkedRequestHandler;
         req->handleData = cpr;
     }
     else if(!strcmp(req->uri, "/contact")) {
-        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
         cpr->handler = makeContactPage;
-        req->handle = parsegraph_chunkedRequestHandler;
+        req->handle = marla_chunkedRequestHandler;
         req->handleData = cpr;
     }
     else {
-        cpr = parsegraph_ChunkedPageRequest_new(parsegraph_BUFSIZE, req);
+        cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
         cpr->handler = makeCounterPage;
-        req->handle = parsegraph_chunkedRequestHandler;
+        req->handle = marla_chunkedRequestHandler;
         req->handleData = cpr;
     }
-    return parsegraph_SERVER_HOOK_STATUS_OK;
+    return marla_SERVER_HOOK_STATUS_OK;
 }
 
-void module_servermod_init(struct parsegraph_Server* server, enum parsegraph_ServerModuleEvent e)
+void module_servermod_init(struct marla_Server* server, enum marla_ServerModuleEvent e)
 {
     switch(e) {
-    case parsegraph_EVENT_SERVER_MODULE_START:
-        parsegraph_Server_addHook(server, parsegraph_SERVER_HOOK_ROUTE, routeHook, 0);
+    case marla_EVENT_SERVER_MODULE_START:
+        marla_Server_addHook(server, marla_SERVER_HOOK_ROUTE, routeHook, 0);
         //printf("Module servermod loaded.\n");
         break;
-    case parsegraph_EVENT_SERVER_MODULE_STOP:
+    case marla_EVENT_SERVER_MODULE_STOP:
         break;
     }
 }

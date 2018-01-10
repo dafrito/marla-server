@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <string.h>
 #include <httpd.h>
 #include <http_config.h>
@@ -23,18 +23,18 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
 int main()
 {
     int CAP = 8;
-    parsegraph_Ring* ring = parsegraph_Ring_new(CAP);
+    marla_Ring* ring = marla_Ring_new(CAP);
 
     const char* line = "0123456789";
     int linelen = strlen(line) + 1;
-    int nwritten = parsegraph_Ring_write(ring, line, linelen);
+    int nwritten = marla_Ring_write(ring, line, linelen);
     if(nwritten > CAP) {
         fprintf(stderr, "nwritten > capacity\n");
         return 1;
     }
 
-    unsigned char out[parsegraph_BUFSIZE];
-    int nread = parsegraph_Ring_read(ring, out, CAP);
+    unsigned char out[marla_BUFSIZE];
+    int nread = marla_Ring_read(ring, out, CAP);
     if(nread != CAP) {
         fprintf(stderr, "nread(%d) must be equal to the capacity(%d)\n", nread, CAP);
         return 2;
@@ -45,6 +45,6 @@ int main()
         return 3;
     }
 
-    parsegraph_Ring_free(ring);
+    marla_Ring_free(ring);
     return 0;
 }

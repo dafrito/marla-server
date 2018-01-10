@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 
 static int ensure_po2(size_t given)
 {
@@ -9,13 +9,13 @@ static int ensure_po2(size_t given)
     return candidate == given;
 }
 
-parsegraph_Ring* parsegraph_Ring_new(size_t capacity)
+marla_Ring* marla_Ring_new(size_t capacity)
 {
     if(!ensure_po2(capacity)) {
         fprintf(stderr, "Rings must not be created with non power-of-two sizes, but %ld was given.\n", capacity);
         exit(-1);
     }
-    parsegraph_Ring* rv = malloc(sizeof(parsegraph_Ring));
+    marla_Ring* rv = malloc(sizeof(marla_Ring));
     rv->capacity = capacity;
     rv->buf = calloc(capacity, 1);
     rv->read_index = 0;
@@ -23,21 +23,21 @@ parsegraph_Ring* parsegraph_Ring_new(size_t capacity)
     return rv;
 }
 
-size_t parsegraph_Ring_size(parsegraph_Ring* ring)
+size_t marla_Ring_size(marla_Ring* ring)
 {
     return ring->write_index-ring->read_index;
 }
 
-size_t parsegraph_Ring_capacity(parsegraph_Ring* ring)
+size_t marla_Ring_capacity(marla_Ring* ring)
 {
     return ring->capacity;
 }
 
-int parsegraph_Ring_read(parsegraph_Ring* ring, unsigned char* sink, size_t size)
+int marla_Ring_read(marla_Ring* ring, unsigned char* sink, size_t size)
 {
     int nread = 0;
     for(unsigned i = 0; i < size; ++i) {
-        if(parsegraph_Ring_size(ring) == 0) {
+        if(marla_Ring_size(ring) == 0) {
             break;
         }
         sink[i] = ring->buf[(ring->read_index++) & (ring->capacity-1)];
@@ -46,33 +46,33 @@ int parsegraph_Ring_read(parsegraph_Ring* ring, unsigned char* sink, size_t size
     return nread;
 }
 
-unsigned char parsegraph_Ring_readc(parsegraph_Ring* ring)
+unsigned char marla_Ring_readc(marla_Ring* ring)
 {
-    if(parsegraph_Ring_size(ring) == 0) {
+    if(marla_Ring_size(ring) == 0) {
         return 0;
     }
     return ring->buf[(ring->read_index++) & (ring->capacity-1)];
 }
 
-size_t parsegraph_Ring_write(parsegraph_Ring* ring, const void* source, size_t size)
+size_t marla_Ring_write(marla_Ring* ring, const void* source, size_t size)
 {
     size_t nwritten = 0;
     for(unsigned i = 0; i < size; ++i) {
-        if(parsegraph_Ring_size(ring) == parsegraph_Ring_capacity(ring)) {
+        if(marla_Ring_size(ring) == marla_Ring_capacity(ring)) {
             return nwritten;
         }
         ++nwritten;
-        parsegraph_Ring_writec(ring, ((unsigned char*)source)[i]);
+        marla_Ring_writec(ring, ((unsigned char*)source)[i]);
     }
     return nwritten;
 }
 
-int parsegraph_Ring_writeStr(parsegraph_Ring* ring, const char* source)
+int marla_Ring_writeStr(marla_Ring* ring, const char* source)
 {
-    return parsegraph_Ring_write(ring, source, strlen(source));
+    return marla_Ring_write(ring, source, strlen(source));
 }
 
-void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen)
+void marla_Ring_writeSlot(marla_Ring* ring, void** slot, size_t* slotLen)
 {
     if(!slotLen) {
         fprintf(stderr, "slotLen must be given.");
@@ -82,7 +82,7 @@ void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotL
         fprintf(stderr, "slot must be given.");
         abort();
     }
-    if(parsegraph_Ring_size(ring) == parsegraph_Ring_capacity(ring)) {
+    if(marla_Ring_size(ring) == marla_Ring_capacity(ring)) {
         *slot = 0;
         *slotLen = 0;
         return;
@@ -98,7 +98,7 @@ void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotL
     }
     else if(index == rindex) {
         //fprintf(stderr, "windex(%ld) == rindex(%d)\n", index, rindex);
-        *slotLen = parsegraph_Ring_capacity(ring) - index;
+        *slotLen = marla_Ring_capacity(ring) - index;
     }
     else {
         // index < rindex
@@ -109,7 +109,7 @@ void parsegraph_Ring_writeSlot(parsegraph_Ring* ring, void** slot, size_t* slotL
     //fprintf(stderr, "windex(%d)\n", ring->write_index & capmask);
 }
 
-void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLen)
+void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen)
 {
     if(!slotLen) {
         fprintf(stderr, "slotLen must be given.\n");
@@ -126,11 +126,11 @@ void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLe
 
     if(windex > rindex) {
         // Write index > read index
-        *slotLen = parsegraph_Ring_size(ring);
+        *slotLen = marla_Ring_size(ring);
     }
     else if(windex < rindex) {
         // Write index < read index
-        *slotLen = parsegraph_Ring_capacity(ring) - rindex;
+        *slotLen = marla_Ring_capacity(ring) - rindex;
     }
     else if(ring->write_index > ring->read_index) {
         *slotLen = ring->capacity - rindex;
@@ -141,9 +141,9 @@ void parsegraph_Ring_readSlot(parsegraph_Ring* ring, void** slot, size_t* slotLe
     ring->read_index += *slotLen;
 }
 
-void parsegraph_Ring_simplify(parsegraph_Ring* ring)
+void marla_Ring_simplify(marla_Ring* ring)
 {
-    size_t size = parsegraph_Ring_size(ring);
+    size_t size = marla_Ring_size(ring);
     if(size == ring->capacity) {
         return;
     }
@@ -183,22 +183,22 @@ void parsegraph_Ring_simplify(parsegraph_Ring* ring)
     ring->read_index = 0;
 }
 
-void parsegraph_Ring_writec(parsegraph_Ring* ring, unsigned char source)
+void marla_Ring_writec(marla_Ring* ring, unsigned char source)
 {
     ring->buf[(ring->write_index++) & (ring->capacity-1)] = source;
 }
 
-void parsegraph_Ring_putback(parsegraph_Ring* ring, size_t count)
+void marla_Ring_putbackRead(marla_Ring* ring, size_t count)
 {
     ring->read_index -= count;
 }
 
-void parsegraph_Ring_putbackWrite(parsegraph_Ring* ring, size_t count)
+void marla_Ring_putbackWrite(marla_Ring* ring, size_t count)
 {
     ring->write_index -= count;
 }
 
-void parsegraph_Ring_free(parsegraph_Ring* ring)
+void marla_Ring_free(marla_Ring* ring)
 {
     free(ring->buf);
     free(ring);

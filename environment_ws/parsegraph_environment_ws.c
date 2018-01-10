@@ -1,7 +1,7 @@
 #include <sqlite3.h>
 #include <unistd.h>
 #include "prepare.h"
-#include "rainback.h"
+#include "marla.h"
 
 int openWorldStreams = 0;
 
@@ -13,7 +13,7 @@ static int acquireWorldStream();
 static int releaseWorldStream();
 
 static void
-callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent reason, void *in, int len)
+callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_ClientEvent reason, void *in, int len)
 {
     parsegraph_live_session* session = req->handleData;
 
@@ -21,7 +21,7 @@ callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parse
     int m, rv;
     static unsigned char buf[MAX_INIT_LENGTH];
     switch(reason) {
-    case parsegraph_EVENT_WEBSOCKET_CLOSE_REASON:
+    case marla_EVENT_WEBSOCKET_CLOSE_REASON:
         if(session->initialData != 0) {
             if(session->initialData->stage != 3 && !session->initialData->error) {
                 // World streaming interrupted, decrement usage counter.
@@ -36,7 +36,7 @@ callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parse
         }
         return;
 
-    case parsegraph_EVENT_WEBSOCKET_MUST_READ:
+    case marla_EVENT_WEBSOCKET_MUST_READ:
         if(session->envReceived < neededEnvLength) {
             if(session->envReceived + len < neededEnvLength) {
                 // Copy the whole thing.
@@ -64,7 +64,7 @@ callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parse
         strcpy(session->error, "Received extraneous data.");
         return;
 
-    case parsegraph_EVENT_HEADER:
+    case marla_EVENT_HEADER:
         if(!strcmp("Cookie", in)) {
             char* cookie = in + len;
             int cookie_len = strlen(cookie);
@@ -93,25 +93,31 @@ callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parse
 
                 if(cookieType == 1) {
                     // This cookie value is the session identifier; authenticate.
-                    char* sessionValue = strstr(cookie, "session=") + strlen("session=");
+                    marla_logMessagef(req->cxn->server, "Found session cookie.");
+                    char* sessionValue = partTok;
                     session->login.username = 0;
                     session->login.userId = -1;
                     if(sessionValue && 0 == parsegraph_deconstructSessionString(session->pool, sessionValue, &session->login.session_selector, &session->login.session_token)) {
                         parsegraph_UserStatus rv = parsegraph_refreshUserLogin(session->pool, controlDBD, &session->login);
                         if(rv != parsegraph_OK) {
+                            marla_logMessagef(req->cxn->server, "Failed to refresh session's login.");
                             strcpy(session->error, parsegraph_nameUserStatus(rv));
                             return;
                         }
 
                         parsegraph_UserStatus idRV = parsegraph_getIdForUsername(session->pool, controlDBD, session->login.username, &(session->login.userId));
                         if(parsegraph_isSeriousUserError(idRV)) {
+                            marla_logMessagef(req->cxn->server, "Failed to retrieve ID for authenticated login.");
                             strcpy(session->error, "Failed to retrieve ID for authenticated login.\n");
                             return;
-                        } }
+                        }
+                    }
                     if(!session->login.username) {
+                        marla_logMessagef(req->cxn->server, "Session does not match any user.");
                         strcpy(session->error, "Session does not match any user.");
                         return;
                     }
+                    marla_logMessagef(req->cxn->server, "Session matched user %s", session->login.username);
                     break;
                 }
                 else {
@@ -121,21 +127,15 @@ callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parse
                 tok = strtok_r(0, ";", &cookie_saveptr);
             }
         }
-        else {
-            void* myData = req->handleData;
-            req->handleData = session->default_handleData;
-            session->default_handler(req, reason, in, len);
-            session->default_handleData = req->handleData;
-            req->handleData = myData;
-        }
         break;
 
-    case parsegraph_EVENT_ACCEPTING_REQUEST:
+    case marla_EVENT_ACCEPTING_REQUEST:
+        marla_logMessagef(req->cxn->server, "Environment ws is accepting request.");
         *((int*)in) = 1;
         break;
 
-    case parsegraph_EVENT_WEBSOCKET_MUST_WRITE:
-    case parsegraph_EVENT_WEBSOCKET_RESPOND:
+    case marla_EVENT_WEBSOCKET_MUST_WRITE:
+    case marla_EVENT_WEBSOCKET_RESPOND:
         if(strlen(session->error) > 0) {
             if(!session->closed) {
                 session->closed = 1;
@@ -230,36 +230,27 @@ callback_parsegraph_environment(struct parsegraph_ClientRequest* req, enum parse
             }
         }*/
         break;
-
     default:
-        if(session) {
-            void* myData = req->handleData;
-            req->handleData = session->default_handleData;
-            session->default_handler(req, reason, in, len);
-            session->default_handleData = req->handleData;
-            req->handleData = myData;
-        }
         break;
     }
 
     return;
 }
 
-static enum parsegraph_ServerHookStatus routeHook(struct parsegraph_ClientRequest* req, void* hookData)
+static enum marla_ServerHookStatus routeHook(struct marla_ClientRequest* req, void* hookData)
 {
     if(!strcmp(req->uri, "/environment/live")) {
         struct parsegraph_live_session* hd = malloc(sizeof *hd);
-        hd->default_handler = req->handle;
-        hd->default_handleData = req->handleData;
         req->handleData = hd;
         req->handle = callback_parsegraph_environment;
         // Initialize the session structure.
+        marla_logMessagef(req->cxn->server, "Handling /environment/live websocket connection");
         if(0 != initialize_parsegraph_live_session(hd)) {
             //strcpy(session->error, "Error initializing session.");
             //return;
         }
     }
-    return parsegraph_SERVER_HOOK_STATUS_OK;
+    return marla_SERVER_HOOK_STATUS_OK;
 }
 
 static int prepareDBD(ap_dbd_t** dbdPointer)
@@ -306,7 +297,7 @@ static int prepareDBD(ap_dbd_t** dbdPointer)
     return 0;
 }
 
-static int initialize_module(struct parsegraph_Server* server)
+static int initialize_module(struct marla_Server* server)
 {
     struct timeval time;
     gettimeofday(&time,NULL);
@@ -380,12 +371,14 @@ static int initialize_module(struct parsegraph_Server* server)
         return -1;
     }
 
-    parsegraph_Server_addHook(server, parsegraph_SERVER_HOOK_ROUTE, routeHook, 0);
+    marla_Server_addHook(server, marla_SERVER_HOOK_ROUTE, routeHook, 0);
+
+    marla_logMessagef(server, "Completed environment ws initialization");
 
     return 0;
 }
 
-static int destroy_module(struct parsegraph_Server* server)
+static int destroy_module(struct marla_Server* server)
 {
     if(remove("rainback.pid") < 0) {
         fprintf(stderr, "Error %d while removing pid file: %s\n", errno, strerror(errno));
@@ -469,12 +462,12 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
 }
 
 int
-module_environment_ws_init(struct parsegraph_Server* server, enum parsegraph_ServerModuleEvent ev)
+module_environment_ws_init(struct marla_Server* server, enum marla_ServerModuleEvent ev)
 {
-    if(ev == parsegraph_EVENT_SERVER_MODULE_START) {
+    if(ev == marla_EVENT_SERVER_MODULE_START) {
         return initialize_module(server);
     }
-    if(ev == parsegraph_EVENT_SERVER_MODULE_STOP) {
+    if(ev == marla_EVENT_SERVER_MODULE_STOP) {
         return destroy_module(server);
     }
 }
@@ -558,7 +551,7 @@ int parsegraph_prepareEnvironment(parsegraph_live_session* session)
     return 0;
 }
 
-int parsegraph_printItem(parsegraph_ClientRequest* req, parsegraph_live_session* session, struct printing_item* level)
+int parsegraph_printItem(marla_ClientRequest* req, parsegraph_live_session* session, struct printing_item* level)
 {
     //fprintf(stderr, "PRINTING item\n");
     static char buf[65536];
@@ -595,13 +588,13 @@ int parsegraph_printItem(parsegraph_ClientRequest* req, parsegraph_live_session*
             }
 
             //fprintf(stderr, "printing stage 1\n");
-            if(parsegraph_writeWebSocketHeader(req, 1, written) < 0) {
+            if(marla_writeWebSocketHeader(req, 1, written) < 0) {
                 goto choked;
             }
-            int nwritten = parsegraph_Connection_write(req->cxn, buf, written);
+            int nwritten = marla_Connection_write(req->cxn, buf, written);
             if(nwritten < written) {
                 if(nwritten > 0) {
-                    parsegraph_Connection_putbackWrite(req->cxn, nwritten);
+                    marla_Connection_putbackWrite(req->cxn, nwritten);
                 }
                 goto choked;
             }
@@ -656,23 +649,23 @@ int parsegraph_printItem(parsegraph_ClientRequest* req, parsegraph_live_session*
             int written;
             if(level->parentLevel && (level->parentLevel->index < level->parentLevel->nvalues)) {
                 strcpy(buf, "]},");
-                if(parsegraph_writeWebSocketHeader(req, 1, strlen("]},")) < 0) {
+                if(marla_writeWebSocketHeader(req, 1, strlen("]},")) < 0) {
                     goto choked;
                 }
-                written = parsegraph_Connection_write(req->cxn, buf, strlen("]},"));
+                written = marla_Connection_write(req->cxn, buf, strlen("]},"));
                 if(written < strlen("]},")) {
                     if(written > 0) {
-                        parsegraph_Connection_putbackWrite(req->cxn, written);
+                        marla_Connection_putbackWrite(req->cxn, written);
                     }
                     goto choked;
                 }
             }
             else {
                 strcpy(buf, "]}");
-                written = parsegraph_Connection_write(req->cxn, buf, strlen("]}"));
+                written = marla_Connection_write(req->cxn, buf, strlen("]}"));
                 if(written < strlen("]}")) {
                     if(written > 0) {
-                        parsegraph_Connection_putbackWrite(req->cxn, written);
+                        marla_Connection_putbackWrite(req->cxn, written);
                     }
                     goto choked;
                 }

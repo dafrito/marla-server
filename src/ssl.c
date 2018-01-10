@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,9 +7,9 @@
 #include <errno.h>
 #include <openssl/err.h>
 
-static void common_SSL_return(parsegraph_Connection* cxn, int rv)
+static void common_SSL_return(marla_Connection* cxn, int rv)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     switch(SSL_get_error(cxnSource->ssl, rv)) {
     case SSL_ERROR_WANT_WRITE:
         cxn->wantsWrite = 1;
@@ -38,39 +38,45 @@ static void common_SSL_return(parsegraph_Connection* cxn, int rv)
     }
 }
 
-static int describeSSLSource(parsegraph_Connection* cxn, char* sink, size_t len)
+static int describeSSLSource(marla_Connection* cxn, char* sink, size_t len)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     memset(sink, 0, len);
     snprintf(sink, len, "FD %d SSL", cxnSource->fd);
     return 0;
 }
 
-static int readSSLSource(parsegraph_Connection* cxn, void* sink, size_t len)
+static int readSSLSource(marla_Connection* cxn, void* sink, size_t len)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     int nsslread = SSL_read(cxnSource->ssl, sink, len);
     if(nsslread <= 0) {
         common_SSL_return(cxn, nsslread);
         return -1;
     }
+    if(nsslread > 0) {
+        marla_logMessagecf(cxn->server, "I/O", "Read %d bytes over SSL.", nsslread);
+    }
     return nsslread;
 }
 
-static int writeSSLSource(parsegraph_Connection* cxn, void* source, size_t len)
+static int writeSSLSource(marla_Connection* cxn, void* source, size_t len)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     int nsslwritten = SSL_write(cxnSource->ssl, source, len);
     if(nsslwritten <= 0) {
         common_SSL_return(cxn, nsslwritten);
         return -1;
     }
+    if(nsslwritten > 0) {
+        marla_logMessagecf(cxn->server, "I/O", "Wrote %d bytes over SSL.", nsslwritten);
+    }
     return nsslwritten;
 }
 
-static void acceptSSLSource(parsegraph_Connection* cxn)
+static void acceptSSLSource(marla_Connection* cxn)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     int rv = SSL_accept(cxnSource->ssl);
     if(rv == 0) {
         // Shutdown controlled
@@ -83,12 +89,12 @@ static void acceptSSLSource(parsegraph_Connection* cxn)
     }
 
     // Accepted and secured.
-    cxn->stage = parsegraph_CLIENT_SECURED;
+    cxn->stage = marla_CLIENT_SECURED;
 }
 
-static int shutdownSSLSource(parsegraph_Connection* cxn)
+static int shutdownSSLSource(marla_Connection* cxn)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     int rv = SSL_shutdown(cxnSource->ssl);
     if(rv == 1) {
         //fprintf(stderr, "SSL Shutdown completed\n");
@@ -111,17 +117,17 @@ static int shutdownSSLSource(parsegraph_Connection* cxn)
     return rv;
 }
 
-static void destroySSLSource(parsegraph_Connection* cxn)
+static void destroySSLSource(marla_Connection* cxn)
 {
-    parsegraph_SSLSource* cxnSource = cxn->source;
+    marla_SSLSource* cxnSource = cxn->source;
     SSL_free(cxnSource->ssl);
     close(cxnSource->fd);
     free(cxn->source);
 }
 
-int parsegraph_SSL_init(parsegraph_Connection* cxn, SSL_CTX* ctx, int fd)
+int marla_SSL_init(marla_Connection* cxn, SSL_CTX* ctx, int fd)
 {
-    parsegraph_SSLSource* source = malloc(sizeof *source);
+    marla_SSLSource* source = malloc(sizeof *source);
     cxn->source = source;
     cxn->readSource = readSSLSource;
     cxn->writeSource = writeSSLSource;

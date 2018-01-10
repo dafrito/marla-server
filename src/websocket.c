@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -7,16 +7,16 @@
 #include <errno.h>
 #include <openssl/err.h>
 
-parsegraph_Connection* parsegraph_WebSocket_connect(int fd)
+marla_Connection* marla_WebSocket_connect(int fd)
 {
-    parsegraph_Connection* cxn = parsegraph_Connection_new(fd);
-    cxn->type = parsegraph_ConnectionNature_WEBSOCKET;
+    marla_Connection* cxn = marla_Connection_new(fd);
+    cxn->type = marla_ConnectionNature_WEBSOCKET;
     return cxn;
 }
 
-void parsegraph_WebSocket_handle(parsegraph_Connection* backend, int event)
+void marla_WebSocket_handle(marla_Connection* backend, int event)
 {
-    if(backend->type != parsegraph_ConnectionNature_WEBSOCKET) {
+    if(backend->type != marla_ConnectionNature_WEBSOCKET) {
         return;
     }
 

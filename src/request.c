@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <math.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -10,106 +10,106 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 
-void parsegraph_killClientRequest(struct parsegraph_ClientRequest* req, const char* reason, ...)
+void marla_killClientRequest(struct marla_ClientRequest* req, const char* reason, ...)
 {
     va_list ap;
     va_start(ap, reason);
     vsnprintf(req->error, sizeof req->error, reason, ap);
-    req->cxn->stage = parsegraph_CLIENT_COMPLETE;
+    req->cxn->stage = marla_CLIENT_COMPLETE;
     va_end(ap);
 }
 
-const char* parsegraph_nameRequestReadStage(enum parsegraph_RequestReadStage stage)
+const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
 {
     switch(stage) {
-    case parsegraph_BACKEND_REQUEST_AWAITING_RESPONSE:
+    case marla_BACKEND_REQUEST_AWAITING_RESPONSE:
         return "BACKEND_REQUEST_AWAITING_RESPONSE";
-    case parsegraph_CLIENT_REQUEST_READ_FRESH:
+    case marla_CLIENT_REQUEST_READ_FRESH:
         return "CLIENT_REQUEST_READ_FRESH";
-    case parsegraph_BACKEND_REQUEST_FRESH:
+    case marla_BACKEND_REQUEST_FRESH:
         return "BACKEND_REQUEST_FRESH";
-    case parsegraph_CLIENT_REQUEST_READING_METHOD:
+    case marla_CLIENT_REQUEST_READING_METHOD:
         return "CLIENT_REQUEST_READING_METHOD";
-    case parsegraph_CLIENT_REQUEST_PAST_METHOD:
+    case marla_CLIENT_REQUEST_PAST_METHOD:
         return "CLIENT_REQUEST_PAST_METHOD";
-    case parsegraph_CLIENT_REQUEST_READING_REQUEST_TARGET:
+    case marla_CLIENT_REQUEST_READING_REQUEST_TARGET:
         return "CLIENT_REQUEST_READING_REQUEST_TARGET";
-    case parsegraph_CLIENT_REQUEST_PAST_REQUEST_TARGET:
+    case marla_CLIENT_REQUEST_PAST_REQUEST_TARGET:
         return "CLIENT_REQUEST_PAST_REQUEST_TARGET";
-    case parsegraph_CLIENT_REQUEST_READING_VERSION:
+    case marla_CLIENT_REQUEST_READING_VERSION:
         return "CLIENT_REQUEST_READING_VERSION";
-    case parsegraph_BACKEND_REQUEST_WRITTEN:
+    case marla_BACKEND_REQUEST_WRITTEN:
         return "BACKEND_REQUEST_WRITTEN";
-    case parsegraph_BACKEND_REQUEST_READING_HEADERS:
+    case marla_BACKEND_REQUEST_READING_HEADERS:
         return "BACKEND_REQUEST_READING_HEADERS";
-    case parsegraph_CLIENT_REQUEST_READING_FIELD:
+    case marla_CLIENT_REQUEST_READING_FIELD:
         return "CLIENT_REQUEST_READING_FIELD";
-    case parsegraph_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE:
+    case marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE:
         return "CLIENT_REQUEST_AWAITING_CONTINUE_WRITE";
-    case parsegraph_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE:
+    case marla_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE:
         return "CLIENT_REQUEST_AWAITING_UPGRADE_WRITE";
-    case parsegraph_CLIENT_REQUEST_READING_REQUEST_BODY:
+    case marla_CLIENT_REQUEST_READING_REQUEST_BODY:
         return "CLIENT_REQUEST_READING_REQUEST_BODY";
-    case parsegraph_BACKEND_REQUEST_READING_RESPONSE_BODY:
+    case marla_BACKEND_REQUEST_READING_RESPONSE_BODY:
         return "BACKEND_REQUEST_READING_RESPONSE_BODY";
-    case parsegraph_CLIENT_REQUEST_READING_CHUNK_SIZE:
+    case marla_CLIENT_REQUEST_READING_CHUNK_SIZE:
         return "CLIENT_REQUEST_READING_CHUNK_SIZE";
-    case parsegraph_CLIENT_REQUEST_READING_CHUNK_BODY:
+    case marla_CLIENT_REQUEST_READING_CHUNK_BODY:
         return "CLIENT_REQUEST_READING_CHUNK_BODY";
-    case parsegraph_CLIENT_REQUEST_READING_TRAILER:
+    case marla_CLIENT_REQUEST_READING_TRAILER:
         return "CLIENT_REQUEST_READING_TRAILER";
-    case parsegraph_BACKEND_REQUEST_READING_RESPONSE_TRAILER:
+    case marla_BACKEND_REQUEST_READING_RESPONSE_TRAILER:
         return "BACKEND_REQUEST_READING_RESPONSE_TRAILER";
-    case parsegraph_BACKEND_REQUEST_RESPONDING:
+    case marla_BACKEND_REQUEST_RESPONDING:
         return "BACKEND_REQUEST_RESPONDING";
-    case parsegraph_CLIENT_REQUEST_WEBSOCKET:
+    case marla_CLIENT_REQUEST_WEBSOCKET:
         return "CLIENT_REQUEST_WEBSOCKET";
-    case parsegraph_BACKEND_REQUEST_DONE_READING:
+    case marla_BACKEND_REQUEST_DONE_READING:
         return "BACKEND_REQUEST_DONE_READING";
-    case parsegraph_CLIENT_REQUEST_DONE_READING:
+    case marla_CLIENT_REQUEST_DONE_READING:
         return "CLIENT_REQUEST_DONE_READING";
     }
     return "?";
 }
 
-const char* parsegraph_nameRequestWriteStage(enum parsegraph_RequestWriteStage stage)
+const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
 {
     switch(stage) {
 
-    case parsegraph_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT:
+    case marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT:
         return "CLIENT_REQUEST_WRITE_AWAITING_ACCEPT";
-    case parsegraph_CLIENT_REQUEST_WRITING_CONTINUE:
+    case marla_CLIENT_REQUEST_WRITING_CONTINUE:
         return "CLIENT_REQUEST_WRITING_CONTINUE";
-    case parsegraph_CLIENT_REQUEST_WRITING_UPGRADE:
+    case marla_CLIENT_REQUEST_WRITING_UPGRADE:
         return "CLIENT_REQUEST_WRITING_UPGRADE";
-    case parsegraph_CLIENT_REQUEST_DONE_WRITING:
+    case marla_CLIENT_REQUEST_DONE_WRITING:
         return "CLIENT_REQUEST_DONE_WRITING";
-    case parsegraph_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE:
+    case marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE:
         return "CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE";
-    case parsegraph_CLIENT_REQUEST_WRITING_RESPONSE:
+    case marla_CLIENT_REQUEST_WRITING_RESPONSE:
         return "CLIENT_REQUEST_WRITING_RESPONSE";
     }
     return "?";
 }
 
-int parsegraph_ClientRequest_NEXT_ID = 1;
+int marla_ClientRequest_NEXT_ID = 1;
 
-parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cxn)
+marla_ClientRequest* marla_ClientRequest_new(marla_Connection* cxn)
 {
-    parsegraph_ClientRequest* req = malloc(sizeof(parsegraph_ClientRequest));
+    marla_ClientRequest* req = malloc(sizeof(marla_ClientRequest));
     req->cxn = cxn;
     req->statusCode = 0;
     memset(req->statusLine, 0, sizeof req->statusLine);
 
-    req->id = parsegraph_ClientRequest_NEXT_ID++;
+    req->id = marla_ClientRequest_NEXT_ID++;
 
     req->handle = 0;
     req->handleData = 0;
-    req->readStage = parsegraph_CLIENT_REQUEST_READ_FRESH;
-    req->writeStage = parsegraph_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT;
+    req->readStage = marla_CLIENT_REQUEST_READ_FRESH;
+    req->writeStage = marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT;
 
     // Counters
-    req->contentLen = parsegraph_MESSAGE_LENGTH_UNKNOWN;
+    req->contentLen = marla_MESSAGE_LENGTH_UNKNOWN;
     req->totalContentLen = 0;
     req->chunkSize = 0;
 
@@ -155,10 +155,10 @@ parsegraph_ClientRequest* parsegraph_ClientRequest_new(parsegraph_Connection* cx
     return req;
 }
 
-void parsegraph_ClientRequest_destroy(parsegraph_ClientRequest* req)
+void marla_ClientRequest_destroy(marla_ClientRequest* req)
 {
     if(req->handle) {
-        req->handle(req, parsegraph_EVENT_DESTROYING, 0, 0);
+        req->handle(req, marla_EVENT_DESTROYING, 0, 0);
     }
     free(req);
 }

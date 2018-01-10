@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <stdio.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -15,7 +15,7 @@
 #include <ncurses.h>
 #include <locale.h>
 
-extern int parsegraph_ClientRequest_NEXT_ID;
+extern int marla_ClientRequest_NEXT_ID;
 
 static char status_line[255];
 
@@ -40,7 +40,7 @@ void* terminal_operator(void* data)
 {
     signal(SIGWINCH, SIG_IGN);
 
-    struct parsegraph_Server* server = (struct parsegraph_Server*)data;
+    struct marla_Server* server = (struct marla_Server*)data;
     setlocale(LC_ALL, "");
     initscr();
     cbreak();
@@ -64,10 +64,10 @@ void* terminal_operator(void* data)
             // Process a character of input.
             switch(c) {
             case KEY_F(8):
-                //if(server->server_status == parsegraph_SERVER_DESTROYING) {
+                //if(server->server_status == marla_SERVER_DESTROYING) {
                     end_terminal = 1;
                 //}
-                server->server_status = parsegraph_SERVER_DESTROYING;
+                server->server_status = marla_SERVER_DESTROYING;
                 kill(0, SIGUSR1);
                 break;
             case KEY_LEFT:
@@ -110,7 +110,7 @@ void* terminal_operator(void* data)
 
         struct timespec req;
         req.tv_sec = 0;
-        req.tv_nsec = 1e9/24;
+        req.tv_nsec = 1e9/12;
         if(0 == pthread_mutex_timedlock(&server->server_mutex, &req)) {
             // No more input, draw screen.
             clear();
@@ -134,7 +134,7 @@ void* terminal_operator(void* data)
             addnstr(buf, len);
 
             move(++y, 0);
-            len = snprintf(buf, sizeof buf, "Marla: PID %d, server port %s %s, backend port %s", curpid, server->serverport, parsegraph_nameServerStatus(server->server_status), server->backendport);
+            len = snprintf(buf, sizeof buf, "Marla: PID %d, server port %s %s, backend port %s, logging port %s", curpid, server->serverport, marla_nameServerStatus(server->server_status), server->backendport, server->logaddress);
             addnstr(buf, len);
 
             // Print status line
@@ -152,14 +152,14 @@ void* terminal_operator(void* data)
 
             if(mode == TerminalPageMode_Statistics) {
                 move(++y, 0);
-                len = snprintf(buf, sizeof buf, "%d request%s served", (parsegraph_ClientRequest_NEXT_ID-1), parsegraph_ClientRequest_NEXT_ID == 2 ? "" : "s");
+                len = snprintf(buf, sizeof buf, "%d request%s served", (marla_ClientRequest_NEXT_ID-1), marla_ClientRequest_NEXT_ID == 2 ? "" : "s");
+                addnstr(buf, len);
+                move(++y, 0);
+                len = snprintf(buf, sizeof buf, "%ld bytes in log buffer", marla_Ring_size(server->log));
                 addnstr(buf, len);
             }
-            else if(mode == TerminalPageMode_Log) {
-                addnstr(server->logbuf, server->logindex);
-            }
             else if(mode == TerminalPageMode_Connections) {
-                struct parsegraph_Connection* cxn = server->first_connection;
+                struct marla_Connection* cxn = server->first_connection;
 
                 char sourceStr[64];
                 while(cxn) {
@@ -167,7 +167,7 @@ void* terminal_operator(void* data)
                     move(++y, 0);
                     if(cxn->requests_in_process > 0) {
                         len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s | %s | %s",
-                            parsegraph_nameConnectionStage(cxn->stage),
+                            marla_nameConnectionStage(cxn->stage),
                             cxn->requests_in_process,
                             cxn->input->write_index & (cxn->input->capacity-1),
                             cxn->input->read_index & (cxn->input->capacity-1),
@@ -176,13 +176,13 @@ void* terminal_operator(void* data)
                             cxn->output->read_index & (cxn->output->capacity-1),
                             cxn->output->capacity,
                             sourceStr,
-                            (cxn->current_request ? parsegraph_nameRequestWriteStage(cxn->current_request->writeStage) : ""),
-                            (cxn->latest_request ? parsegraph_nameRequestReadStage(cxn->latest_request->readStage) : "")
+                            (cxn->current_request ? marla_nameRequestWriteStage(cxn->current_request->writeStage) : ""),
+                            (cxn->latest_request ? marla_nameRequestReadStage(cxn->latest_request->readStage) : "")
                         );
                     }
                     else {
                         len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s",
-                            parsegraph_nameConnectionStage(cxn->stage),
+                            marla_nameConnectionStage(cxn->stage),
                             cxn->requests_in_process,
                             cxn->input->write_index & (cxn->input->capacity-1),
                             cxn->input->read_index & (cxn->input->capacity-1),
@@ -205,7 +205,7 @@ void* terminal_operator(void* data)
                 abort();
             }
         }
-        if(end_terminal && server->server_status == parsegraph_SERVER_DESTROYING) {
+        if(end_terminal && server->server_status == marla_SERVER_DESTROYING) {
             break;
         }
         struct timespec rem;

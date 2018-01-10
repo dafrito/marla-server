@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <string.h>
 #include <httpd.h>
 #include <http_config.h>
@@ -23,20 +23,20 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
 int main()
 {
     int CAP = 1024;
-    parsegraph_Ring* ring = parsegraph_Ring_new(CAP);
+    marla_Ring* ring = marla_Ring_new(CAP);
 
     const char* line = "0123456789";
-    int nwritten = parsegraph_Ring_write(ring, line, 4);
+    int nwritten = marla_Ring_write(ring, line, 4);
     if(nwritten > CAP) {
         fprintf(stderr, "nwritten > capacity\n");
         return 1;
     }
 
-    parsegraph_Ring_putbackWrite(ring, 1);
-    parsegraph_Ring_writec(ring, 'P');
+    marla_Ring_putbackWrite(ring, 1);
+    marla_Ring_writec(ring, 'P');
 
-    unsigned char out[parsegraph_BUFSIZE];
-    int nread = parsegraph_Ring_read(ring, out, CAP);
+    unsigned char out[marla_BUFSIZE];
+    int nread = marla_Ring_read(ring, out, CAP);
     if(nread != 4) {
         fprintf(stderr, "nread(%d) must be equal to 4, the expected number of written characters.", nread);
         return 2;
@@ -47,13 +47,13 @@ int main()
         return 3;
     }
 
-    parsegraph_Ring_putback(ring, 1);
-    char c = parsegraph_Ring_readc(ring);
+    marla_Ring_putbackRead(ring, 1);
+    char c = marla_Ring_readc(ring);
     if(c != 'P') {
         fprintf(stderr, "P must be found once putback.\n");
         return 4;
     }
 
-    parsegraph_Ring_free(ring);
+    marla_Ring_free(ring);
     return 0;
 }

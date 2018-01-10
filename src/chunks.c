@@ -1,39 +1,39 @@
-#include "rainback.h"
+#include "marla.h"
 
-const char* parsegraph_nameChunkResponseStage(enum parsegraph_ChunkResponseStage stage)
+const char* marla_nameChunkResponseStage(enum marla_ChunkResponseStage stage)
 {
     switch(stage) {
-    case parsegraph_CHUNK_RESPONSE_GENERATE:
+    case marla_CHUNK_RESPONSE_GENERATE:
         return "CHUNK_RESPONSE_GENERATE";
-    case parsegraph_CHUNK_RESPONSE_HEADER:
+    case marla_CHUNK_RESPONSE_HEADER:
         return "CHUNK_RESPONSE_HEADER";
-    case parsegraph_CHUNK_RESPONSE_RESPOND:
+    case marla_CHUNK_RESPONSE_RESPOND:
         return "CHUNK_RESPONSE_RESPOND";
-    case parsegraph_CHUNK_RESPONSE_TRAILER:
+    case marla_CHUNK_RESPONSE_TRAILER:
         return "CHUNK_RESPONSE_TRAILER";
-    case parsegraph_CHUNK_RESPONSE_DONE:
+    case marla_CHUNK_RESPONSE_DONE:
         return "CHUNK_RESPONSE_DONE";
     }
     return "";
 }
 
-struct parsegraph_ChunkedPageRequest* parsegraph_ChunkedPageRequest_new(size_t bufSize, parsegraph_ClientRequest* req)
+struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, marla_ClientRequest* req)
 {
     if(!req) {
         fprintf(stderr, "No request given.\n");
         abort();
     }
-    struct parsegraph_ChunkedPageRequest* cpr = malloc(sizeof(struct parsegraph_ChunkedPageRequest));
+    struct marla_ChunkedPageRequest* cpr = malloc(sizeof(struct marla_ChunkedPageRequest));
     cpr->req = req;
-    cpr->input = parsegraph_Ring_new(bufSize);
-    cpr->stage = parsegraph_CHUNK_RESPONSE_GENERATE;
+    cpr->input = marla_Ring_new(bufSize);
+    cpr->stage = marla_CHUNK_RESPONSE_GENERATE;
     cpr->handleStage = 0;
     cpr->index = 0;
     cpr->handleData = 0;
     return cpr;
 }
 
-void parsegraph_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
+void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
 {
     // Incorporate message padding into chunk.
     size_t suffix_len = 2;
@@ -65,33 +65,33 @@ void parsegraph_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size
     *availUsed = slotLen - *prefix_len - suffix_len;
 }
 
-int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_Ring* output)
+int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)
 {
-    int avail = parsegraph_Ring_size(cpr->input);
+    int avail = marla_Ring_size(cpr->input);
     if(avail == 0) {
-        cpr->stage = parsegraph_CHUNK_RESPONSE_TRAILER;
+        cpr->stage = marla_CHUNK_RESPONSE_TRAILER;
         //fprintf(stderr, "Chunk input buffer was empty.\n");
         return -1;
     }
-    if(parsegraph_Ring_size(output) == parsegraph_Ring_capacity(output)) {
+    if(marla_Ring_size(output) == marla_Ring_capacity(output)) {
         // Output ring is full.
         return -1;
     }
     void* slotData;
     size_t slotLen;
-    parsegraph_Ring_writeSlot(output, &slotData, &slotLen);
+    marla_Ring_writeSlot(output, &slotData, &slotLen);
 
     // Ignore slots of insufficient size.
     //fprintf(stderr, "output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
     if(slotLen <= 5) {
-        parsegraph_Ring_putbackWrite(output, slotLen);
+        marla_Ring_putbackWrite(output, slotLen);
         //fprintf(stderr, "presimplifying. output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
-        parsegraph_Ring_simplify(output);
+        marla_Ring_simplify(output);
         //fprintf(stderr, "postsimplifying. output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
-        parsegraph_Ring_writeSlot(output, &slotData, &slotLen);
+        marla_Ring_writeSlot(output, &slotData, &slotLen);
         if(slotLen <= 5) {
-            //fprintf(stderr, "Slot provided is of insufficient size (%ld). Size=%ld, rindex=%d, windex=%d\n", slotLen, parsegraph_Ring_size(cpr->req->cxn->output), cpr->req->cxn->output->read_index, cpr->req->cxn->output->write_index);
-            parsegraph_Ring_putbackWrite(output, slotLen);
+            //fprintf(stderr, "Slot provided is of insufficient size (%ld). Size=%ld, rindex=%d, windex=%d\n", slotLen, marla_Ring_size(cpr->req->cxn->output), cpr->req->cxn->output->read_index, cpr->req->cxn->output->write_index);
+            marla_Ring_putbackWrite(output, slotLen);
             return -1;
         }
     }
@@ -100,10 +100,10 @@ int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_
 
     size_t prefix_len;
     size_t availUsed;
-    parsegraph_measureChunk(slotLen, avail, &prefix_len, &availUsed);
+    marla_measureChunk(slotLen, avail, &prefix_len, &availUsed);
     size_t padding = prefix_len + 2;
     if(slotLen > availUsed + prefix_len + 2) {
-        parsegraph_Ring_putbackWrite(output, slotLen - (availUsed + prefix_len + 2));
+        marla_Ring_putbackWrite(output, slotLen - (availUsed + prefix_len + 2));
         slotLen = availUsed + prefix_len + 2;
     }
 
@@ -125,7 +125,7 @@ int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_
         fprintf(stderr, "Realized prefix length %d must match the calculated prefix length %ld for %d bytes avail with slotLen of %ld (%ld padding).\n", true_prefix_size, prefix_len, avail, slotLen, padding);
         abort();
     }
-    int true_written = parsegraph_Ring_read(cpr->input, slot + prefix_len, availUsed);
+    int true_written = marla_Ring_read(cpr->input, slot + prefix_len, availUsed);
     if(true_written != availUsed) {
         fprintf(stderr, "Realized written length %d must match the calculated written length %ld.\n", true_written, availUsed);
         abort();
@@ -137,91 +137,91 @@ int parsegraph_writeChunk(struct parsegraph_ChunkedPageRequest* cpr, parsegraph_
     return 0;
 }
 
-void parsegraph_ChunkedPageRequest_free(struct parsegraph_ChunkedPageRequest* cpr)
+void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr)
 {
-    parsegraph_Ring_free(cpr->input);
+    marla_Ring_free(cpr->input);
     free(cpr);
 }
 
-int parsegraph_ChunkedPageRequest_process(struct parsegraph_ChunkedPageRequest* cpr)
+int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
 {
     if(!cpr) {
         fprintf(stderr, "No chunked page request.\n");
         abort();
     }
 
-    if(cpr->stage == parsegraph_CHUNK_RESPONSE_GENERATE) {
+    if(cpr->stage == marla_CHUNK_RESPONSE_GENERATE) {
         if(!cpr->handler) {
-            parsegraph_killClientRequest(cpr->req, "No handler available to generate content.\n");
+            marla_killClientRequest(cpr->req, "No handler available to generate content.\n");
             return -1;
         }
-        cpr->stage = parsegraph_CHUNK_RESPONSE_HEADER;
+        cpr->stage = marla_CHUNK_RESPONSE_HEADER;
     }
 
-    if(cpr->stage == parsegraph_CHUNK_RESPONSE_HEADER) {
+    if(cpr->stage == marla_CHUNK_RESPONSE_HEADER) {
         const char* header = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/html\r\n\r\n";
         int needed = strlen(header);
-        int nwritten = parsegraph_Connection_write(cpr->req->cxn, header, needed);
+        int nwritten = marla_Connection_write(cpr->req->cxn, header, needed);
         if(nwritten < needed) {
             if(nwritten > 0) {
-                parsegraph_Connection_putbackWrite(cpr->req->cxn, nwritten);
+                marla_Connection_putbackWrite(cpr->req->cxn, nwritten);
             }
             //fprintf(stderr, "Failed to write complete response header.\n");
             return -1;
         }
-        cpr->stage = parsegraph_CHUNK_RESPONSE_RESPOND;
+        cpr->stage = marla_CHUNK_RESPONSE_RESPOND;
     }
 
-    while(cpr->stage == parsegraph_CHUNK_RESPONSE_RESPOND) {
+    while(cpr->stage == marla_CHUNK_RESPONSE_RESPOND) {
         if(!cpr->handler) {
-            parsegraph_killClientRequest(cpr->req, "No handler available to generate content.\n");
+            marla_killClientRequest(cpr->req, "No handler available to generate content.\n");
             return -1;
         }
-        //parsegraph_Connection_flush(cpr->req->cxn, 0);
+        //marla_Connection_flush(cpr->req->cxn, 0);
         cpr->handler(cpr);
-        if(0 != parsegraph_writeChunk(cpr, cpr->req->cxn->output)) {
-            if(cpr->stage != parsegraph_CHUNK_RESPONSE_RESPOND) {
+        if(0 != marla_writeChunk(cpr, cpr->req->cxn->output)) {
+            if(cpr->stage != marla_CHUNK_RESPONSE_RESPOND) {
                 break;
             }
             int nflushed = 0;
-            if(parsegraph_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
+            if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
                 fprintf(stderr, "writeChunk choked.\n");
                 return -1;
             }
         }
     }
 
-    if(cpr->stage == parsegraph_CHUNK_RESPONSE_TRAILER) {
-        int nwritten = parsegraph_Connection_write(cpr->req->cxn, "0\r\n\r\n", 5);
+    if(cpr->stage == marla_CHUNK_RESPONSE_TRAILER) {
+        int nwritten = marla_Connection_write(cpr->req->cxn, "0\r\n\r\n", 5);
         if(nwritten < 5) {
             if(nwritten > 0) {
-                parsegraph_Connection_putbackWrite(cpr->req->cxn, nwritten);
+                marla_Connection_putbackWrite(cpr->req->cxn, nwritten);
             }
             //fprintf(stderr, "writing trailer choked.\n");
             return -1;
         }
-        cpr->stage = parsegraph_CHUNK_RESPONSE_DONE;
+        cpr->stage = marla_CHUNK_RESPONSE_DONE;
     }
 
-    if(cpr->stage == parsegraph_CHUNK_RESPONSE_DONE) {
+    if(cpr->stage == marla_CHUNK_RESPONSE_DONE) {
         // Mark connection as complete.
-        cpr->req->writeStage = parsegraph_CLIENT_REQUEST_DONE_WRITING;
+        cpr->req->writeStage = marla_CLIENT_REQUEST_DONE_WRITING;
     }
 
     return 0;
 }
 
-void parsegraph_chunkedRequestHandler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
+void marla_chunkedRequestHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* data, int datalen)
 {
-    struct parsegraph_ChunkedPageRequest* cpr;
+    struct marla_ChunkedPageRequest* cpr;
     switch(ev) {
-    case parsegraph_EVENT_ACCEPTING_REQUEST:
+    case marla_EVENT_ACCEPTING_REQUEST:
         // Indicate accepted.
         *((int*)data) = 1;
         break;
-    case parsegraph_EVENT_RESPOND:
+    case marla_EVENT_RESPOND:
         cpr = req->handleData;
-        int rv = parsegraph_ChunkedPageRequest_process(cpr);
+        int rv = marla_ChunkedPageRequest_process(cpr);
         if(rv != 0) {
             // Indicate choked.
             *((int*)data) = 1;

@@ -1,4 +1,4 @@
-#include "rainback.h"
+#include "marla.h"
 #include <math.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -20,7 +20,7 @@
  *  %xA denotes a pong
  *  %xB-F are reserved for further control frames
  */
-int parsegraph_writeWebSocketHeader(struct parsegraph_ClientRequest* req, unsigned char opcode, uint64_t frameLen)
+int marla_writeWebSocketHeader(struct marla_ClientRequest* req, unsigned char opcode, uint64_t frameLen)
 {
     unsigned char out[7];
     int outlen = 2;
@@ -41,28 +41,28 @@ int parsegraph_writeWebSocketHeader(struct parsegraph_ClientRequest* req, unsign
     }
 
     // Write the header.
-    int nread = parsegraph_Connection_write(req->cxn, out, outlen);
+    int nread = marla_Connection_write(req->cxn, out, outlen);
     if(nread <= 0) {
         return nread;
     }
     if(nread < outlen) {
-        parsegraph_Connection_putbackWrite(req->cxn, nread);
+        marla_Connection_putbackWrite(req->cxn, nread);
         return -1;
     }
     return outlen;
 }
 
-int parsegraph_writeWebSocket(struct parsegraph_ClientRequest* req, unsigned char* data, int dataLen)
+int marla_writeWebSocket(struct marla_ClientRequest* req, unsigned char* data, int dataLen)
 {
-    return parsegraph_Connection_write(req->cxn, data, dataLen);
+    return marla_Connection_write(req->cxn, data, dataLen);
 }
 
-int parsegraph_readWebSocket(struct parsegraph_ClientRequest* req, unsigned char* data, int dataLen)
+int marla_readWebSocket(struct marla_ClientRequest* req, unsigned char* data, int dataLen)
 {
     if(dataLen > req->websocketFrameLen) {
         dataLen = req->websocketFrameLen;
     }
-    int nread = parsegraph_Connection_read(req->cxn, data, dataLen);
+    int nread = marla_Connection_read(req->cxn, data, dataLen);
     if(nread <= 0) {
         return nread;
     }
@@ -76,28 +76,28 @@ int parsegraph_readWebSocket(struct parsegraph_ClientRequest* req, unsigned char
     return nread;
 }
 
-void parsegraph_putbackWebSocket(struct parsegraph_ClientRequest* req, int dataLen)
+void marla_putbackWebSocket(struct marla_ClientRequest* req, int dataLen)
 {
-    parsegraph_Connection_putback(req->cxn, dataLen);
+    marla_Connection_putbackRead(req->cxn, dataLen);
     req->websocketFrameRead -= dataLen;
 }
 
 const char* SERVERPORT = 0;
 
-void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, enum parsegraph_ClientEvent ev, void* data, int datalen)
+void marla_default_websocket_handler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* data, int datalen)
 {
-    unsigned char buf[parsegraph_BUFSIZE + 1];
+    unsigned char buf[marla_BUFSIZE + 1];
     int nread;
     memset(buf, 0, sizeof buf);
 
     switch(ev) {
-    case parsegraph_EVENT_READ:
+    case marla_EVENT_READ:
         if(req->websocketFrameLen == 0) {
-            nread = parsegraph_Connection_read(req->cxn, req->websocket_frame, sizeof(req->websocket_frame));
+            nread = marla_Connection_read(req->cxn, req->websocket_frame, sizeof(req->websocket_frame));
             if(nread < 2) {
                 if(nread > 0) {
                     memset(req->websocket_frame, 0, sizeof req->websocket_frame);
-                    parsegraph_Connection_putback(req->cxn, nread);
+                    marla_Connection_putbackRead(req->cxn, nread);
                 }
                 return;
             }
@@ -161,7 +161,7 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
                     goto fail_connection;
                 }
                 if(nread < 4) {
-                    parsegraph_Connection_putback(req->cxn, nread);
+                    marla_Connection_putbackRead(req->cxn, nread);
                     memset(req->websocket_frame, 0, sizeof req->websocket_frame);
                     return;
                 }
@@ -172,23 +172,23 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
                     goto fail_connection;
                 }
                 if(nread < 10) {
-                    parsegraph_Connection_putback(req->cxn, nread);
+                    marla_Connection_putbackRead(req->cxn, nread);
                     memset(req->websocket_frame, 0, sizeof req->websocket_frame);
                     return;
                 }
                 payload_len = *(uint64_t*)(req->websocket_frame + 3);
             }
             else if(nread > 2) {
-                parsegraph_Connection_putback(req->cxn, nread - 2);
+                marla_Connection_putbackRead(req->cxn, nread - 2);
                 // Payload length is correct as-is.
             }
 
             // Read the mask.
             if(mask) {
-                nread = parsegraph_Connection_read(req->cxn, (unsigned char*)req->websocketMask, 4);
+                nread = marla_Connection_read(req->cxn, (unsigned char*)req->websocketMask, 4);
                 if(nread < 4) {
                     if(nread > 0) {
-                        parsegraph_Connection_putback(req->cxn, nread);
+                        marla_Connection_putbackRead(req->cxn, nread);
                     }
                     return;
                 }
@@ -205,26 +205,26 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
                 // Close frame.
                 if(req->websocketFrameRead == 0) {
                     unsigned char code[2];
-                    nread = parsegraph_readWebSocket(req, code, 2);
+                    nread = marla_readWebSocket(req, code, 2);
                     if(nread < 2) {
                         if(nread > 0) {
-                            parsegraph_Connection_putback(req->cxn, nread);
+                            marla_Connection_putbackRead(req->cxn, nread);
                         }
                         return;
                     }
-                    req->handle(req, parsegraph_EVENT_WEBSOCKET_CLOSING, code, 2);
+                    req->handle(req, marla_EVENT_WEBSOCKET_CLOSING, code, 2);
                     req->needWebSocketClose = 1;
                 }
 
-                nread = parsegraph_readWebSocket(req, req->websocket_ping + req->websocketFrameRead, req->websocketFrameLen - req->websocketFrameRead);
+                nread = marla_readWebSocket(req, req->websocket_ping + req->websocketFrameRead, req->websocketFrameLen - req->websocketFrameRead);
                 if(nread <= 0) {
                     return;
                 }
-                req->handle(req, parsegraph_EVENT_WEBSOCKET_CLOSE_REASON, req->websocket_ping + req->websocketFrameRead, nread);
+                req->handle(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, req->websocket_ping + req->websocketFrameRead, nread);
                 break;
             case 9:
                 // Ping frame.
-                nread = parsegraph_readWebSocket(req, req->websocket_ping + req->websocketFrameRead, req->websocketFrameLen - req->websocketFrameRead);
+                nread = marla_readWebSocket(req, req->websocket_ping + req->websocketFrameRead, req->websocketFrameLen - req->websocketFrameRead);
                 if(nread <= 0) {
                     return;
                 }
@@ -234,7 +234,7 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
                 if(req->websocket_pongLen != req->websocketFrameLen) {
                     goto fail_connection;
                 }
-                nread = parsegraph_readWebSocket(req, buf, sizeof buf);
+                nread = marla_readWebSocket(req, buf, sizeof buf);
                 if(nread <= 0) {
                     return;
                 }
@@ -247,15 +247,15 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
                 break;
             default:
                 // Data frame.
-                req->handle(req, parsegraph_EVENT_WEBSOCKET_MUST_READ, 0, 0);
+                req->handle(req, marla_EVENT_WEBSOCKET_MUST_READ, 0, 0);
             }
         }
 
         req->websocketFrameLen = 0;
         req->websocketFrameRead = 0;
         break;
-    case parsegraph_EVENT_WEBSOCKET_MUST_READ:
-        nread = parsegraph_readWebSocket(req, buf, sizeof buf);
+    case marla_EVENT_WEBSOCKET_MUST_READ:
+        nread = marla_readWebSocket(req, buf, sizeof buf);
         if(nread <= 0) {
             return;
         }
@@ -266,29 +266,29 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
 
         // Do nothing with it; only read.
         break;
-    case parsegraph_EVENT_RESPOND:
+    case marla_EVENT_RESPOND:
         // Finish writing the current frame.
         if(req->websocketFrameOutLen != 0) {
             if(req->doingWebSocketClose) {
-                int nwritten = parsegraph_writeWebSocket(req, req->websocket_closeReason + req->websocketFrameWritten, req->websocket_closeReasonLen - req->websocketFrameWritten);
+                int nwritten = marla_writeWebSocket(req, req->websocket_closeReason + req->websocketFrameWritten, req->websocket_closeReasonLen - req->websocketFrameWritten);
                 if(nwritten <= 0) {
                     return;
                 }
             }
             else if(req->doingPong) {
-                int nwritten = parsegraph_writeWebSocket(req, req->websocket_ping + req->websocketFrameWritten, req->websocket_pingLen - req->websocketFrameWritten);
+                int nwritten = marla_writeWebSocket(req, req->websocket_ping + req->websocketFrameWritten, req->websocket_pingLen - req->websocketFrameWritten);
                 if(nwritten <= 0) {
                     return;
                 }
             }
             else {
-                req->handle(req, parsegraph_EVENT_WEBSOCKET_MUST_WRITE, 0, 0);
+                req->handle(req, marla_EVENT_WEBSOCKET_MUST_WRITE, 0, 0);
             }
 
             if(req->websocketFrameOutLen == req->websocketFrameWritten) {
                 if(req->doingWebSocketClose) {
                     // Close the WebSocket connection.
-                    req->cxn->stage = parsegraph_CLIENT_COMPLETE;
+                    req->cxn->stage = marla_CLIENT_COMPLETE;
                     return;
                 }
                 if(req->doingPong) {
@@ -308,14 +308,14 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
         if(req->websocket_pingLen >= 0) {
             req->websocketFrameWritten = 0;
             req->websocketFrameOutLen = req->websocket_pingLen;
-            parsegraph_writeWebSocketHeader(req, 10, req->websocketFrameOutLen);
+            marla_writeWebSocketHeader(req, 10, req->websocketFrameOutLen);
             req->doingPong = 1;
         }
 
         // Check if the handler can respond.
-        req->handle(req, parsegraph_EVENT_WEBSOCKET_RESPOND, 0, 0);
+        req->handle(req, marla_EVENT_WEBSOCKET_RESPOND, 0, 0);
         break;
-    case parsegraph_EVENT_WEBSOCKET_MUST_WRITE:
+    case marla_EVENT_WEBSOCKET_MUST_WRITE:
         goto fail_connection;
     default:
         break;
@@ -323,5 +323,5 @@ void parsegraph_default_websocket_handler(struct parsegraph_ClientRequest* req, 
 
     return;
 fail_connection:
-    req->cxn->stage = parsegraph_CLIENT_COMPLETE;
+    req->cxn->stage = marla_CLIENT_COMPLETE;
 }

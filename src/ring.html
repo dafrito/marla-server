@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table
+{
+border-collapse: collapse;
+}
+table td, table th
+{
+border: 1px solid grey;
+}
+</style>
+<title>Rings - Marla</title>
+<link rel=stylesheet type=text/css href="style.css">
+</head>
+<body>
+<main class=content>
+<h1>Rings</h1>
+<h2>struct marla_Ring</h2>
+<table>
+<tr><th>Member<th>Description
+<tr><td>char* buf<td>Internal buffer.
+<tr><td>unsigned int read_index<td>Offset of the read head in the internal buffer. Not guaranteed to be in [0, capacity).
+<tr><td>unsigned int write_index<td>Offset of the write head in the internal buffer. Not guaranteed to be in [0, capacity).
+<tr><td>size_t capacity<td>Capacity, in bytes, of the internal buffer.
+</table>
+<h2>marla_Ring* marla_Ring_new(size_t capacity)</h2>
+Creates and returns a new marla_Ring with the specified capacity. The capacity must be a power of two.
+<h2>void marla_Ring_free(ring)</h2>
+Destroys and frees the given ring.
+<h2>unsigned int marla_Ring_size(ring)</h2>
+Returns the number of bytes available for reading from this ring.
+<h2>size_t marla_Ring_capacity(ring)</h2>
+Returns the capacity of the ring.
+<h2>char marla_Ring_readc(ring)</h2>
+Reads a single character from the ring.
+<h2>int marla_Ring_read(ring, char* sink, size_t size)</h2>
+Reads up to the specified number of bytes from the ring. The number of bytes actually read is returned.
+<h2>void marla_Ring_putbackRead(ring, size_t count)</h2>
+Reverses this ring's read head by the specified number of bytes.
+<h2>void marla_Ring_putbackWrite(ring, size_t count)</h2>
+Reverses this ring's write head by the specified number of bytes.
+<h2>size_t marla_Ring_write(ring, const char* source, size_t size)</h2>
+Writes up to the specified number of bytes from the given source to this ring. The number of bytes actually written is returned.
+<h2>void marla_Ring_writec(ring, char source)</h2>
+Writes the specified character to this ring.
+<h2>int marla_Ring_writeStr(ring, const char* source)</h2>
+Shorthand for <code>marla_Ring_write(ring, source, strlen(source))</code>.
+<h2>void marla_Ring_writeSlot(ring, void** slot, size_t* slotLen)</h2>
+Returns, in slot and slotLen, a continuous area of memory in this ring for which to write.
+<h2>void marla_Ring_readSlot(ring, void** slot, size_t* slotLen)</h2>
+Returns, in slot and slotLen, a continuous stretch of bytes to read from this ring.
+<h2>marla_BUFSIZE</h2>
+A power-of-two buffer size considered reasonable for normal use. Defined as 1,024 bytes. The server does not tolerate sizes smaller than 512 bytes.
+</main>
+<nav class=toc>
+<h3>Rings</h3>
+<ul>
+<li>struct <b>marla_Ring</b>
+<li>marla_Ring* <b>marla_Ring_new</b>(size_t capacity)
+<li>void <b>marla_Ring_free</b>(ring)
+<li>unsigned int <b>marla_Ring_size</b>(ring)
+<li>size_t <b>marla_Ring_capacity</b>(ring)
+<li>char <b>marla_Ring_readc</b>(ring)
+<li>int <b>marla_Ring_read</b>(ring, char* sink, size_t size)
+<li>void <b>marla_Ring_putbackRead</b>(ring, size_t count)
+<li>void <b>marla_Ring_putbackWrite</b>(ring, size_t count)
+<li>int <b>marla_Ring_write</b>(ring, const char* source, size_t size)
+<li>void <b>marla_Ring_writec</b>(ring, char source)
+<li>int <b>marla_Ring_writeStr</b>(ring, const char* source)
+<li>void <b>marla_Ring_writeSlot</b>(ring, void** slot, size_t* slotLen)
+<li>void <b>marla_Ring_readSlot</b>(ring, void** slot, size_t* slotLen)
+<li><b>marla_BUFSIZE</b>
+</nav>
+</body>
+</html>

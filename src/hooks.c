@@ -1,12 +1,12 @@
-#include "rainback.h"
+#include "marla.h"
 
-void parsegraph_Server_addHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*), void* hookData)
+void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
 {
-    struct parsegraph_HookEntry* newHook = malloc(sizeof *newHook);
+    struct marla_HookEntry* newHook = malloc(sizeof *newHook);
     newHook->hookFunc = hookFunc;
     newHook->hookData = hookData;
     newHook->nextHook = 0;
-    struct parsegraph_HookList* hookList = server->hooks + serverHook;
+    struct marla_HookList* hookList = server->hooks + serverHook;
     if(hookList->lastHook) {
         hookList->lastHook->nextHook = newHook;
         newHook->prevHook = hookList->lastHook;
@@ -19,10 +19,10 @@ void parsegraph_Server_addHook(struct parsegraph_Server* server, enum parsegraph
     }
 }
 
-int parsegraph_Server_removeHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, enum parsegraph_ServerHookStatus(*hookFunc)(struct parsegraph_ClientRequest* req, void*), void* hookData)
+int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
 {
-    struct parsegraph_HookList* hookList = server->hooks + serverHook;
-    struct parsegraph_HookEntry* hook = hookList->firstHook;
+    struct marla_HookList* hookList = server->hooks + serverHook;
+    struct marla_HookEntry* hook = hookList->firstHook;
     while(hook) {
         if(hook->hookFunc != hookFunc || hook->hookData != hookData) {
             hook = hook->nextHook;
@@ -50,22 +50,22 @@ int parsegraph_Server_removeHook(struct parsegraph_Server* server, enum parsegra
     return -1;
 }
 
-void parsegraph_Server_invokeHook(struct parsegraph_Server* server, enum parsegraph_ServerHook serverHook, struct parsegraph_ClientRequest* req)
+void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)
 {
-    struct parsegraph_HookList* hookList = server->hooks + serverHook;
-    struct parsegraph_HookEntry* hook = hookList->firstHook;
+    struct marla_HookList* hookList = server->hooks + serverHook;
+    struct marla_HookEntry* hook = hookList->firstHook;
     while(hook) {
-        enum parsegraph_ServerHookStatus rv = hook->hookFunc(req, hook->hookData);
-        if(rv == parsegraph_SERVER_HOOK_STATUS_OK) {
+        enum marla_ServerHookStatus rv = hook->hookFunc(req, hook->hookData);
+        if(rv == marla_SERVER_HOOK_STATUS_OK) {
             hook = hook->nextHook;
             continue;
         }
-        if(rv == parsegraph_SERVER_HOOK_STATUS_CLOSE) {
+        if(rv == marla_SERVER_HOOK_STATUS_CLOSE) {
             // Close the connection.
-            req->cxn->stage = parsegraph_CLIENT_COMPLETE;
+            req->cxn->stage = marla_CLIENT_COMPLETE;
             return;
         }
-        if(rv == parsegraph_SERVER_HOOK_STATUS_COMPLETE) {
+        if(rv == marla_SERVER_HOOK_STATUS_COMPLETE) {
             // Stop handling the hook.
             return;
         }

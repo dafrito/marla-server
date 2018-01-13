@@ -26,6 +26,8 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
         return "BACKEND_REQUEST_AWAITING_RESPONSE";
     case marla_CLIENT_REQUEST_READ_FRESH:
         return "CLIENT_REQUEST_READ_FRESH";
+    case marla_BACKEND_REQUEST_READING_RESPONSE_LINE:
+        return "BACKEND_REQUEST_READING_RESPONSE_LINE";
     case marla_BACKEND_REQUEST_FRESH:
         return "BACKEND_REQUEST_FRESH";
     case marla_CLIENT_REQUEST_READING_METHOD:
@@ -38,8 +40,6 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
         return "CLIENT_REQUEST_PAST_REQUEST_TARGET";
     case marla_CLIENT_REQUEST_READING_VERSION:
         return "CLIENT_REQUEST_READING_VERSION";
-    case marla_BACKEND_REQUEST_WRITTEN:
-        return "BACKEND_REQUEST_WRITTEN";
     case marla_BACKEND_REQUEST_READING_HEADERS:
         return "BACKEND_REQUEST_READING_HEADERS";
     case marla_CLIENT_REQUEST_READING_FIELD:
@@ -68,6 +68,8 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
         return "BACKEND_REQUEST_DONE_READING";
     case marla_CLIENT_REQUEST_DONE_READING:
         return "CLIENT_REQUEST_DONE_READING";
+    case marla_BACKEND_REQUEST_AWAITING_ACCEPT:
+        return "BACKEND_REQUEST_AWAITING_ACCEPT";
     }
     return "?";
 }
@@ -75,7 +77,6 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
 const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
 {
     switch(stage) {
-
     case marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT:
         return "CLIENT_REQUEST_WRITE_AWAITING_ACCEPT";
     case marla_CLIENT_REQUEST_WRITING_CONTINUE:
@@ -88,6 +89,16 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
         return "CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE";
     case marla_CLIENT_REQUEST_WRITING_RESPONSE:
         return "CLIENT_REQUEST_WRITING_RESPONSE";
+    case marla_BACKEND_REQUEST_WRITING_HEADERS:
+        return "BACKEND_REQUEST_WRITING_HEADERS";
+    case marla_BACKEND_REQUEST_WRITING_REQUEST_LINE:
+        return "BACKEND_REQUEST_WRITING_REQUEST_LINE";
+    case marla_BACKEND_REQUEST_WRITING_REQUEST_BODY:
+        return "BACKEND_REQUEST_WRITING_TRAILERS";
+    case marla_BACKEND_REQUEST_WRITING_TRAILERS:
+        return "BACKEND_REQUEST_WRITING_TRAILERS";
+    case marla_BACKEND_REQUEST_DONE_WRITING:
+        return "BACKEND_REQUEST_DONE_WRITING";
     }
     return "?";
 }
@@ -144,6 +155,7 @@ marla_ClientRequest* marla_ClientRequest_new(marla_Connection* cxn)
     req->websocket_version = 13;
 
     // Flags
+    req->is_backend = 0;
     req->expect_continue = 0;
     req->expect_trailer = 0;
     req->expect_upgrade = 0;

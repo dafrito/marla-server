@@ -663,6 +663,5 @@ int main(int argc, char* argv[])
         printf("FAILED\n");
         ++failed;
     }
-    printf("Tests finished.\n");
     return failed;
 }

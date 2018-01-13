@@ -41,6 +41,8 @@ for client and backend reading, though the enum is still marla_RequestReadStage.
 <tr><td>marla_CLIENT_REQUEST_DONE_READING<td>After client's request.
 </table>
 <p>
+Backend stages:
+<p>
 <table>
 <tr><th>Constant<th>Backend parsing position
 <tr><td>marla_BACKEND_REQUEST_FRESH<td>Before or at backend's response line.
@@ -93,20 +95,28 @@ Flag that indicates the connection should be closed once the response is written
 <h2>enum marla_ClientEvent</h2>
 <table>
 <tr><th>Constant<th>Description<th>Meaning of data<th>Meaning of datalen
+<tr><td>marla_BACKEND_EVENT_NEED_HEADERS<td>The backend request is ready for its request headers. Pointer to integer. Set to -1 if choked and set to 1 when headers are fully written (i.e. terminated by \r\n\r\n)<td>None<td>None
+<tr><td>marla_BACKEND_EVENT_HEADER<td>Backend's HTTP header available to read. Name terminated by null.<td>HTTP header name and value.<td>Offset into HTTP header for reading header value.
+<tr><td>marla_BACKEND_EVENT_MUST_READ<td>The backend request's response is ready for reading.<td>None<td>None
+<tr><td>marla_BACKEND_EVENT_MUST_WRITE<td>The backend request's response is ready for writing.<td>None<td>None
+<tr><td>marla_BACKEND_EVENT_NEED_TRAILERS<td>The backend request is now expecting trailer fields.<td>Pointer to integer. Set to nonzero when trailers are fully written (i.e terminated by \r\n\r\n)<td>None
+<tr><td>marla_BACKEND_EVENT_CLIENT_PEER_CLOSED<td>The client request's connection was closed.<td>None<td>None
+<tr><td>marla_BACKEND_EVENT_CLOSING<td>The backend request's connection is closing.<td>None<td>None
+<tr><td>marla_EVENT_BACKEND_PEER_CLOSED<td>The backend request's connection was closed.<td>None<td>None
 <tr><td>marla_EVENT_HEADER<td>HTTP header available to read. Name terminated by null.<td>HTTP header name and value.<td>Offset into HTTP header for reading header value.
 <tr><td>marla_EVENT_ACCEPTING_REQUEST<td>Request headers read. Handler must accept request<td>Pointer to integer. If integer is set to nonzero, request is accepted.<td>None
-<tr><td>marla_EVENT_REQUEST_BODY<td>HTTP request body ready.
+<tr><td>marla_EVENT_REQUEST_BODY<td>HTTP request body ready.<td>None<td>None
 <tr><td>marla_EVENT_FORM_FIELD
-<tr><td>marla_EVENT_READ
-<tr><td>marla_EVENT_GENERATE,
+<tr><td>marla_EVENT_MUST_READ<td>Client data is available for reading<td>Pointer to integer. Set to nonzero if choked<td>None
+<tr><td>marla_EVENT_MUST_WRITE<td>Client request is expecting a response.Set request's writeStage to marla_CLIENT_REQUEST_DONE_WRITING when done writing.<td>Pointer to integer. Set to nonzero if choked<td>None
+
 <tr><td>marla_EVENT_WEBSOCKET_ESTABLISHED
 <tr><td>marla_EVENT_WEBSOCKET_MUST_READ
 <tr><td>marla_EVENT_WEBSOCKET_MUST_WRITE
 <tr><td>marla_EVENT_WEBSOCKET_RESPOND
-<tr><td>marla_EVENT_RESPOND
 <tr><td>marla_EVENT_WEBSOCKET_CLOSING
 <tr><td>marla_EVENT_WEBSOCKET_CLOSE_REASON
-<tr><td>marla_EVENT_DESTROYING
+<tr><td>marla_EVENT_DESTROYING<td>The request is about to be freed<td>None<td>None
 </table>
 <h2>const char* marla_nameClientEvent(enum marla_ClientEvent ev)</h2>
 Names the given client event.
@@ -123,6 +133,7 @@ Names the given client event.
 <tr><td>char uri[MAX_URI_LENGTH + 1]<td>HTTP request target
 <tr><td>char error[marla_BUFSIZE]<td>Error message
 <tr><td>char contentType[MAX_FIELD_VALUE_LENGTH + 1]<td>Content-Type header value
+<tr><td>int is_backend<td>Indicates if the client request is for a backend connection
 <tr><td>enum marla_RequestReadStage readStage<td>Request's read stage
 <tr><td>enum marla_RequestWriteStage writeStage<td>Request's write stage
 <tr><td>int expect_upgrade<td>Indicates this request expects an upgrade to a different protocol.

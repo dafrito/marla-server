@@ -135,13 +135,12 @@ callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_Clie
         break;
 
     case marla_EVENT_WEBSOCKET_MUST_WRITE:
-    case marla_EVENT_WEBSOCKET_RESPOND:
         if(strlen(session->error) > 0) {
             if(!session->closed) {
                 session->closed = 1;
                 //lws_close_reason(wsi, LWS_CLOSE_STATUS_UNEXPECTED_CONDITION, session->error, strlen(session->error));
             }
-            fprintf(stderr, "Closing connection. %s", session->error);
+            marla_logMessagef(req->cxn->server, "Closing connection. %s", session->error);
             return;
         }
         if(session->envReceived < neededEnvLength) {
@@ -237,7 +236,7 @@ callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_Clie
     return;
 }
 
-static enum marla_ServerHookStatus routeHook(struct marla_ClientRequest* req, void* hookData)
+static void routeHook(struct marla_ClientRequest* req, void* hookData)
 {
     if(!strcmp(req->uri, "/environment/live")) {
         struct parsegraph_live_session* hd = malloc(sizeof *hd);
@@ -250,7 +249,6 @@ static enum marla_ServerHookStatus routeHook(struct marla_ClientRequest* req, vo
             //return;
         }
     }
-    return marla_SERVER_HOOK_STATUS_OK;
 }
 
 static int prepareDBD(ap_dbd_t** dbdPointer)

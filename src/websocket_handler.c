@@ -84,14 +84,14 @@ void marla_putbackWebSocket(struct marla_ClientRequest* req, int dataLen)
 
 const char* SERVERPORT = 0;
 
-void marla_default_websocket_handler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* data, int datalen)
+void marla_websocketHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* data, int datalen)
 {
     unsigned char buf[marla_BUFSIZE + 1];
     int nread;
     memset(buf, 0, sizeof buf);
 
     switch(ev) {
-    case marla_EVENT_READ:
+    case marla_EVENT_MUST_READ:
         if(req->websocketFrameLen == 0) {
             nread = marla_Connection_read(req->cxn, req->websocket_frame, sizeof(req->websocket_frame));
             if(nread < 2) {
@@ -266,7 +266,7 @@ void marla_default_websocket_handler(struct marla_ClientRequest* req, enum marla
 
         // Do nothing with it; only read.
         break;
-    case marla_EVENT_RESPOND:
+    case marla_EVENT_MUST_WRITE:
         // Finish writing the current frame.
         if(req->websocketFrameOutLen != 0) {
             if(req->doingWebSocketClose) {
@@ -313,7 +313,7 @@ void marla_default_websocket_handler(struct marla_ClientRequest* req, enum marla
         }
 
         // Check if the handler can respond.
-        req->handle(req, marla_EVENT_WEBSOCKET_RESPOND, 0, 0);
+        req->handle(req, marla_EVENT_WEBSOCKET_MUST_WRITE, 0, 0);
         break;
     case marla_EVENT_WEBSOCKET_MUST_WRITE:
         goto fail_connection;

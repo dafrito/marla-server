@@ -142,7 +142,15 @@ int main(int argc, char* argv[])
     struct marla_Server server;
     marla_Server_init(&server);
 
+    int failed = 0;
     const char* port = argv[1];
     printf("test_simple:");
-    return test_simple(&server, port);
+    if(0 == test_simple(&server, port)) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+    return failed;
 }

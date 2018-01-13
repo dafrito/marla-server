@@ -226,3 +226,18 @@ void* terminal_operator(void* data)
     endwin();
     return 0;
 }
+
+void marla_die(marla_Server* server, const char* fmt, ...)
+{
+    server->server_status = marla_SERVER_DESTROYING;
+    if(server->terminal_thread) {
+        void* retval;
+        pthread_join(server->terminal_thread, &retval);
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    write(2, "\n", 1);
+    va_end(ap);
+    abort();
+}

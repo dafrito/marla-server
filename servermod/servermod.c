@@ -363,7 +363,98 @@ static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
     }
 }
 
-static enum marla_ServerHookStatus routeHook(struct marla_ClientRequest* req, void* hookData)
+static void backendHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* in, int len)
+{
+    fprintf(stderr, "BACKEND %s\n", marla_nameClientEvent(ev));
+
+    char buf[marla_BUFSIZE];
+    int bufLen;
+
+    switch(ev) {
+    case marla_BACKEND_EVENT_NEED_HEADERS:
+        strcpy(buf, "Host: localhost:8081\r\n\r\n");
+        bufLen = strlen(buf);
+        int nwritten = marla_Connection_write(req->cxn, buf, bufLen);
+        if(nwritten < bufLen) {
+            if(nwritten > 0) {
+                marla_Connection_putbackWrite(req->cxn, nwritten);
+            }
+            goto choked;
+        }
+        goto done;
+    case marla_BACKEND_EVENT_MUST_WRITE:
+        // Writing to the backend means flushing resp->input to the backend
+        // connection and potentially generating more content to fill it.
+        goto done;
+    case marla_BACKEND_EVENT_NEED_TRAILERS:
+        goto done;
+    default:
+        return;
+    }
+
+done:
+    (*(int*)in) = 1;
+    return;
+choked:
+    (*(int*)in) = -1;
+}
+
+static void marla_backendResponderClientHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* in, int len)
+{
+    fprintf(stderr, "Client %s\n", marla_nameClientEvent(ev));
+    marla_BackendResponder* resp;
+    switch(ev) {
+    case marla_EVENT_HEADER:
+        break;
+    case marla_EVENT_ACCEPTING_REQUEST:
+        // Accept the request.
+        (*(int*)in) = 1;
+
+        marla_ClientRequest* backendReq = marla_ClientRequest_new(req->cxn->server->backend);
+        strcpy(backendReq->uri, req->uri);
+        strcpy(backendReq->method, req->method);
+        backendReq->handle = backendHandler;
+        backendReq->handleData = marla_BackendResponder_new(marla_BUFSIZE, backendReq);
+
+        // Set backend peers.
+        backendReq->backendPeer = req;
+        req->backendPeer = backendReq;
+
+        // Enqueue the backend request.
+        fprintf(stderr, "ENQUEUED!!!\n");
+        marla_Backend_enqueue(req->cxn->server->backend, backendReq);
+
+        break;
+    case marla_EVENT_REQUEST_BODY:
+        fprintf(stderr, "REQUESTBODYWRITE!!!\n");
+        break;
+    case marla_EVENT_MUST_READ:
+        fprintf(stderr, "MUST READ!!!\n");
+        resp = req->backendPeer->handleData;
+        if(!resp) {
+            fprintf(stderr, "Backend peer must have responder handleData\n");
+            abort();
+        }
+        // Read the client's request body into resp->input and flush resp->input afterwards.
+        break;
+    case marla_EVENT_MUST_WRITE:
+        // Check the input buffer.
+        resp = req->backendPeer->handleData;
+        if(!resp) {
+            marla_die(req->cxn->server, "Backend peer must have responder handleData\n");
+        }
+        // Write resp->output to the client.
+        marla_BackendResponder_flushOutput(resp);
+        (*(int*)in) = -1;
+        break;
+    case marla_EVENT_DESTROYING:
+        break;
+    default:
+        break;
+    }
+}
+
+void routeHook(struct marla_ClientRequest* req, void* hookData)
 {
     struct marla_ChunkedPageRequest* cpr;
     if(!strcmp(req->uri, "/about")) {
@@ -371,20 +462,31 @@ static enum marla_ServerHookStatus routeHook(struct marla_ClientRequest* req, vo
         cpr->handler = makeAboutPage;
         req->handle = marla_chunkedRequestHandler;
         req->handleData = cpr;
+        return;
     }
-    else if(!strcmp(req->uri, "/contact")) {
+    if(!strcmp(req->uri, "/contact")) {
         cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
         cpr->handler = makeContactPage;
         req->handle = marla_chunkedRequestHandler;
         req->handleData = cpr;
+        return;
     }
-    else {
-        cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
-        cpr->handler = makeCounterPage;
-        req->handle = marla_chunkedRequestHandler;
-        req->handleData = cpr;
+    if(!strncmp(req->uri, "/user", 5)) {
+        // Check for suitable termination
+        if(req->uri[5] != 0 && req->uri[5] != '/' && req->uri[5] != '?') {
+            // Not really handled.
+            return;
+        }
+        // Install backend handler.
+        req->handle = marla_backendResponderClientHandler;
+        return;
     }
-    return marla_SERVER_HOOK_STATUS_OK;
+
+    // Default handler.
+    cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);
+    cpr->handler = makeCounterPage;
+    req->handle = marla_chunkedRequestHandler;
+    req->handleData = cpr;
 }
 
 void module_servermod_init(struct marla_Server* server, enum marla_ServerModuleEvent e)

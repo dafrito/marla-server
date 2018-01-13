@@ -6,8 +6,8 @@ CXXFLAGS=-I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 -lapr-1 -l
 all: libenvironment_ws.so
 .PHONY: all
 
-libenvironment_ws.so: parsegraph_environment_ws.c prepare.h
-	$(CC) -o$@ $(CXXFLAGS) -shared -g `pkg-config --cflags openssl apr-1 ncurses` -I"../src" parsegraph_environment_ws.c -L.. -lrainback
+libenvironment_ws.so: environment_ws.c prepare.h
+	$(CC) -o$@ $(CXXFLAGS) -shared -g `pkg-config --cflags openssl apr-1 ncurses` -I"../src" environment_ws.c -L.. -lrainback
 
 clean:
 	rm -f libenvironment_ws.so

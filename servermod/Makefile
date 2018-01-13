@@ -6,7 +6,7 @@ CXXFLAGS=-I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 -lapr-1 -l
 all: libservermod.so
 .PHONY: all
 
-libservermod.so: mod.c
+libservermod.so: servermod.c
 	$(CC) -o$@ $(CXXFLAGS) -shared -g `pkg-config --cflags openssl apr-1 ncurses` -I"../src" $^
 
 clean:

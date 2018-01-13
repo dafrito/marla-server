@@ -219,7 +219,7 @@ void marla_chunkedRequestHandler(struct marla_ClientRequest* req, enum marla_Cli
         // Indicate accepted.
         *((int*)data) = 1;
         break;
-    case marla_EVENT_RESPOND:
+    case marla_EVENT_MUST_WRITE:
         cpr = req->handleData;
         int rv = marla_ChunkedPageRequest_process(cpr);
         if(rv != 0) {

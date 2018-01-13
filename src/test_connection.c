@@ -853,6 +853,5 @@ int main(int argc, char* argv[])
         ++failed;
     }
 
-    printf("Tests finished.\n");
     return failed;
 }

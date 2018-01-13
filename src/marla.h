@@ -41,7 +41,7 @@ marla_CLIENT_REQUEST_PAST_METHOD,
 marla_CLIENT_REQUEST_READING_REQUEST_TARGET,
 marla_CLIENT_REQUEST_PAST_REQUEST_TARGET,
 marla_CLIENT_REQUEST_READING_VERSION,
-marla_BACKEND_REQUEST_WRITTEN,
+marla_BACKEND_REQUEST_READING_RESPONSE_LINE,
 marla_BACKEND_REQUEST_READING_HEADERS,
 marla_CLIENT_REQUEST_READING_FIELD,
 marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE,
@@ -56,15 +56,21 @@ marla_CLIENT_REQUEST_READING_TRAILER,
 marla_BACKEND_REQUEST_READING_RESPONSE_TRAILER,
 marla_BACKEND_REQUEST_RESPONDING,
 marla_CLIENT_REQUEST_DONE_READING,
-marla_BACKEND_REQUEST_DONE_READING
+marla_BACKEND_REQUEST_DONE_READING,
+marla_BACKEND_REQUEST_AWAITING_ACCEPT
 };
 
 enum marla_RequestWriteStage {
 marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT,
+marla_BACKEND_REQUEST_WRITING_REQUEST_LINE,
+marla_BACKEND_REQUEST_WRITING_HEADERS,
+marla_BACKEND_REQUEST_WRITING_REQUEST_BODY,
 marla_CLIENT_REQUEST_WRITING_UPGRADE,
 marla_CLIENT_REQUEST_WRITING_CONTINUE,
 marla_CLIENT_REQUEST_WRITING_RESPONSE,
 marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE,
+marla_BACKEND_REQUEST_WRITING_TRAILERS,
+marla_BACKEND_REQUEST_DONE_WRITING,
 marla_CLIENT_REQUEST_DONE_WRITING
 };
 
@@ -113,21 +119,42 @@ void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* a
 void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr);
 int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr);
 
+struct marla_BackendResponder {
+struct marla_ClientRequest* req;
+void(*handler)(struct marla_BackendResponder*);
+int handleStage;
+int index;
+marla_Ring* input;
+marla_Ring* output;
+void* handleData;
+};
+typedef struct marla_BackendResponder marla_BackendResponder;
+struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, struct marla_ClientRequest* req);
+void marla_BackendResponder_flushOutput(marla_BackendResponder* resp);
+void marla_BackendResponder_flushInput(marla_BackendResponder* resp);
+
 enum marla_ClientEvent {
+marla_BACKEND_EVENT_NEED_HEADERS,
+marla_BACKEND_EVENT_HEADER,
+marla_BACKEND_EVENT_MUST_READ,
+marla_BACKEND_EVENT_MUST_WRITE,
+marla_BACKEND_EVENT_NEED_TRAILERS,
+marla_BACKEND_EVENT_CLIENT_PEER_CLOSED,
+marla_BACKEND_EVENT_CLOSING,
+marla_EVENT_BACKEND_PEER_CLOSED,
 marla_EVENT_HEADER,
 marla_EVENT_ACCEPTING_REQUEST,
 marla_EVENT_REQUEST_BODY,
 marla_EVENT_FORM_FIELD,
-marla_EVENT_READ,
-marla_EVENT_GENERATE,
+marla_EVENT_MUST_READ,
+marla_EVENT_MUST_WRITE,
 marla_EVENT_WEBSOCKET_ESTABLISHED,
 marla_EVENT_WEBSOCKET_MUST_READ,
 marla_EVENT_WEBSOCKET_MUST_WRITE,
-marla_EVENT_WEBSOCKET_RESPOND,
-marla_EVENT_RESPOND,
 marla_EVENT_WEBSOCKET_CLOSING,
 marla_EVENT_WEBSOCKET_CLOSE_REASON,
-marla_EVENT_DESTROYING
+marla_EVENT_DESTROYING,
+marla_BACKEND_EVENT_DESTROYING,
 };
 void marla_chunkedRequestHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* data, int datalen);
 
@@ -151,6 +178,7 @@ char error[marla_BUFSIZE];
 char contentType[MAX_FIELD_VALUE_LENGTH + 1];
 enum marla_RequestReadStage readStage;
 enum marla_RequestWriteStage writeStage;
+int is_backend;
 int expect_upgrade;
 int expect_continue;
 int expect_trailer;
@@ -284,14 +312,8 @@ marla_EVENT_SERVER_MODULE_START,
 marla_EVENT_SERVER_MODULE_STOP
 };
 
-enum marla_ServerHookStatus {
-marla_SERVER_HOOK_STATUS_OK = 0,
-marla_SERVER_HOOK_STATUS_CLOSE = -1,
-marla_SERVER_HOOK_STATUS_COMPLETE = 1
-};
-
 struct marla_HookEntry {
-enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*);
+void(*hookFunc)(struct marla_ClientRequest* req, void*);
 void* hookData;
 struct marla_HookEntry* prevHook;
 struct marla_HookEntry* nextHook;
@@ -359,8 +381,8 @@ void marla_Server_init(struct marla_Server* server);
 void marla_Server_flushLog(struct marla_Server* server);
 void marla_Server_free(struct marla_Server* server);
 void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req);
-int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData);
-void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData);
+int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData);
+void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData);
 const char* marla_nameClientEvent(enum marla_ClientEvent ev);
 
 void marla_Server_log(struct marla_Server* server, const char* output, size_t len);
@@ -377,5 +399,6 @@ void marla_logMessage(marla_Server* server, const char* message);
 void marla_logMessagecf(marla_Server* server, const char* category, const char* fmt, ...);
 void marla_logMessagef(marla_Server* server, const char* fmt, ...);
 void marla_logEnterf(marla_Server* server, const char* fmt, ...);
+void marla_die(marla_Server* server, const char* fmt, ...);
 
 #endif // marla_INCLUDED

@@ -1,6 +1,6 @@
 #include "marla.h"
 
-void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
 {
     struct marla_HookEntry* newHook = malloc(sizeof *newHook);
     newHook->hookFunc = hookFunc;
@@ -19,7 +19,7 @@ void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook ser
     }
 }
 
-int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
 {
     struct marla_HookList* hookList = server->hooks + serverHook;
     struct marla_HookEntry* hook = hookList->firstHook;
@@ -55,19 +55,7 @@ void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook 
     struct marla_HookList* hookList = server->hooks + serverHook;
     struct marla_HookEntry* hook = hookList->firstHook;
     while(hook) {
-        enum marla_ServerHookStatus rv = hook->hookFunc(req, hook->hookData);
-        if(rv == marla_SERVER_HOOK_STATUS_OK) {
-            hook = hook->nextHook;
-            continue;
-        }
-        if(rv == marla_SERVER_HOOK_STATUS_CLOSE) {
-            // Close the connection.
-            req->cxn->stage = marla_CLIENT_COMPLETE;
-            return;
-        }
-        if(rv == marla_SERVER_HOOK_STATUS_COMPLETE) {
-            // Stop handling the hook.
-            return;
-        }
+        hook->hookFunc(req, hook->hookData);
+        hook = hook->nextHook;
     }
 }

@@ -646,10 +646,10 @@ destroy_without_unlock:
     close(server.sfd);
     close(server.logfd);
     close(server.backendfd);
-    marla_Server_free(&server);
     if(use_curses && server.terminal_thread) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);
     }
+    marla_Server_free(&server);
     apr_pool_terminate();
 }

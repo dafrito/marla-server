@@ -16,7 +16,7 @@ all: src/test-ring.sh src/test-connection.sh
 
 src/test-ring.sh: src/test_ring src/test_small_ring src/test_ring_putback src/test_ring_po2
 
-src/test-connection.sh: src/test_connection src/test_websocket src/test_chunks
+src/test-connection.sh: src/test_connection src/test_websocket src/test_chunks src/test_backend
 
 servermod/libservermod.so:
 	cd servermod && $(MAKE)
@@ -47,7 +47,7 @@ tmux:
 	tmux -S marla.tmux att
 .PHONY: tmux
 
-check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks
+check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend
 	cd src || exit; \
 	for i in seq 3; do \
 	echo Running connecting tests; \
@@ -78,11 +78,14 @@ src/test_websocket: src/test_websocket.c $(BASE_OBJECTS) src/marla.h Makefile
 src/test_chunks: src/test_chunks.c $(BASE_OBJECTS) src/marla.h Makefile
 	$(CC) $(CFLAGS) -g src/test_chunks.c $(BASE_OBJECTS) -o$@
 
+src/test_backend: src/test_backend.c $(BASE_OBJECTS) src/marla.h Makefile
+	$(CC) $(CFLAGS) -g src/test_backend.c $(BASE_OBJECTS) -o$@
+
 clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
 	cd servermod && $(MAKE) clean
 	cd environment_ws && $(MAKE) clean
-	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client
+	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem

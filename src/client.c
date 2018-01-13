@@ -1,6 +1,55 @@
 #include "marla.h"
 #include <ctype.h>
 
+const char* marla_nameClientEvent(enum marla_ClientEvent ev)
+{
+    switch(ev) {
+    case marla_BACKEND_EVENT_NEED_HEADERS:
+        return "BACKEND_EVENT_NEED_HEADERS";
+    case marla_BACKEND_EVENT_HEADER:
+        return "BACKEND_EVENT_HEADER";
+    case marla_BACKEND_EVENT_MUST_READ:
+        return "BACKEND_EVENT_MUST_READ";
+    case marla_BACKEND_EVENT_MUST_WRITE:
+        return "BACKEND_EVENT_MUST_WRITE";
+    case marla_BACKEND_EVENT_NEED_TRAILERS:
+        return "BACKEND_EVENT_NEED_TRAILERS";
+    case marla_BACKEND_EVENT_CLIENT_PEER_CLOSED:
+        return "BACKEND_EVENT_CLIENT_PEER_CLOSED";
+    case marla_BACKEND_EVENT_CLOSING:
+        return "BACKEND_EVENT_CLOSING";
+    case marla_EVENT_BACKEND_PEER_CLOSED:
+        return "EVENT_BACKEND_PEER_CLOSED";
+    case marla_EVENT_HEADER:
+        return "EVENT_HEADER";
+    case marla_EVENT_ACCEPTING_REQUEST:
+        return "EVENT_ACCEPTING_REQUEST";
+    case marla_EVENT_REQUEST_BODY:
+        return "EVENT_REQUEST_BODY";
+    case marla_EVENT_FORM_FIELD:
+        return "EVENT_FORM_FIELD";
+    case marla_EVENT_MUST_READ:
+        return "EVENT_MUST_READ";
+    case marla_EVENT_MUST_WRITE:
+        return "EVENT_MUST_WRITE";
+    case marla_EVENT_WEBSOCKET_ESTABLISHED:
+        return "EVENT_WEBSOCKET_ESTABLISHED";
+    case marla_EVENT_WEBSOCKET_MUST_READ:
+        return "EVENT_WEBSOCKET_MUST_READ";
+    case marla_EVENT_WEBSOCKET_MUST_WRITE:
+        return "EVENT_WEBSOCKET_MUST_WRITE";
+    case marla_EVENT_WEBSOCKET_CLOSING:
+        return "EVENT_WEBSOCKET_CLOSING";
+    case marla_EVENT_WEBSOCKET_CLOSE_REASON:
+        return "EVENT_WEBSOCKET_CLOSE_REASON";
+    case marla_EVENT_DESTROYING:
+        return "EVENT_DESTROYING";
+    case marla_BACKEND_EVENT_DESTROYING:
+        return "BACKEND_EVENT_DESTROYING";
+    }
+    return "";
+}
+
 static int marla_processClientFields(marla_ClientRequest* req)
 {
     marla_Connection* cxn = req->cxn;
@@ -945,7 +994,7 @@ int marla_clientRead(marla_Connection* cxn)
     if(req->readStage == marla_CLIENT_REQUEST_WEBSOCKET) {
         int continueCalling = 0;
         if(req->handle) {
-            req->handle(req, marla_EVENT_READ, &continueCalling, 0);
+            req->handle(req, marla_EVENT_MUST_READ, &continueCalling, 0);
         }
         return continueCalling;
     }
@@ -993,7 +1042,7 @@ int marla_clientWrite(marla_Connection* cxn)
     if(req->writeStage == marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE) {
         // Check if the handler can respond.
         if(req->handle) {
-            req->handle(req, marla_EVENT_WEBSOCKET_RESPOND, 0, 0);
+            req->handle(req, marla_EVENT_WEBSOCKET_MUST_WRITE, 0, 0);
         }
         return 0;
     }
@@ -1073,9 +1122,9 @@ int marla_clientWrite(marla_Connection* cxn)
     }
 
     while(req->writeStage == marla_CLIENT_REQUEST_WRITING_RESPONSE) {
-        int choked = 0;
+        int result = 0;
         if(req->handle) {
-            req->handle(req, marla_EVENT_RESPOND, &choked, 0);
+            req->handle(req, marla_EVENT_MUST_WRITE, &result, 0);
         }
 
         // Write current output.
@@ -1087,10 +1136,10 @@ int marla_clientWrite(marla_Connection* cxn)
                 return rv;
             }
         }
-        else if(!req->handle) {
+        if(result == 1 || !req->handle) {
             req->writeStage = marla_CLIENT_REQUEST_DONE_WRITING;
         }
-        else if(choked) {
+        if(result == -1) {
             return -1;
         }
     }

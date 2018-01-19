@@ -11,14 +11,15 @@ table td, table th
 border: 1px solid grey;
 }
 </style>
-<title>Server - Rainback</title>
+<title>Server - Marla</title>
 <link rel=stylesheet type=text/css href="style.css">
 </head>
 <body>
 <main class=content>
-<h1>Server - Rainback</h1>
-<h2>#define marla_LOGBUFSIZE 32*1024</h2>
-The size of the server's log buffer.
+<h1>Server - <a href="index.html">Marla</a></h1>
+Global context.
+<h2>#define marla_LOGBUFSIZE</h2>
+The size of the server's log buffer. Defined as 32*1024.
 <h2>struct marla_Server</h2>
 <table>
 <tr><td>struct marla_Connection* first_connection<td>Server's first active connection
@@ -90,23 +91,25 @@ The size of the server's log buffer.
 <table>
 <tr><td>const char* moduleDef
 <tr><td>void* moduleHandle
-<tr><td>void(*moduleFunc)(struct marla_Server*, enum marla_ServerModuleEvent)
+<tr><td>void(*moduleFunc)(marla_Server*, enum marla_ServerModuleEvent)
 <tr><td>struct marla_ServerModule* nextModule
 <tr><td>struct marla_ServerModule* prevModule
 </table>
-<h2>void marla_Server_init(struct marla_Server* server)</h2>
+<h2>void marla_Server_init(marla_Server* server)</h2>
 Initializes a marla_Server in the given memory.
-<h2>void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)</h2>
+<h2>void marla_Server_free(struct marla_Server* server)</h2>
+Frees the marla_Server structures at the given location. The server pointer object is not freed.
+<h2>void marla_Server_invokeHook(marla_Server* server, enum marla_ServerHook serverHook, marla_ClientRequest* req)</h2>
 Runs the server's hooks for the given hook and request.
-<h2>int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)</h2>
+<h2>int marla_Server_removeHook(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(marla_ClientRequest* req, void*), void* hookData)</h2>
 Removes up to one hook.
-<h2>void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)</h2>
+<h2>void marla_Server_addHook(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(marla_ClientRequest* req, void*), void* hookData)</h2>
 Adds one hook.
-<h2>void marla_Server_log(struct marla_Server* server, const char* output, size_t len)</h2>
+<h2>void marla_Server_log(marla_Server* server, const char* output, size_t len)</h2>
 Logs the given string to the server's log.
 </main>
 <nav class=toc>
-<h3>Server - Rainback</h3>
+<h3>Server - <a href="index.html">Marla</a></h3>
 <ul>
 <li>#define <b>marla_LOGBUFSIZE</b>
 <li>struct <b>marla_Server</b>
@@ -118,12 +121,25 @@ Logs the given string to the server's log.
 <li>enum <b>marla_ServerStatus</b>
 <li>const char* <b>marla_nameServerStatus</b>(enum marla_ServerStatus)
 <li>struct <b>marla_ServerModule</b>
-<li>void <b>marla_Server_init</b>(struct marla_Server* server)
-<li>void <b>marla_Server_invokeHook</b>(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)
-<li>int <b>marla_Server_removeHook</b>(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
-<li>void <b>marla_Server_addHook</b>(struct marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
-<li>void <b>marla_Server_log</b>(struct marla_Server* server, const char* output, size_t len)
+<li>void <b>marla_Server_init</b>(marla_Server* server)
+<li>void <b>marla_Server_free</b>(marla_Server* server)
+<li>void <b>marla_Server_invokeHook</b>(marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)
+<li>int <b>marla_Server_removeHook</b>(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+<li>void <b>marla_Server_addHook</b>(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(marla_ClientRequest* req, void*), void* hookData)
+<li>void <b>marla_Server_log</b>(marla_Server* server, const char* output, size_t len)
 </ul>
+<h3>Marla</h3>
+Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+<p>
+<h3>Table of Contents</h3>
+<ol>
+<li><a href="main.html">Main</a>
+<li><a href="server.html">Server</a>
+<li><a href="connection.html">Connection</a>
+<li><a href="request.html">Request</a>
+<li><a href="chunks.html">Chunks</a>
+<li><a href="ring.html">Ring</a>
+</ol>
 </nav>
 </body>
 </html>

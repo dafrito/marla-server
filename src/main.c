@@ -22,7 +22,7 @@
 
 #define MAXEVENTS 64
 
-static int use_curses = 0;
+static int use_curses = 1;
 static int use_ssl = 1;
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
@@ -214,7 +214,7 @@ struct marla_Server server;
 int main(int argc, const char**argv)
 {
     int s;
-    struct epoll_event *events;
+    struct epoll_event *events = 0;
 
     const size_t MIN_ARGS = 4;
 
@@ -363,6 +363,22 @@ int main(int argc, const char**argv)
     if(argc > MIN_ARGS) {
         for(int n = MIN_ARGS; n < argc; ++n) {
             const char* arg = argv[n];
+            if(!strcmp(arg, "-nocurses")) {
+                use_curses = 0;
+                continue;
+            }
+            if(!strcmp(arg, "-nossl")) {
+                use_ssl = 0;
+                continue;
+            }
+            if(!strcmp(arg, "-ssl")) {
+                use_ssl = 1;
+                continue;
+            }
+            if(!strcmp(arg, "-curses")) {
+                use_curses = 1;
+                continue;
+            }
             char* loc = index(arg, '?');
             if(loc == 0) {
                 fprintf(stderr, "A module symbol must be provided.\nUsage: %s [port] [backend-port] modulepath?modulefunc...\n", argv[0]);
@@ -414,8 +430,11 @@ int main(int argc, const char**argv)
         marla_logLeave(&server, "Failed to create terminal thread");
         exit(EXIT_FAILURE);
     }
-    else {
+    else if(!use_curses) {
         marla_logMessage(&server, "curses disabled.");
+    }
+    else {
+        marla_logMessage(&server, "curses enabled.");
     }
     marla_logLeave(&server, "Entering event loop.");
 
@@ -570,7 +589,19 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     char buf[marla_BUFSIZE];
                     memset(buf, 0, sizeof buf);
                     cxn->describeSource(cxn, buf, sizeof buf);
-                    marla_logEntercf(&server, "Client processing", "Received client socket event on %s.", buf);
+
+                    if(events[i].events & EPOLLOUT && events[i].events & EPOLLIN) {
+                        marla_logEntercf(&server, "Client processing", "Received client EPOLLIN and EPOLLOUT socket event on %s.", buf);
+                    }
+                    else if(events[i].events & EPOLLIN) {
+                        marla_logEntercf(&server, "Client processing", "Received client EPOLLIN socket event on %s.", buf);
+                    }
+                    else if(events[i].events & EPOLLOUT) {
+                        marla_logEntercf(&server, "Client processing", "Received client EPOLLOUT socket event on %s.", buf);
+                    }
+                    else {
+                        marla_die(&server, "Unexpected epoll event");
+                    }
                 }
                 /* Connection is ready */
                 if(events[i].events & EPOLLIN) {
@@ -638,14 +669,22 @@ destroy_without_unlock:
         serverModule->moduleFunc(serverModule->moduleHandle, marla_EVENT_SERVER_MODULE_STOP);
     }
 
-    free(events);
+    if(events) {
+        free(events);
+    }
     if(use_ssl) {
         SSL_CTX_free(ctx);
         cleanup_openssl();
     }
-    close(server.sfd);
-    close(server.logfd);
-    close(server.backendfd);
+    if(server.sfd > 0) {
+        close(server.sfd);
+    }
+    if(server.logfd > 0) {
+        close(server.logfd);
+    }
+    if(server.backendfd > 0) {
+        close(server.backendfd);
+    }
     if(use_curses && server.terminal_thread) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);

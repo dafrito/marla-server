@@ -13,16 +13,18 @@ static int acquireWorldStream();
 static int releaseWorldStream();
 
 static void
-callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_ClientEvent reason, void *in, int len)
+callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEvent reason, void *in, int len)
 {
-    parsegraph_live_session* session = req->handleData;
+    marla_Server* server = req->cxn->server;
+    parsegraph_live_session* session = req->handlerData;
 
     int neededEnvLength = 36;
     int m, rv;
     static unsigned char buf[MAX_INIT_LENGTH];
     switch(reason) {
     case marla_EVENT_WEBSOCKET_CLOSE_REASON:
-        if(session->initialData != 0) {
+        marla_logMessagef(server, "environment_ws CLOSE_REASON");
+        if(len == 0 && session->initialData != 0) {
             if(session->initialData->stage != 3 && !session->initialData->error) {
                 // World streaming interrupted, decrement usage counter.
                 session->initialData->error = 1;
@@ -37,6 +39,7 @@ callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_Clie
         return;
 
     case marla_EVENT_WEBSOCKET_MUST_READ:
+        marla_logMessagef(server, "environment_ws MUST_READ");
         if(session->envReceived < neededEnvLength) {
             if(session->envReceived + len < neededEnvLength) {
                 // Copy the whole thing.
@@ -130,17 +133,18 @@ callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_Clie
         break;
 
     case marla_EVENT_ACCEPTING_REQUEST:
-        marla_logMessagef(req->cxn->server, "Environment ws is accepting request.");
+        marla_logMessagef(server, "environment_ws ACCEPTING_REQUEST.");
         *((int*)in) = 1;
         break;
 
     case marla_EVENT_WEBSOCKET_MUST_WRITE:
+        marla_logMessagef(server, "environment_ws MUST_WRITE");
         if(strlen(session->error) > 0) {
             if(!session->closed) {
                 session->closed = 1;
-                //lws_close_reason(wsi, LWS_CLOSE_STATUS_UNEXPECTED_CONDITION, session->error, strlen(session->error));
             }
             marla_logMessagef(req->cxn->server, "Closing connection. %s", session->error);
+            marla_closeWebSocketRequest(req, 1000, session->error, strlen(session->error));
             return;
         }
         if(session->envReceived < neededEnvLength) {
@@ -236,14 +240,14 @@ callback_parsegraph_environment(struct marla_ClientRequest* req, enum marla_Clie
     return;
 }
 
-static void routeHook(struct marla_ClientRequest* req, void* hookData)
+static void routeHook(struct marla_Request* req, void* hookData)
 {
     if(!strcmp(req->uri, "/environment/live")) {
         struct parsegraph_live_session* hd = malloc(sizeof *hd);
-        req->handleData = hd;
-        req->handle = callback_parsegraph_environment;
+        req->handlerData = hd;
+        req->handler = callback_parsegraph_environment;
         // Initialize the session structure.
-        marla_logMessagef(req->cxn->server, "Handling /environment/live websocket connection");
+        marla_logMessagef(req->cxn->server, "Routing /environment/live websocket connection");
         if(0 != initialize_parsegraph_live_session(hd)) {
             //strcpy(session->error, "Error initializing session.");
             //return;
@@ -549,7 +553,7 @@ int parsegraph_prepareEnvironment(parsegraph_live_session* session)
     return 0;
 }
 
-int parsegraph_printItem(marla_ClientRequest* req, parsegraph_live_session* session, struct printing_item* level)
+int parsegraph_printItem(marla_Request* req, parsegraph_live_session* session, struct printing_item* level)
 {
     //fprintf(stderr, "PRINTING item\n");
     static char buf[65536];

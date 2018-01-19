@@ -1,4 +1,4 @@
-PORT=4402
+PORT=4406
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
@@ -24,7 +24,7 @@ servermod/libservermod.so:
 environment_ws/libenvironment_ws.so:
 	cd environment_ws && $(MAKE)
 
-BASE_OBJECTS=src/ring.o src/connection.o src/request.o src/client.o src/log.o src/backend.o src/websocket_handler.o src/hooks.o src/chunks.o src/ssl.o src/cleartext.o src/terminal.o src/server.o
+BASE_OBJECTS=src/ring.o src/connection.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/chunks.o src/ssl.o src/cleartext.o src/terminal.o src/server.o
 
 libmarla.so: $(BASE_OBJECTS) src/marla.h
 	$(CC) $(CFLAGS) -o$@ -shared -lpthread $(BASE_OBJECTS)
@@ -40,7 +40,7 @@ kill: marla.tmux
 .PHONY: kill
 
 run: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init'
+	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
 .PHONY: run
 
 tmux:

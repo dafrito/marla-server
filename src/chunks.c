@@ -17,7 +17,7 @@ const char* marla_nameChunkResponseStage(enum marla_ChunkResponseStage stage)
     return "";
 }
 
-struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, marla_ClientRequest* req)
+struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, marla_Request* req)
 {
     if(!req) {
         fprintf(stderr, "No request given.\n");
@@ -152,7 +152,7 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
 
     if(cpr->stage == marla_CHUNK_RESPONSE_GENERATE) {
         if(!cpr->handler) {
-            marla_killClientRequest(cpr->req, "No handler available to generate content.\n");
+            marla_killRequest(cpr->req, "No handler available to generate content.\n");
             return -1;
         }
         cpr->stage = marla_CHUNK_RESPONSE_HEADER;
@@ -174,7 +174,7 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
 
     while(cpr->stage == marla_CHUNK_RESPONSE_RESPOND) {
         if(!cpr->handler) {
-            marla_killClientRequest(cpr->req, "No handler available to generate content.\n");
+            marla_killRequest(cpr->req, "No handler available to generate content.\n");
             return -1;
         }
         //marla_Connection_flush(cpr->req->cxn, 0);
@@ -211,7 +211,7 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
     return 0;
 }
 
-void marla_chunkedRequestHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* data, int datalen)
+void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen)
 {
     struct marla_ChunkedPageRequest* cpr;
     switch(ev) {
@@ -220,7 +220,7 @@ void marla_chunkedRequestHandler(struct marla_ClientRequest* req, enum marla_Cli
         *((int*)data) = 1;
         break;
     case marla_EVENT_MUST_WRITE:
-        cpr = req->handleData;
+        cpr = req->handlerData;
         int rv = marla_ChunkedPageRequest_process(cpr);
         if(rv != 0) {
             // Indicate choked.

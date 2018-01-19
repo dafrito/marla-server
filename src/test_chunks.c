@@ -366,7 +366,7 @@ static int test_chunk_math(struct marla_Server* server)
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;
     cxn->destroySource = destroyDuplexSource;
-    struct marla_ClientRequest* req = marla_ClientRequest_new(cxn);
+    struct marla_Request* req = marla_Request_new(cxn);
     cxn->current_request = req;
     cxn->latest_request = req;
     ++cxn->requests_in_process;
@@ -485,7 +485,7 @@ static int test_chunks(struct marla_Server* server)
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;
     cxn->destroySource = destroyDuplexSource;
-    struct marla_ClientRequest* req = marla_ClientRequest_new(cxn);
+    struct marla_Request* req = marla_Request_new(cxn);
     cxn->current_request = req;
     cxn->latest_request = req;
     ++cxn->requests_in_process;
@@ -588,7 +588,7 @@ static int test_chunked_response(struct marla_Server* server)
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;
     cxn->destroySource = destroyDuplexSource;
-    struct marla_ClientRequest* req = marla_ClientRequest_new(cxn);
+    struct marla_Request* req = marla_Request_new(cxn);
     cxn->current_request = req;
     cxn->latest_request = req;
     ++cxn->requests_in_process;

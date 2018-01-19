@@ -28,7 +28,7 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-static int expectReadStage(marla_ClientRequest* req, enum marla_RequestReadStage readStage)
+static int expectReadStage(marla_Request* req, enum marla_RequestReadStage readStage)
 {
     if(req->readStage != readStage) {
         printf("Wanting %s, got %s\n", marla_nameRequestReadStage(readStage), marla_nameRequestReadStage(req->readStage));
@@ -37,7 +37,7 @@ static int expectReadStage(marla_ClientRequest* req, enum marla_RequestReadStage
     return 0;
 }
 
-static int expectWriteStage(marla_ClientRequest* req, enum marla_RequestWriteStage writeStage)
+static int expectWriteStage(marla_Request* req, enum marla_RequestWriteStage writeStage)
 {
     if(req->writeStage != writeStage) {
         printf("Wanting %s, got %s\n", marla_nameRequestWriteStage(writeStage), marla_nameRequestWriteStage(req->writeStage));
@@ -135,7 +135,7 @@ static int test_simple_response(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->latest_request;
+    marla_Request* req = cxn->latest_request;
     if(req) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -175,7 +175,7 @@ static int test_chunks(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->latest_request;
+    marla_Request* req = cxn->latest_request;
     if(req) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -210,7 +210,7 @@ static int test_simple_lf(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->latest_request;
+    marla_Request* req = cxn->latest_request;
     if(req) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -245,7 +245,7 @@ static int test_simple_mixed_lf(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->latest_request;
+    marla_Request* req = cxn->latest_request;
     if(req) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -279,7 +279,7 @@ static int test_simple_leading_crlf(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->latest_request;
+    marla_Request* req = cxn->latest_request;
     if(req) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -313,7 +313,7 @@ static int test_simple_leading_lf(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->latest_request;
+    marla_Request* req = cxn->latest_request;
     if(req) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -464,7 +464,7 @@ static int test_nothing(struct marla_Server* server)
     // Read from the source.
     marla_clientRead(cxn);
     marla_clientWrite(cxn);
-    marla_ClientRequest* req = cxn->current_request;
+    marla_Request* req = cxn->current_request;
     if(!req || req->readStage != marla_CLIENT_REQUEST_READ_FRESH || req->writeStage != marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT) {
         marla_Connection_destroy(cxn);
         return 1;
@@ -497,7 +497,7 @@ static int test_stages_reading_method(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->current_request;
+    marla_Request* req = cxn->current_request;
     if(0 != expectReadStage(req, marla_CLIENT_REQUEST_READING_METHOD) ||
         0 != expectWriteStage(req, marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT)
     ) {
@@ -579,7 +579,7 @@ static int test_stages_reading_target(struct marla_Server* server)
         marla_Connection_destroy(cxn);
         return 1;
     }
-    marla_ClientRequest* req = cxn->current_request;
+    marla_Request* req = cxn->current_request;
     if(0 != expectReadStage(req, marla_CLIENT_REQUEST_READING_REQUEST_TARGET) ||
         0 != expectWriteStage(req, marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT)
     ) {

@@ -49,7 +49,7 @@ static void destroyDuplexSource(struct marla_Connection* cxn)
     marla_Ring_free(rings[1]);
 }
 
-static void backendHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* in, int len)
+static void backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 {
     fprintf(stderr, "BACKEND %s\n", marla_nameClientEvent(ev));
 
@@ -85,7 +85,7 @@ choked:
     (*(int*)in) = -1;
 }
 
-static void marla_backendResponderClientHandler(struct marla_ClientRequest* req, enum marla_ClientEvent ev, void* in, int len)
+static void marla_backendResponderClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 {
     fprintf(stderr, "Client %s\n", marla_nameClientEvent(ev));
     marla_BackendResponder* resp;
@@ -96,11 +96,11 @@ static void marla_backendResponderClientHandler(struct marla_ClientRequest* req,
         // Accept the request.
         (*(int*)in) = 1;
 
-        marla_ClientRequest* backendReq = marla_ClientRequest_new(req->cxn->server->backend);
+        marla_Request* backendReq = marla_Request_new(req->cxn->server->backend);
         strcpy(backendReq->uri, req->uri);
         strcpy(backendReq->method, req->method);
-        backendReq->handle = backendHandler;
-        backendReq->handleData = marla_BackendResponder_new(marla_BUFSIZE, backendReq);
+        backendReq->handler = backendHandler;
+        backendReq->handlerData = marla_BackendResponder_new(marla_BUFSIZE, backendReq);
 
         // Set backend peers.
         backendReq->backendPeer = req;
@@ -113,21 +113,18 @@ static void marla_backendResponderClientHandler(struct marla_ClientRequest* req,
         break;
     case marla_EVENT_REQUEST_BODY:
         fprintf(stderr, "REQUESTBODYWRITE!!!\n");
-        break;
-    case marla_EVENT_MUST_READ:
-        fprintf(stderr, "MUST READ!!!\n");
-        resp = req->backendPeer->handleData;
+        resp = req->backendPeer->handlerData;
         if(!resp) {
-            fprintf(stderr, "Backend peer must have responder handleData\n");
+            fprintf(stderr, "Backend peer must have responder handlerData\n");
             abort();
         }
         // Read the client's request body into resp->input and flush resp->input afterwards.
         break;
     case marla_EVENT_MUST_WRITE:
         // Check the input buffer.
-        resp = req->backendPeer->handleData;
+        resp = req->backendPeer->handlerData;
         if(!resp) {
-            marla_die(req->cxn->server, "Backend peer must have responder handleData\n");
+            marla_die(req->cxn->server, "Backend peer must have responder handlerData\n");
         }
         // Write resp->output to the client.
         marla_BackendResponder_flushOutput(resp);
@@ -140,7 +137,7 @@ static void marla_backendResponderClientHandler(struct marla_ClientRequest* req,
     }
 }
 
-void backendHook(struct marla_ClientRequest* req, void* hookData)
+void backendHook(struct marla_Request* req, void* hookData)
 {
     fprintf(stderr, "HOOK CALLED!!! %s\n", req->uri);
     if(!strncmp(req->uri, "/user", 5)) {
@@ -149,7 +146,7 @@ void backendHook(struct marla_ClientRequest* req, void* hookData)
             return;
         }
         // Install backend handler.
-        req->handle = marla_backendResponderClientHandler;
+        req->handler = marla_backendResponderClientHandler;
     }
 }
 

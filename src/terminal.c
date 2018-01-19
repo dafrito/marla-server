@@ -15,7 +15,7 @@
 #include <ncurses.h>
 #include <locale.h>
 
-extern int marla_ClientRequest_NEXT_ID;
+extern int marla_Request_NEXT_ID;
 
 static char status_line[255];
 
@@ -152,7 +152,7 @@ void* terminal_operator(void* data)
 
             if(mode == TerminalPageMode_Statistics) {
                 move(++y, 0);
-                len = snprintf(buf, sizeof buf, "%d request%s served", (marla_ClientRequest_NEXT_ID-1), marla_ClientRequest_NEXT_ID == 2 ? "" : "s");
+                len = snprintf(buf, sizeof buf, "%d request%s served", (marla_Request_NEXT_ID-1), marla_Request_NEXT_ID == 2 ? "" : "s");
                 addnstr(buf, len);
                 move(++y, 0);
                 len = snprintf(buf, sizeof buf, "%ld bytes in log buffer", marla_Ring_size(server->log));

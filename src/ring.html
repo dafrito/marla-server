@@ -11,12 +11,13 @@ table td, table th
 border: 1px solid grey;
 }
 </style>
-<title>Rings - Marla</title>
+<title>Ring - Marla</title>
 <link rel=stylesheet type=text/css href="style.css">
 </head>
 <body>
 <main class=content>
-<h1>Rings</h1>
+<h1>Ring - <a href="index.html">Marla</a></h1>
+Circular buffer.
 <h2>struct marla_Ring</h2>
 <table>
 <tr><th>Member<th>Description
@@ -51,11 +52,11 @@ Shorthand for <code>marla_Ring_write(ring, source, strlen(source))</code>.
 Returns, in slot and slotLen, a continuous area of memory in this ring for which to write.
 <h2>void marla_Ring_readSlot(ring, void** slot, size_t* slotLen)</h2>
 Returns, in slot and slotLen, a continuous stretch of bytes to read from this ring.
-<h2>marla_BUFSIZE</h2>
+<h2>#define marla_BUFSIZE</h2>
 A power-of-two buffer size considered reasonable for normal use. Defined as 1,024 bytes. The server does not tolerate sizes smaller than 512 bytes.
 </main>
 <nav class=toc>
-<h3>Rings</h3>
+<h3>Ring - <a href="index.html">Marla</a></h3>
 <ul>
 <li>struct <b>marla_Ring</b>
 <li>marla_Ring* <b>marla_Ring_new</b>(size_t capacity)
@@ -71,7 +72,20 @@ A power-of-two buffer size considered reasonable for normal use. Defined as 1,02
 <li>int <b>marla_Ring_writeStr</b>(ring, const char* source)
 <li>void <b>marla_Ring_writeSlot</b>(ring, void** slot, size_t* slotLen)
 <li>void <b>marla_Ring_readSlot</b>(ring, void** slot, size_t* slotLen)
-<li><b>marla_BUFSIZE</b>
+<li>#define <b>marla_BUFSIZE</b>
+</ul>
+<h3>Marla</h3>
+Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+<p>
+<h3>Table of Contents</h3>
+<ol>
+<li><a href="main.html">Main</a>
+<li><a href="server.html">Server</a>
+<li><a href="connection.html">Connection</a>
+<li><a href="request.html">Request</a>
+<li><a href="chunks.html">Chunks</a>
+<li><a href="ring.html">Ring</a>
+</ol>
 </nav>
 </body>
 </html>

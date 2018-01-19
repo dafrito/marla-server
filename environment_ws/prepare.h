@@ -59,7 +59,7 @@ typedef struct parsegraph_live_server {
 } parsegraph_live_server;
 
 int initialize_parsegraph_live_session(parsegraph_live_session* session);
-int parsegraph_printItem(marla_ClientRequest* req, parsegraph_live_session* session, struct printing_item* level);
+int parsegraph_printItem(marla_Request* req, parsegraph_live_session* session, struct printing_item* level);
 int parsegraph_prepareEnvironment(parsegraph_live_session* session);
 
 #endif // parsegraph_environment_ws_prepare_INCLUDED

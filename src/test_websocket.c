@@ -128,6 +128,30 @@ static int test_simple(struct marla_Server* server, const char* port)
         marla_clientWrite(cxn);
     }
 
+    if(cxn->stage == marla_CLIENT_COMPLETE) {
+        fprintf(stderr, "Connection must still be open\n");
+        return 1;
+    }
+
+    source_str[0] = 0x88;
+    source_str[1] = 0x82;
+    source_str[2] = 0x38;
+    source_str[3] = 0xfb;
+    source_str[4] = 0x22;
+    source_str[5] = 0x3e;
+    uint16_t closeCode = 1000;
+    source_str[6] = ((char)(closeCode >> 8)) ^ source_str[2];
+    source_str[7] = ((char)closeCode) ^ source_str[3];
+    src.nread = 0;
+    src.len = 8;
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
+
+    if(cxn->stage != marla_CLIENT_COMPLETE) {
+        fprintf(stderr, "Connection must no longer be open\n");
+        return 1;
+    }
+
     marla_Connection_destroy(cxn);
     return 0;
 }

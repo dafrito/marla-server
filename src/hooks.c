@@ -1,6 +1,6 @@
 #include "marla.h"
 
-void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_Request* req, void*), void* hookData)
 {
     struct marla_HookEntry* newHook = malloc(sizeof *newHook);
     newHook->hookFunc = hookFunc;
@@ -19,7 +19,7 @@ void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook ser
     }
 }
 
-int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
+int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook serverHook, void(*hookFunc)(struct marla_Request* req, void*), void* hookData)
 {
     struct marla_HookList* hookList = server->hooks + serverHook;
     struct marla_HookEntry* hook = hookList->firstHook;
@@ -50,7 +50,7 @@ int marla_Server_removeHook(struct marla_Server* server, enum marla_ServerHook s
     return -1;
 }
 
-void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)
+void marla_Server_invokeHook(struct marla_Server* server, enum marla_ServerHook serverHook, struct marla_Request* req)
 {
     struct marla_HookList* hookList = server->hooks + serverHook;
     struct marla_HookEntry* hook = hookList->firstHook;

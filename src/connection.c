@@ -194,9 +194,9 @@ void marla_Connection_destroy(marla_Connection* cxn)
         cxn->destroySource = 0;
     }
 
-    for(marla_ClientRequest* req = cxn->current_request; req != 0;) {
-        marla_ClientRequest* nextReq = req->next_request;
-        marla_ClientRequest_destroy(req);
+    for(marla_Request* req = cxn->current_request; req != 0;) {
+        marla_Request* nextReq = req->next_request;
+        marla_Request_destroy(req);
         req = nextReq;
     }
 

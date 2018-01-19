@@ -11,12 +11,13 @@ table td, table th
 border: 1px solid grey;
 }
 </style>
-<title>Chunked transfer encoding - Rainback</title>
+<title>Chunks - Marla</title>
 <link rel=stylesheet type=text/css href="style.css">
 </head>
 <body>
 <main class=content>
-<h1>Chunked transfer encoding - Rainback</h1>
+<h1>Chunks - <a href="index.html">Marla</a></h1>
+Chunked transfer encoding.
 <h2>struct marla_ChunkedPageRequest</h2>
 <table>
 <tr><td>void(*handler)(struct marla_ClientRequest*, struct marla_ChunkedPageRequest*)<td>Handler that is used to fill the resp internal input ring.
@@ -56,7 +57,7 @@ Writes the given marla_ChunkedPageRequest to the given marla_ClientRequest.
 A request handler, for use with a marla_ClientRequest.
 </main>
 <nav class=toc>
-<h3>Chunked transfer encoding - Rainback</h3>
+<h3>Chunks - <a href="index.html">Marla</a></h3>
 <ul>
 <li>struct <b>marla_ChunkedPageRequest</b>
 <li>const char* <b>marla_nameChunkResponseStage</b>(enum marla_ChunkResponseStage stage)
@@ -66,6 +67,18 @@ A request handler, for use with a marla_ClientRequest.
 <li>void <b>marla_ChunkedPageRequest_free</b>(struct marla_ChunkedPageRequest* cpr)
 <li>void <b>marla_ChunkedPageRequest_process</b>(struct marla_ChunkedPageRequest* cpr)
 </ul>
+<h3>Marla</h3>
+Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+<p>
+<h3>Table of Contents</h3>
+<ol>
+<li><a href="main.html">Main</a>
+<li><a href="server.html">Server</a>
+<li><a href="connection.html">Connection</a>
+<li><a href="request.html">Request</a>
+<li><a href="chunks.html">Chunks</a>
+<li><a href="ring.html">Ring</a>
+</ol>
 </nav>
 </body>
 </html>

@@ -10,7 +10,7 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 
-void marla_killClientRequest(struct marla_ClientRequest* req, const char* reason, ...)
+void marla_killRequest(struct marla_Request* req, const char* reason, ...)
 {
     va_list ap;
     va_start(ap, reason);
@@ -103,19 +103,19 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
     return "?";
 }
 
-int marla_ClientRequest_NEXT_ID = 1;
+int marla_Request_NEXT_ID = 1;
 
-marla_ClientRequest* marla_ClientRequest_new(marla_Connection* cxn)
+marla_Request* marla_Request_new(marla_Connection* cxn)
 {
-    marla_ClientRequest* req = malloc(sizeof(marla_ClientRequest));
+    marla_Request* req = malloc(sizeof(marla_Request));
     req->cxn = cxn;
     req->statusCode = 0;
     memset(req->statusLine, 0, sizeof req->statusLine);
 
-    req->id = marla_ClientRequest_NEXT_ID++;
+    req->id = marla_Request_NEXT_ID++;
 
-    req->handle = 0;
-    req->handleData = 0;
+    req->handler = 0;
+    req->handlerData = 0;
     req->readStage = marla_CLIENT_REQUEST_READ_FRESH;
     req->writeStage = marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT;
 
@@ -167,10 +167,10 @@ marla_ClientRequest* marla_ClientRequest_new(marla_Connection* cxn)
     return req;
 }
 
-void marla_ClientRequest_destroy(marla_ClientRequest* req)
+void marla_Request_destroy(marla_Request* req)
 {
-    if(req->handle) {
-        req->handle(req, marla_EVENT_DESTROYING, 0, 0);
+    if(req->handler) {
+        req->handler(req, marla_EVENT_DESTROYING, 0, 0);
     }
     free(req);
 }

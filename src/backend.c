@@ -54,7 +54,7 @@ static void destroySource(marla_Connection* cxn)
     cxn->describeSource = 0;
 }
 
-struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, marla_ClientRequest* req)
+struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, marla_Request* req)
 {
     if(!req) {
         fprintf(stderr, "Backend request must be given\n");
@@ -71,7 +71,7 @@ struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, marla_
 
 void marla_BackendResponder_flushOutput(marla_BackendResponder* resp)
 {
-    marla_ClientRequest* req = resp->req->backendPeer;
+    marla_Request* req = resp->req->backendPeer;
     for(;;) {
         void* data;
         size_t len;
@@ -102,7 +102,7 @@ void marla_Backend_init(marla_Connection* cxn, int fd)
     source->fd = fd;
 }
 
-void marla_Backend_enqueue(marla_Connection* cxn, marla_ClientRequest* req)
+void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)
 {
     req->cxn = cxn;
     req->readStage = marla_BACKEND_REQUEST_READING_RESPONSE_LINE;
@@ -124,18 +124,18 @@ void marla_Backend_enqueue(marla_Connection* cxn, marla_ClientRequest* req)
 
 int marla_backendWrite(marla_Connection* cxn)
 {
-    marla_ClientRequest* req = cxn->current_request;
+    marla_Request* req = cxn->current_request;
     char out[marla_BUFSIZE];
     while(req) {
         fprintf(stderr, "Reading req: %s\n", marla_nameRequestWriteStage(req->writeStage));
         // Write request line to backend.
         if(req->writeStage == marla_BACKEND_REQUEST_WRITING_REQUEST_LINE) {
             if(req->method[0] == 0) {
-                marla_killClientRequest(req, "Method must be provided");
+                marla_killRequest(req, "Method must be provided");
                 return -1;
             }
             if(req->uri[0] == 0) {
-                marla_killClientRequest(req, "URI must be provided");
+                marla_killRequest(req, "URI must be provided");
                 return -1;
             }
             int nwrit = snprintf(out, sizeof(out), "%s %s HTTP/1.1\r\n", req->method, req->uri);
@@ -150,7 +150,7 @@ int marla_backendWrite(marla_Connection* cxn)
             // Write headers.
 
             int result = 0;
-            req->handle(req, marla_BACKEND_EVENT_NEED_HEADERS, &result, 0);
+            req->handler(req, marla_BACKEND_EVENT_NEED_HEADERS, &result, 0);
             if(result == -1 || req->cxn->stage == marla_CLIENT_COMPLETE) {
                 return -1;
             }
@@ -164,7 +164,7 @@ int marla_backendWrite(marla_Connection* cxn)
             // Write request body.
 
             int result = 0;
-            req->handle(req, marla_BACKEND_EVENT_MUST_WRITE, &result, 0);
+            req->handler(req, marla_BACKEND_EVENT_MUST_WRITE, &result, 0);
             if(result == -1 || req->cxn->stage == marla_CLIENT_COMPLETE) {
                 return -1;
             }
@@ -180,7 +180,7 @@ int marla_backendWrite(marla_Connection* cxn)
             // Write trailers.
 
             int result = 0;
-            req->handle(req, marla_BACKEND_EVENT_NEED_TRAILERS, &result, 0);
+            req->handler(req, marla_BACKEND_EVENT_NEED_TRAILERS, &result, 0);
             if(result == -1 || req->cxn->stage == marla_CLIENT_COMPLETE) {
                 return -1;
             }
@@ -199,7 +199,7 @@ int marla_backendWrite(marla_Connection* cxn)
 
 int marla_backendRead(marla_Connection* cxn)
 {
-    marla_ClientRequest* req = cxn->current_request;
+    marla_Request* req = cxn->current_request;
     char out[marla_BUFSIZE];
     while(req) {
         if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_LINE) {

@@ -1,5 +1,22 @@
 #include "marla.h"
 #include <ctype.h>
+#include <endian.h>
+
+void marla_closeWebSocketRequest(marla_Request* req, uint16_t closeCode, const char* reason, size_t reasonLen)
+{
+    if(req->needWebSocketClose || req->doingWebSocketClose) {
+        return;
+    }
+    memcpy(req->websocket_closeReason, reason, reasonLen);
+    req->websocket_closeReasonLen = reasonLen;
+    req->websocket_closeCode = closeCode;
+    req->needWebSocketClose = 1;
+    if(req->handler) {
+        req->handler(req, marla_EVENT_WEBSOCKET_CLOSING, &closeCode, 2);
+        req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, (void*)reason, reasonLen);
+        req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, 0, 0);
+    }
+}
 
 const char* marla_nameClientEvent(enum marla_ClientEvent ev)
 {
@@ -28,12 +45,8 @@ const char* marla_nameClientEvent(enum marla_ClientEvent ev)
         return "EVENT_REQUEST_BODY";
     case marla_EVENT_FORM_FIELD:
         return "EVENT_FORM_FIELD";
-    case marla_EVENT_MUST_READ:
-        return "EVENT_MUST_READ";
     case marla_EVENT_MUST_WRITE:
         return "EVENT_MUST_WRITE";
-    case marla_EVENT_WEBSOCKET_ESTABLISHED:
-        return "EVENT_WEBSOCKET_ESTABLISHED";
     case marla_EVENT_WEBSOCKET_MUST_READ:
         return "EVENT_WEBSOCKET_MUST_READ";
     case marla_EVENT_WEBSOCKET_MUST_WRITE:
@@ -50,7 +63,94 @@ const char* marla_nameClientEvent(enum marla_ClientEvent ev)
     return "";
 }
 
-static int marla_processClientFields(marla_ClientRequest* req)
+/*
+ *  %x0 denotes a continuation frame
+ *  %x1 denotes a text frame
+ *  %x2 denotes a binary frame
+ *  %x3-7 are reserved for further non-control frames
+ *  %x8 denotes a connection close
+ *  %x9 denotes a ping
+ *  %xA denotes a pong
+ *  %xB-F are reserved for further control frames
+ */
+int marla_writeWebSocketHeader(struct marla_Request* req, unsigned char opcode, uint64_t frameLen)
+{
+    unsigned char out[7];
+    int outlen = 2;
+
+    // Generate the header.
+    if(frameLen > 65535) {
+        memcpy(out + outlen, &frameLen, sizeof frameLen);
+        outlen += sizeof frameLen;
+    }
+    else if(frameLen > 125) {
+        uint16_t fl = (uint16_t)frameLen;
+        memcpy(out + outlen, &fl, sizeof fl);
+        outlen += sizeof fl;
+    }
+    else {
+        out[0] = (1 << 7) | (opcode % 16);
+        out[1] = (unsigned char)frameLen;
+    }
+
+    // Write the header.
+    int nread = marla_Connection_write(req->cxn, out, outlen);
+    if(nread <= 0) {
+        return nread;
+    }
+    if(nread < outlen) {
+        marla_Connection_putbackWrite(req->cxn, nread);
+        return -1;
+    }
+    return outlen;
+}
+
+int marla_writeWebSocket(struct marla_Request* req, unsigned char* data, int dataLen)
+{
+    int nwritten = marla_Connection_write(req->cxn, data, dataLen);
+    if(nwritten > 0) {
+        req->websocketFrameWritten += nwritten;
+    }
+    return nwritten;
+}
+
+int marla_readWebSocket(struct marla_Request* req, unsigned char* data, int dataLen)
+{
+    if(dataLen > req->websocketFrameLen) {
+        dataLen = req->websocketFrameLen;
+    }
+    int nread = marla_Connection_read(req->cxn, data, dataLen);
+    if(nread <= 0) {
+        return nread;
+    }
+    if(req->websocketMask) {
+        // Unmask the data.
+        for(int i = 0; i < nread; ++i) {
+            data[i] = data[i] ^ req->websocketMask[(req->websocketFrameRead + i) % 4];
+        }
+    }
+    req->websocketFrameRead += nread;
+    return nread;
+}
+
+int marla_WebSocketRemaining(struct marla_Request* req)
+{
+    return req->websocketFrameLen - req->websocketFrameRead;
+}
+
+void marla_putbackWebSocketRead(struct marla_Request* req, int dataLen)
+{
+    marla_Connection_putbackRead(req->cxn, dataLen);
+    req->websocketFrameRead -= dataLen;
+}
+
+void marla_putbackWebSocketWrite(struct marla_Request* req, int dataLen)
+{
+    marla_Connection_putbackWrite(req->cxn, dataLen);
+    req->websocketFrameWritten -= dataLen;
+}
+
+static int marla_processClientFields(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
     while(req->readStage == marla_CLIENT_REQUEST_READING_FIELD) {
@@ -82,15 +182,15 @@ static int marla_processClientFields(marla_ClientRequest* req)
             }
             char c = fieldLine[i];
             if(c <= 0x1f || c == 0x7f) {
-                marla_killClientRequest(req, "Header line contains control characters, so no valid request.\n");
+                marla_killRequest(req, "Header line contains control characters, so no valid request.\n");
                 return -1;
             }
             if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%' || c == '"')) {
-                marla_killClientRequest(req, "Header name contains delimiters, so no valid request.\n");
+                marla_killRequest(req, "Header name contains delimiters, so no valid request.\n");
                 return -1;
             }
             if(!foundSeparator && (c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`')) {
-                marla_killClientRequest(req, "Header name contains unwise characters, so no valid request.\n");
+                marla_killRequest(req, "Header name contains unwise characters, so no valid request.\n");
                 return -1;
             }
             if(!foundSeparator && !isalnum(c) && c != '-') {
@@ -100,7 +200,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
                     toleratingSpaces = 1;
                     continue;
                 }
-                marla_killClientRequest(req, "Header name contains non alphanumeric characters, so no valid request.\n");
+                marla_killRequest(req, "Header name contains non alphanumeric characters, so no valid request.\n");
                 return -1;
             }
             if(foundSeparator && toleratingSpaces) {
@@ -114,7 +214,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
 
         // Validate.
         if(!foundNewline && nread == sizeof(fieldLine)) {
-            marla_killClientRequest(req, "Request version is too long, so no valid request.\n");
+            marla_killRequest(req, "Request version is too long, so no valid request.\n");
             return -1;
         }
         if(!foundNewline) {
@@ -130,13 +230,13 @@ static int marla_processClientFields(marla_ClientRequest* req)
 
             if(!strcasecmp(fieldName, "Content-Length")) {
                 if(req->contentLen != -2) {
-                    marla_killClientRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
+                    marla_killRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                     return -1;
                 }
                 char* endptr;
                 long int x = strtol(fieldValue, &endptr, 10);
                 if(*endptr != '\0' || x < 0) {
-                    marla_killClientRequest(req, "Content-Length header value could not be read, so no valid request.\n");
+                    marla_killRequest(req, "Content-Length header value could not be read, so no valid request.\n");
                     return -1;
                 }
                 req->contentLen = x;
@@ -147,7 +247,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
             }
             else if(!strcasecmp(fieldName, "Transfer-Encoding")) {
                 if(req->contentLen != -2) {
-                    marla_killClientRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
+                    marla_killRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                     return -1;
                 }
 
@@ -170,7 +270,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
                         req->expect_upgrade = 1;
                     }
                     else if(strcasecmp(fieldToken, "keep-alive")) {
-                        marla_killClientRequest(req, "Connection is not understood, so no valid request.\n");
+                        marla_killRequest(req, "Connection is not understood, so no valid request.\n");
                         return -1;
                     }
                     fieldToken = strtok_r(0, ", ", &sp);
@@ -233,8 +333,8 @@ static int marla_processClientFields(marla_ClientRequest* req)
                     req->expect_websocket = 1;
                 }
             }
-            else if(req->handle) {
-                req->handle(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
+            else if(req->handler) {
+                req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
             }
 
             continue;
@@ -248,7 +348,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
 
                 if(req->host[0] == 0) {
                     // No Host sent.
-                    marla_killClientRequest(req, "No Host provided.");
+                    marla_killRequest(req, "No Host provided.");
                     return -1;
                 }
             }
@@ -257,27 +357,27 @@ static int marla_processClientFields(marla_ClientRequest* req)
                 if(schemeSep != 0) {
                     for(char* c = req->uri; c != schemeSep; ++c) {
                         if(!isascii(*c)) {
-                            marla_killClientRequest(req, "Scheme invalid, so no valid request.\n");
+                            marla_killRequest(req, "Scheme invalid, so no valid request.\n");
                             return -1;
                         }
                     }
                     *schemeSep = 0;
                     if(!strcmp("http", req->uri)) {
-                        marla_killClientRequest(req, "HTTP scheme unsupported, so no valid request.\n");
+                        marla_killRequest(req, "HTTP scheme unsupported, so no valid request.\n");
                         return -1;
                     }
                     else if(!strcmp("https", req->uri)) {
                         *schemeSep = ':';
                     }
                     else {
-                        marla_killClientRequest(req, "Request scheme unrecognized.\n");
+                        marla_killRequest(req, "Request scheme unrecognized.\n");
                         return -1;
                     }
                 }
                 char* hostPart = schemeSep + 3;
                 char* hostSep = strstr(hostPart, "/");
                 if(hostSep - hostPart >= MAX_FIELD_VALUE_LENGTH) {
-                    marla_killClientRequest(req, "Host too long.\n");
+                    marla_killRequest(req, "Host too long.\n");
                     return -1;
                 }
 
@@ -289,7 +389,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
                     // GET https://localhost/absolute/path?query
                     *hostSep = 0;
                     if(req->host[0] != 0 && strcmp(req->host, hostPart)) {
-                        marla_killClientRequest(req, "Host differs from absolute URI's host.\n");
+                        marla_killRequest(req, "Host differs from absolute URI's host.\n");
                         return -1;
                     }
                     strncpy(req->host, hostPart, MAX_FIELD_VALUE_LENGTH);
@@ -300,7 +400,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
                 }
             }
             else {
-                marla_killClientRequest(req, "Request target unrecognized.\n");
+                marla_killRequest(req, "Request target unrecognized.\n");
                 return -1;
             }
 
@@ -312,7 +412,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
                 strcpy(buf, req->websocket_nonce);
                 if(strlen(req->websocket_nonce) != 24) {
                     marla_logMessagef(req->cxn->server, "WebSocket key is of an inappropriate length of %d bytes", strlen(req->websocket_nonce));
-                    marla_killClientRequest(req, "WebSocket key must be exactly 24 bytes.");
+                    marla_killRequest(req, "WebSocket key must be exactly 24 bytes.");
                     return -1;
                 }
                 strcat(buf, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
@@ -343,18 +443,18 @@ static int marla_processClientFields(marla_ClientRequest* req)
             }
 
             int accept = 1;
-            if(req->handle) {
-                req->handle(req, marla_EVENT_ACCEPTING_REQUEST, &accept, 0);
+            if(req->handler) {
+                req->handler(req, marla_EVENT_ACCEPTING_REQUEST, &accept, 0);
             }
             if(!accept) {
-                marla_killClientRequest(req, "Request explicitly rejected.\n");
+                marla_killRequest(req, "Request explicitly rejected.\n");
                 return -1;
             }
 
             marla_logMessagecf(req->cxn->server, "URL Requests", "Handling request for %s", req->uri);
 
             if(req->writeStage != marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT) {
-                marla_killClientRequest(req, "Request explicitly rejected.\n");
+                marla_killRequest(req, "Request explicitly rejected.\n");
                 return -1;
             }
             if(req->expect_upgrade) {
@@ -390,7 +490,7 @@ static int marla_processClientFields(marla_ClientRequest* req)
     return 0;
 }
 
-static int marla_readRequestChunks(marla_ClientRequest* req)
+static int marla_readRequestChunks(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
 read_chunk_size:
@@ -400,12 +500,12 @@ read_chunk_size:
         int nread = marla_Connection_read(cxn, (unsigned char*)buf, sizeof(buf));
         if(nread == 0) {
             // Zero-length read indicates premature end of stream.
-            marla_killClientRequest(req, "Premature end of chunked request body.\n");
+            marla_killRequest(req, "Premature end of chunked request body.\n");
             return -1;
         }
         if(nread < 0) {
             // Error.
-            marla_killClientRequest(req, "Error %d while receiving request body.\n", nread);
+            marla_killRequest(req, "Error %d while receiving request body.\n", nread);
             return -1;
         }
         if(nread < 3) {
@@ -439,14 +539,14 @@ read_chunk_size:
             }
             else {
                 // Garbage.
-                marla_killClientRequest(req, "Error while receiving chunk size.\n");
+                marla_killRequest(req, "Error while receiving chunk size.\n");
                 return -1;
             }
         }
 
         if(!foundEnd) {
             if(nread >= marla_MAX_CHUNK_SIZE_LINE) {
-                marla_killClientRequest(req, "Chunk size line too long.\n");
+                marla_killRequest(req, "Chunk size line too long.\n");
                 return -1;
             }
 
@@ -456,25 +556,25 @@ read_chunk_size:
         }
 
         if(!foundHexDigit) {
-            marla_killClientRequest(req, "Failed to find any hex digits in chunk size.\n");
+            marla_killRequest(req, "Failed to find any hex digits in chunk size.\n");
             return -1;
         }
 
         char* endptr = 0;
         long int chunkSize = strtol(buf, &endptr, 16);
         if(*endptr != 0) {
-            marla_killClientRequest(req, "Error while parsing chunk size.\n");
+            marla_killRequest(req, "Error while parsing chunk size.\n");
             return -1;
         }
         if(chunkSize < 0 || chunkSize > marla_MAX_CHUNK_SIZE) {
-            marla_killClientRequest(req, "Request chunk size is out of range.\n");
+            marla_killRequest(req, "Request chunk size is out of range.\n");
             return -1;
         }
         req->chunkSize = chunkSize;
         req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_BODY;
         if(req->chunkSize == 0) {
-            if(req->handle) {
-                req->handle(req, marla_EVENT_REQUEST_BODY, 0, 0);
+            if(req->handler) {
+                req->handler(req, marla_EVENT_REQUEST_BODY, 0, 0);
             }
             if(req->expect_trailer) {
                 req->readStage = marla_CLIENT_REQUEST_READING_TRAILER;
@@ -498,14 +598,14 @@ read_chunk_size:
             if(nread == 0) {
                 // Zero-length read indicates end of stream.
                 if(req->chunkSize > 0) {
-                    marla_killClientRequest(req, "Premature end of request chunk body.\n");
+                    marla_killRequest(req, "Premature end of request chunk body.\n");
                     return -1;
                 }
                 break;
             }
             if(nread < 0) {
                 // Error.
-                marla_killClientRequest(req, "Error while receiving request chunk body.\n");
+                marla_killRequest(req, "Error while receiving request chunk body.\n");
                 return -1;
             }
             if(nread < 4 && req->chunkSize > 4) {
@@ -517,8 +617,8 @@ read_chunk_size:
             // Handle input.
             req->totalContentLen += nread;
             req->chunkSize -= nread;
-            if(req->handle) {
-                req->handle(req, marla_EVENT_REQUEST_BODY, buf, nread);
+            if(req->handler) {
+                req->handler(req, marla_EVENT_REQUEST_BODY, buf, nread);
             }
         }
 
@@ -527,12 +627,12 @@ read_chunk_size:
         int nread = marla_Connection_read(cxn, (unsigned char*)buf, sizeof(buf));
         if(nread == 0) {
             // Zero-length read indicates end of stream.
-            marla_killClientRequest(req, "Premature end of request chunk body.\n");
+            marla_killRequest(req, "Premature end of request chunk body.\n");
             return -1;
         }
         if(nread < 0) {
             // Error.
-            marla_killClientRequest(req, "Error while receiving request chunk body.\n");
+            marla_killRequest(req, "Error while receiving request chunk body.\n");
             return -1;
         }
         if(nread >= 1 && buf[0] == '\n') {
@@ -553,7 +653,7 @@ read_chunk_size:
             return -1;
         }
         else {
-            marla_killClientRequest(req, "Error while receiving request chunk body.\n");
+            marla_killRequest(req, "Error while receiving request chunk body.\n");
             return -1;
         }
         req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_SIZE;
@@ -563,7 +663,7 @@ read_chunk_size:
     return 0;
 }
 
-int marla_processStatusLine(marla_ClientRequest* req)
+static int marla_processStatusLine(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
     if(req->readStage == marla_CLIENT_REQUEST_READ_FRESH) {
@@ -599,15 +699,15 @@ int marla_processStatusLine(marla_ClientRequest* req)
         for(int i = 0; i < nread; ++i) {
             char c = req->method[i];
             if(c <= 0x1f || c == 0x7f) {
-                marla_killClientRequest(req, "Request line contains control characters, so no valid request.\n");
+                marla_killRequest(req, "Request line contains control characters, so no valid request.\n");
                 return -1;
             }
             if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
-                marla_killClientRequest(req, "Request line contains delimiters, so no valid request.\n");
+                marla_killRequest(req, "Request line contains delimiters, so no valid request.\n");
                 return -1;
             }
             if(c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`') {
-                marla_killClientRequest(req, "Request line contains unwise characters, so no valid request.\n");
+                marla_killRequest(req, "Request line contains unwise characters, so no valid request.\n");
                 return -1;
             }
             if(c == ' ') {
@@ -617,12 +717,12 @@ int marla_processStatusLine(marla_ClientRequest* req)
                 break;
             }
             if(!isascii(c)) {
-                marla_killClientRequest(req, "Request method contains non-ASCII characters, so no valid request.\n");
+                marla_killRequest(req, "Request method contains non-ASCII characters, so no valid request.\n");
                 return -1;
             }
         }
         if(nread == MAX_METHOD_LENGTH + 1 && !foundSpace) {
-            marla_killClientRequest(req, "Request method is too long, so no valid request.\n");
+            marla_killRequest(req, "Request method is too long, so no valid request.\n");
             return -1;
         }
         if(!foundSpace) {
@@ -659,7 +759,7 @@ int marla_processStatusLine(marla_ClientRequest* req)
             // A client MUST NOT send a message body in a TRACE request.
         }
         else {
-            marla_killClientRequest(req, "Request method '%s' is unknown, so no valid request.\n", req->method);
+            marla_killRequest(req, "Request method '%s' is unknown, so no valid request.\n", req->method);
             return -1;
         }
 
@@ -699,11 +799,11 @@ int marla_processStatusLine(marla_ClientRequest* req)
         for(int i = 0; i < nread; ++i) {
             char c = req->uri[i];
             if(c <= 0x1f || c == 0x7f) {
-                marla_killClientRequest(req, "Request target contains control characters, so no valid request.\n");
+                marla_killRequest(req, "Request target contains control characters, so no valid request.\n");
                 return -1;
             }
             if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
-                marla_killClientRequest(req, "Request target contains delimiters, so no valid request.\n");
+                marla_killRequest(req, "Request target contains delimiters, so no valid request.\n");
                 return -1;
             }
             if(c == ' ') {
@@ -714,7 +814,7 @@ int marla_processStatusLine(marla_ClientRequest* req)
             }
         }
         if(nread == MAX_URI_LENGTH + 1 && !foundSpace) {
-            marla_killClientRequest(req, "Request target is too long, so no valid request.\n");
+            marla_killRequest(req, "Request target is too long, so no valid request.\n");
             return -1;
         }
         if(!foundSpace) {
@@ -764,7 +864,7 @@ int marla_processStatusLine(marla_ClientRequest* req)
         // Validate.
         for(int i = 0; i < versionLen; ++i) {
             if(givenVersion[i] != expected[i]) {
-                marla_killClientRequest(req, "Request version is unknown, so no valid request.\n");
+                marla_killRequest(req, "Request version is unknown, so no valid request.\n");
                 return -1;
             }
         }
@@ -777,12 +877,12 @@ int marla_processStatusLine(marla_ClientRequest* req)
                 return -1;
             }
             if(c != '\n') {
-                marla_killClientRequest(req, "Unterminated request line.\n");
+                marla_killRequest(req, "Unterminated request line.\n");
                 return -1;
             }
         }
         else if(givenVersion[versionLen] != '\n') {
-            marla_killClientRequest(req, "Unterminated request line.\n");
+            marla_killRequest(req, "Unterminated request line.\n");
             return -1;
         }
 
@@ -794,7 +894,7 @@ int marla_processStatusLine(marla_ClientRequest* req)
     return 0;
 }
 
-static int marla_processTrailer(marla_ClientRequest* req)
+static int marla_processTrailer(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
     while(req->readStage == marla_CLIENT_REQUEST_READING_TRAILER) {
@@ -826,15 +926,15 @@ static int marla_processTrailer(marla_ClientRequest* req)
             }
             char c = fieldLine[i];
             if(c <= 0x1f || c == 0x7f) {
-                marla_killClientRequest(req, "Header line contains control characters, so no valid request.\n");
+                marla_killRequest(req, "Header line contains control characters, so no valid request.\n");
                 return -1;
             }
             if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%' || c == '"')) {
-                marla_killClientRequest(req, "Header name contains delimiters, so no valid request.\n");
+                marla_killRequest(req, "Header name contains delimiters, so no valid request.\n");
                 return -1;
             }
             if(!foundSeparator && (c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`')) {
-                marla_killClientRequest(req, "Header name contains unwise characters, so no valid request.\n");
+                marla_killRequest(req, "Header name contains unwise characters, so no valid request.\n");
                 return -1;
             }
             if(!foundSeparator && !isalnum(c) && c != '-') {
@@ -844,7 +944,7 @@ static int marla_processTrailer(marla_ClientRequest* req)
                     toleratingSpaces = 1;
                     continue;
                 }
-                marla_killClientRequest(req, "Header name contains non alphanumeric characters, so no valid request.\n");
+                marla_killRequest(req, "Header name contains non alphanumeric characters, so no valid request.\n");
                 return -1;
             }
             if(foundSeparator && toleratingSpaces) {
@@ -858,7 +958,7 @@ static int marla_processTrailer(marla_ClientRequest* req)
 
         // Validate.
         if(!foundNewline && nread == sizeof(fieldLine)) {
-            marla_killClientRequest(req, "Request version is too long, so no valid request.\n");
+            marla_killRequest(req, "Request version is too long, so no valid request.\n");
             return -1;
         }
         if(!foundNewline) {
@@ -869,8 +969,8 @@ static int marla_processTrailer(marla_ClientRequest* req)
         if(foundSeparator && fieldValue) {
             char* fieldName = fieldLine;
             // Header found.
-            if(req->handle) {
-                req->handle(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
+            if(req->handler) {
+                req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
             }
             continue;
         }
@@ -902,6 +1002,7 @@ int marla_clientAccept(marla_Connection* cxn)
 
 int marla_clientRead(marla_Connection* cxn)
 {
+    marla_logMessagecf(cxn->server, "Client processing", "clientRead");
     //fprintf(stderr, "marla_clientRead\n");
     marla_clientAccept(cxn);
 
@@ -910,7 +1011,7 @@ int marla_clientRead(marla_Connection* cxn)
         return marla_backendRead(cxn);
     }
 
-    marla_ClientRequest* req = 0;
+    marla_Request* req = 0;
     if(!cxn->current_request) {
         unsigned char c;
         int nread = marla_Connection_read(cxn, &c, 1);
@@ -920,7 +1021,7 @@ int marla_clientRead(marla_Connection* cxn)
         marla_Connection_putbackRead(cxn, 1);
 
         // No request yet made.
-        req = marla_ClientRequest_new(cxn);
+        req = marla_Request_new(cxn);
         cxn->current_request = req;
         cxn->latest_request = req;
         ++cxn->requests_in_process;
@@ -928,6 +1029,8 @@ int marla_clientRead(marla_Connection* cxn)
     else {
         req = cxn->latest_request;
     }
+
+    marla_logMessagecf(cxn->server, "Client processing", "clientRead: %s", marla_nameRequestReadStage(req->readStage));
 
     if(0 != marla_processStatusLine(req)) {
         return -1;
@@ -939,6 +1042,209 @@ int marla_clientRead(marla_Connection* cxn)
 
     if(req->readStage == marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE || req->readStage == marla_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE) {
         return 0;
+    }
+
+    while(req->readStage == marla_CLIENT_REQUEST_WEBSOCKET) {
+        unsigned char buf[marla_BUFSIZE + 1];
+        int nread;
+        memset(buf, 0, sizeof buf);
+
+        if(req->websocketFrameLen == 0) {
+            nread = marla_Connection_read(req->cxn, req->websocket_frame, sizeof(req->websocket_frame));
+            if(nread < 2) {
+                if(nread > 0) {
+                    memset(req->websocket_frame, 0, sizeof req->websocket_frame);
+                    marla_Connection_putbackRead(req->cxn, nread);
+                }
+                return -1;
+            }
+
+            if(req->websocket_frame[0] << 1 == req->websocket_frame[0]) {
+                // The FIN bit was zero.
+                req->websocket_fin = 0;
+            }
+            else {
+                // The FIN bit was nonzero.
+                req->websocket_fin = 1;
+            }
+
+            for(int i = 1; i < 4; ++i) {
+                unsigned char c = req->websocket_frame[0] << 1;
+                if(c << i == c) {
+                    // A reserved bit was zero.
+                    marla_killRequest(req, "A reserved bit was zero.");
+                    return 1;
+                }
+            }
+
+            switch(req->websocket_frame[0] % 16) {
+            case 0:
+                // Continuation frame.
+                break;
+            case 1:
+                // Text frame.
+                break;
+            case 2:
+                // Binary frame.
+                break;
+            case 8:
+                // Close frame.
+                break;
+            case 9:
+                // Ping frame.
+                break;
+            case 10:
+                // Pong frame.
+                break;
+            default:
+                // Reserved opcode.
+                marla_killRequest(req, "Reserved opcode");
+                return 1;
+            }
+            req->websocket_type = req->websocket_frame[0] % 16;
+
+            unsigned char mask;
+            if(req->websocket_frame[1] << 1 == req->websocket_frame[1]) {
+                // The Mask bit was zero.
+                mask = 0;
+            }
+            else {
+                // The Mask bit was nonzero.
+                mask = 1;
+            }
+
+            // Get the payload length.
+            uint64_t payload_len = (unsigned char)(req->websocket_frame[1] << 1) >> 1;
+            if(payload_len == 126) {
+                if(req->websocket_type < 0 || req->websocket_type > 2) {
+                    marla_killRequest(req, "WebSocket type unrecognized");
+                    return 1;
+                }
+                if(nread < 4) {
+                    marla_Connection_putbackRead(req->cxn, nread);
+                    memset(req->websocket_frame, 0, sizeof req->websocket_frame);
+                    return -1;
+                }
+                payload_len = be16toh(*(uint16_t*)(req->websocket_frame + 3));
+            }
+            else if(payload_len == 127) {
+                if(req->websocket_type < 0 || req->websocket_type > 2) {
+                    marla_killRequest(req, "WebSocket type unrecognized");
+                    return 1;
+                }
+                if(nread < 10) {
+                    marla_Connection_putbackRead(req->cxn, nread);
+                    memset(req->websocket_frame, 0, sizeof req->websocket_frame);
+                    return -1;
+                }
+                payload_len = be64toh(*(uint64_t*)(req->websocket_frame + 3));
+            }
+            else if(nread > 2) {
+                marla_Connection_putbackRead(req->cxn, nread - 2);
+                // Payload length is correct as-is.
+            }
+
+            // Read the mask.
+            if(mask) {
+                nread = marla_Connection_read(req->cxn, (unsigned char*)req->websocketMask, 4);
+                if(nread < 4) {
+                    if(nread > 0) {
+                        marla_Connection_putbackRead(req->cxn, nread);
+                    }
+                    return -1;
+                }
+            }
+
+            // Save the frame length.
+            req->websocketFrameLen = payload_len;
+            req->websocketFrameRead = 0;
+        }
+
+        while(req->websocketFrameLen > req->websocketFrameRead) {
+            switch(req->websocket_type) {
+            case 8:
+                // Close frame.
+                if(req->websocketFrameRead == 0) {
+                    unsigned char code[2];
+                    nread = marla_readWebSocket(req, code, 2);
+                    if(nread < 2) {
+                        if(nread > 0) {
+                            marla_Connection_putbackRead(req->cxn, nread);
+                        }
+                        return -1;
+                    }
+                    if(req->handler) {
+                        req->handler(req, marla_EVENT_WEBSOCKET_CLOSING, code, be16toh(*(uint16_t*)code));
+                    }
+                }
+                if(marla_WebSocketRemaining(req) == 0) {
+                    if(req->handler) {
+                        req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, 0, 0);
+                    }
+                    req->needWebSocketClose = 1;
+                    break;
+                }
+
+                unsigned char* closeReasonWritten = req->websocket_closeReason + req->websocketFrameRead - 2;
+                nread = marla_readWebSocket(req, req->websocket_closeReason + req->websocketFrameRead - 2, req->websocketFrameLen - req->websocketFrameRead - 2);
+                if(nread <= 0) {
+                    if(req->handler && nread == 0) {
+                        req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, 0, 0);
+                    }
+                    req->needWebSocketClose = 1;
+                    break;
+                }
+                else if(req->handler) {
+                    req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, closeReasonWritten, nread);
+                }
+                break;
+            case 9:
+                // Ping frame.
+                nread = marla_readWebSocket(req, req->websocket_ping + req->websocketFrameRead, req->websocketFrameLen - req->websocketFrameRead);
+                if(nread <= 0) {
+                    return -1;
+                }
+                break;
+            case 10:
+                // Pong frame.
+                if(req->websocket_pongLen != req->websocketFrameLen) {
+                    marla_killRequest(req, "Pong mismatch");
+                    return 1;
+                }
+                nread = marla_readWebSocket(req, buf, sizeof buf);
+                if(nread <= 0) {
+                    return -1;
+                }
+                for(int i = 0; i < nread; ++i) {
+                    if(req->websocket_pong[i + req->websocketFrameRead] != buf[i]) {
+                        // Pong mismatch
+                        marla_killRequest(req, "Pong mismatch");
+                        return 1;
+                    }
+                }
+                break;
+            default:
+                // Data frame.
+                nread = marla_readWebSocket(req, buf, sizeof buf);
+                if(nread <= 0) {
+                    if(nread == 0) {
+                        if(req->handler) {
+                            req->handler(req, marla_EVENT_WEBSOCKET_MUST_READ, 0, 0);
+                        }
+                    }
+                    return 0;
+                }
+                if(req->handler) {
+                    req->handler(req, marla_EVENT_WEBSOCKET_MUST_READ, buf, nread);
+                    if(marla_WebSocketRemaining(req) == 0) {
+                        req->handler(req, marla_EVENT_WEBSOCKET_MUST_READ, 0, 0);
+                    }
+                }
+            }
+        }
+
+        req->websocketFrameLen = 0;
+        req->websocketFrameRead = 0;
     }
 
     if(req->readStage == marla_CLIENT_REQUEST_READING_REQUEST_BODY) {
@@ -954,15 +1260,15 @@ int marla_clientRead(marla_Connection* cxn)
             if(nread == 0) {
                 // Zero-length read indicates end of stream.
                 if(req->contentLen > 0) {
-                    marla_killClientRequest(req, "Premature end of request body.\n");
-                    return -1;
+                    marla_killRequest(req, "Premature end of request body.\n");
+                    return 1;
                 }
                 break;
             }
             if(nread < 0) {
                 // Error.
-                marla_killClientRequest(req, "Error while receiving request body.\n");
-                return -1;
+                marla_killRequest(req, "Error while receiving request body.\n");
+                return 1;
             }
             if(nread < 4 && req->contentLen > 4) {
                 // A read too small.
@@ -973,12 +1279,12 @@ int marla_clientRead(marla_Connection* cxn)
             // Handle input.
             req->totalContentLen += nread;
             req->contentLen -= nread;
-            if(req->handle) {
-                req->handle(req, marla_EVENT_REQUEST_BODY, buf, nread);
+            if(req->handler) {
+                req->handler(req, marla_EVENT_REQUEST_BODY, buf, nread);
             }
         }
-        if(req->handle) {
-            req->handle(req, marla_EVENT_REQUEST_BODY, 0, 0);
+        if(req->handler) {
+            req->handler(req, marla_EVENT_REQUEST_BODY, 0, 0);
         }
         req->readStage = marla_CLIENT_REQUEST_DONE_READING;
     }
@@ -991,19 +1297,12 @@ int marla_clientRead(marla_Connection* cxn)
         return -1;
     }
 
-    if(req->readStage == marla_CLIENT_REQUEST_WEBSOCKET) {
-        int continueCalling = 0;
-        if(req->handle) {
-            req->handle(req, marla_EVENT_MUST_READ, &continueCalling, 0);
-        }
-        return continueCalling;
-    }
     if(req->readStage == marla_CLIENT_REQUEST_DONE_READING) {
         return 0;
     }
     else {
-        marla_killClientRequest(req, "Unexpected request stage.\n");
-        return -1;
+        marla_killRequest(req, "Unexpected request stage.\n");
+        return 1;
     }
     if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
         // Client needs shutdown.
@@ -1034,23 +1333,11 @@ int marla_clientWrite(marla_Connection* cxn)
         }
     }
 
-    marla_ClientRequest* req = cxn->current_request;
+    marla_Request* req = cxn->current_request;
     if(req == 0) {
         return -1;
     }
-
-    if(req->writeStage == marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE) {
-        // Check if the handler can respond.
-        if(req->handle) {
-            req->handle(req, marla_EVENT_WEBSOCKET_MUST_WRITE, 0, 0);
-        }
-        return 0;
-    }
-
-    if(req->writeStage < marla_CLIENT_REQUEST_WRITING_RESPONSE) {
-        // Request premature; couldn't write.
-        return -1;
-    }
+    marla_logMessagecf(cxn->server, "Client processing", "clientWrite: %s", marla_nameRequestWriteStage(req->writeStage));
 
     if(marla_Ring_size(output) > marla_Ring_capacity(output) - 4) {
         // Buffer too full.
@@ -1059,18 +1346,18 @@ int marla_clientWrite(marla_Connection* cxn)
 
     if(req->writeStage == marla_CLIENT_REQUEST_WRITING_CONTINUE) {
         if(req->readStage != marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE) {
-            marla_killClientRequest(req, "Unexpected read stage %s.\n", marla_nameRequestReadStage(req->readStage));
+            marla_killRequest(req, "Unexpected read stage %s.\n", marla_nameRequestReadStage(req->readStage));
             return -1;
         }
         const char* statusLine = "HTTP/1.1 100 Continue\r\n";
         size_t len = strlen(statusLine);
         int nwritten = marla_Connection_write(cxn, statusLine, len);
         if(nwritten == 0) {
-            marla_killClientRequest(req, "Premature connection close.\n");
+            marla_killRequest(req, "Premature connection close.\n");
             return 0;
         }
         if(nwritten < 0) {
-            marla_killClientRequest(req, "Error while writing connection.\n");
+            marla_killRequest(req, "Error while writing connection.\n");
             return nwritten;
 
         }
@@ -1098,11 +1385,11 @@ int marla_clientWrite(marla_Connection* cxn)
         int nwrit = snprintf(out, sizeof(out), "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %s\r\n\r\n", req->websocket_accept);
         int nwritten = marla_Connection_write(cxn, out, nwrit);
         if(nwritten == 0) {
-            marla_killClientRequest(req, "Premature connection close.\n");
+            marla_killRequest(req, "Premature connection close.\n");
             return -1;
         }
         if(nwritten < 0) {
-            marla_killClientRequest(req, "Error while writing connection.\n");
+            marla_killRequest(req, "Error while writing connection.\n");
             return -1;
 
         }
@@ -1117,14 +1404,90 @@ int marla_clientWrite(marla_Connection* cxn)
 
         req->readStage = marla_CLIENT_REQUEST_WEBSOCKET;
         req->writeStage = marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE;
-        fprintf(stderr, "Going websocket\n");
-        return 0;
+        //fprintf(stderr, "Going websocket\n");
+        marla_clientRead(cxn);
+    }
+
+    while(req->writeStage == marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE) {
+        // Check if a close frame is needed.
+        if(req->needWebSocketClose) {
+            if(marla_writeWebSocketHeader(req, 8, 2 + req->websocket_closeReasonLen) < 0) {
+                return -1;
+            }
+            req->websocketFrameOutLen = 2 + req->websocket_closeReasonLen;
+            req->websocketFrameWritten = 0;
+            req->doingWebSocketClose = 1;
+        }
+
+        // Finish writing the current frame.
+        if(req->websocketFrameOutLen != 0) {
+            if(req->doingWebSocketClose) {
+                if(req->websocketFrameWritten == 0) {
+                    uint16_t closeCode = htobe16(req->websocket_closeCode);
+                    int nwritten = marla_writeWebSocket(req, ((unsigned char*)&closeCode), 2);
+                    if(nwritten < 2) {
+                        if(nwritten > 0) {
+                            marla_putbackWebSocketWrite(req, nwritten);
+                        }
+                        return -1;
+                    }
+                    if(req->websocketFrameOutLen == req->websocketFrameWritten) {
+                        goto shutdown;
+                    }
+                }
+                int nwritten = marla_writeWebSocket(req, req->websocket_closeReason + req->websocketFrameWritten - 2, req->websocket_closeReasonLen - req->websocketFrameWritten - 2);
+                if(nwritten >= 0 && req->websocketFrameOutLen == req->websocketFrameWritten) {
+                    goto shutdown;
+                }
+                return -1;
+            }
+            else if(req->doingPong) {
+                int nwritten = marla_writeWebSocket(req, req->websocket_ping + req->websocketFrameWritten, req->websocket_pingLen - req->websocketFrameWritten);
+                if(nwritten <= 0) {
+                    return -1;
+                }
+                if(req->websocketFrameOutLen == req->websocketFrameWritten) {
+                    req->websocket_pingLen = 0;
+                    req->doingPong = 0;
+                }
+            }
+        }
+
+        // Check if a pong frame is needed.
+        if(req->websocket_pingLen >= 0) {
+            req->websocketFrameWritten = 0;
+            req->websocketFrameOutLen = req->websocket_pingLen;
+            marla_writeWebSocketHeader(req, 10, req->websocketFrameOutLen);
+            req->doingPong = 1;
+        }
+
+        // Let the handler respond.
+        if(req->handler) {
+            int result = 0;
+            req->handler(req, marla_EVENT_WEBSOCKET_MUST_WRITE, &result, 0);
+            if(result == -1) {
+                return -1;
+            }
+        }
+        else {
+            return -1;
+        }
+
+        // Write current output.
+        if(marla_Ring_size(req->cxn->output) > 0) {
+            int nflushed;
+            int rv = marla_Connection_flush(req->cxn, &nflushed);
+            if(rv <= 0) {
+                //fprintf(stderr, "Responder choked.\n");
+                return rv;
+            }
+        }
     }
 
     while(req->writeStage == marla_CLIENT_REQUEST_WRITING_RESPONSE) {
         int result = 0;
-        if(req->handle) {
-            req->handle(req, marla_EVENT_MUST_WRITE, &result, 0);
+        if(req->handler) {
+            req->handler(req, marla_EVENT_MUST_WRITE, &result, 0);
         }
 
         // Write current output.
@@ -1136,7 +1499,7 @@ int marla_clientWrite(marla_Connection* cxn)
                 return rv;
             }
         }
-        if(result == 1 || !req->handle) {
+        if(result == 1 || !req->handler) {
             req->writeStage = marla_CLIENT_REQUEST_DONE_WRITING;
         }
         if(result == -1) {
@@ -1164,21 +1527,24 @@ int marla_clientWrite(marla_Connection* cxn)
         }
         if(req->close_after_done) {
             //fprintf(stderr, "CLOSING AFTER DONE.\n");
-            cxn->stage = marla_CLIENT_COMPLETE;
+            goto shutdown;
         }
-        marla_ClientRequest_destroy(req);
+        marla_Request_destroy(req);
         --cxn->requests_in_process;
         if(cxn->stage != marla_CLIENT_COMPLETE) {
             return 0;
         }
     }
+    return 0;
 
-    if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+shutdown:
+    cxn->stage = marla_CLIENT_COMPLETE;
+    if(!cxn->shouldDestroy) {
         // Client needs shutdown.
         if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
             cxn->shouldDestroy = 1;
         }
         return -1;
     }
-    return 0;
+    return 1;
 }

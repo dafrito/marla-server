@@ -1,8 +1,0 @@
-Why does WebSocket connection hang on CLIENT_REQUEST_READING_FIELD? Despite all
-headers appearing to be read.
-
-Websocket nonce test failed.
-
-Failed WebSocket connection handshake:
-             buf=xepd+X7rp00wkAozkb/hxA==258EAFA5-E914-47DA-95CA-C5AB0DC85B11
-websocket_accept=X8xgltWbQPRhvw/YHzi2o4hSm2s=

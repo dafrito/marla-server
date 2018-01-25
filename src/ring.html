@@ -34,18 +34,23 @@ Destroys and frees the given ring.
 Returns the number of bytes available for reading from this ring.
 <h2>size_t marla_Ring_capacity(ring)</h2>
 Returns the capacity of the ring.
-<h2>char marla_Ring_readc(ring)</h2>
-Reads a single character from the ring.
+<h2>int marla_Ring_readc(marla_Ring* ring, unsigned char* out)</h2>
+Reads a single character from the ring. Returns 1 if a character was read, 0 otherwise.
 <h2>int marla_Ring_read(ring, char* sink, size_t size)</h2>
 Reads up to the specified number of bytes from the ring. The number of bytes actually read is returned.
+<h2>int marla_Ring_isFull(marla_Ring* ring)</h2>
+Returns 1 if the given ring is full of data to be read.
+<h2>int marla_Ring_isEmpty(marla_Ring* ring)</h2>
+Returns 1 if the given ring is empty.
 <h2>void marla_Ring_putbackRead(ring, size_t count)</h2>
 Reverses this ring's read head by the specified number of bytes.
 <h2>void marla_Ring_putbackWrite(ring, size_t count)</h2>
 Reverses this ring's write head by the specified number of bytes.
 <h2>size_t marla_Ring_write(ring, const char* source, size_t size)</h2>
 Writes up to the specified number of bytes from the given source to this ring. The number of bytes actually written is returned.
-<h2>void marla_Ring_writec(ring, char source)</h2>
-Writes the specified character to this ring.
+<h2>int marla_Ring_writec(ring, char source)</h2>
+Writes the specified character to this ring. Returns 1 if the character was written, or 0
+if the ring is full.
 <h2>int marla_Ring_writeStr(ring, const char* source)</h2>
 Shorthand for <code>marla_Ring_write(ring, source, strlen(source))</code>.
 <h2>void marla_Ring_writeSlot(ring, void** slot, size_t* slotLen)</h2>
@@ -63,12 +68,14 @@ A power-of-two buffer size considered reasonable for normal use. Defined as 1,02
 <li>void <b>marla_Ring_free</b>(ring)
 <li>unsigned int <b>marla_Ring_size</b>(ring)
 <li>size_t <b>marla_Ring_capacity</b>(ring)
-<li>char <b>marla_Ring_readc</b>(ring)
+<li>int <b>marla_Ring_readc</b>(ring, unsigned char*)
+<li>int <b>marla_Ring_isFull</b>(marla_Ring* ring)
+<li>int <b>marla_Ring_isEmpty</b>(marla_Ring* ring)
 <li>int <b>marla_Ring_read</b>(ring, char* sink, size_t size)
 <li>void <b>marla_Ring_putbackRead</b>(ring, size_t count)
 <li>void <b>marla_Ring_putbackWrite</b>(ring, size_t count)
 <li>int <b>marla_Ring_write</b>(ring, const char* source, size_t size)
-<li>void <b>marla_Ring_writec</b>(ring, char source)
+<li>int <b>marla_Ring_writec</b>(ring, char source)
 <li>int <b>marla_Ring_writeStr</b>(ring, const char* source)
 <li>void <b>marla_Ring_writeSlot</b>(ring, void** slot, size_t* slotLen)
 <li>void <b>marla_Ring_readSlot</b>(ring, void** slot, size_t* slotLen)

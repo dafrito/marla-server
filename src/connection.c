@@ -138,11 +138,13 @@ int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t req
 
 void marla_Connection_putbackRead(marla_Connection* cxn, size_t amount)
 {
+    marla_logMessagef(cxn->server, "Putting back %d bytes read", amount);
     return marla_Ring_putbackRead(cxn->input, amount);
 }
 
 void marla_Connection_putbackWrite(marla_Connection* cxn, size_t amount)
 {
+    marla_logMessagef(cxn->server, "Putting back %d bytes written", amount);
     return marla_Ring_putbackWrite(cxn->output, amount);
 }
 

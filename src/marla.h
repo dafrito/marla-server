@@ -20,17 +20,19 @@ marla_Ring* marla_Ring_new(size_t capacity);
 void marla_Ring_free(marla_Ring* ring);
 size_t marla_Ring_size(marla_Ring* ring);
 size_t marla_Ring_capacity(marla_Ring* ring);
-unsigned char marla_Ring_readc(marla_Ring* ring);
+int marla_Ring_readc(marla_Ring* ring, unsigned char* c);
 int marla_Ring_read(marla_Ring* ring, unsigned char* sink, size_t size);
 void marla_Ring_putbackRead(marla_Ring* ring, size_t count);
 void marla_Ring_putbackWrite(marla_Ring* ring, size_t count);
 void marla_Ring_slot(marla_Ring* ring, void** slot, size_t* slotLen);
 size_t marla_Ring_write(marla_Ring* ring, const void* source, size_t size);
-void marla_Ring_writec(marla_Ring* ring, unsigned char source);
+int marla_Ring_writec(marla_Ring* ring, unsigned char source);
 int marla_Ring_writeStr(marla_Ring* ring, const char* source);
 void marla_Ring_writeSlot(marla_Ring* ring, void** slot, size_t* slotLen);
 void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen);
 void marla_Ring_simplify(marla_Ring* ring);
+int marla_Ring_isFull(marla_Ring* ring);
+int marla_Ring_isEmpty(marla_Ring* ring);
 
 // client.c
 enum marla_RequestReadStage {
@@ -52,8 +54,10 @@ marla_BACKEND_REQUEST_AWAITING_RESPONSE,
 marla_BACKEND_REQUEST_READING_RESPONSE_BODY,
 marla_CLIENT_REQUEST_READING_CHUNK_SIZE,
 marla_CLIENT_REQUEST_READING_CHUNK_BODY,
+marla_BACKEND_REQUEST_READING_CHUNK_SIZE,
+marla_BACKEND_REQUEST_READING_CHUNK_BODY,
 marla_CLIENT_REQUEST_READING_TRAILER,
-marla_BACKEND_REQUEST_READING_RESPONSE_TRAILER,
+marla_BACKEND_REQUEST_READING_TRAILER,
 marla_BACKEND_REQUEST_RESPONDING,
 marla_CLIENT_REQUEST_DONE_READING,
 marla_BACKEND_REQUEST_DONE_READING,
@@ -130,8 +134,7 @@ void* handleData;
 };
 typedef struct marla_BackendResponder marla_BackendResponder;
 struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, struct marla_Request* req);
-void marla_BackendResponder_flushOutput(marla_BackendResponder* resp);
-void marla_BackendResponder_flushInput(marla_BackendResponder* resp);
+int marla_BackendResponder_flushOutput(marla_BackendResponder* resp);
 
 enum marla_ClientEvent {
 marla_BACKEND_EVENT_NEED_HEADERS,
@@ -141,10 +144,12 @@ marla_BACKEND_EVENT_MUST_WRITE,
 marla_BACKEND_EVENT_NEED_TRAILERS,
 marla_BACKEND_EVENT_CLIENT_PEER_CLOSED,
 marla_BACKEND_EVENT_CLOSING,
+marla_BACKEND_EVENT_ACCEPTING_RESPONSE,
 marla_EVENT_BACKEND_PEER_CLOSED,
 marla_EVENT_HEADER,
 marla_EVENT_ACCEPTING_REQUEST,
 marla_EVENT_REQUEST_BODY,
+marla_BACKEND_EVENT_RESPONSE_BODY,
 marla_EVENT_FORM_FIELD,
 marla_EVENT_MUST_WRITE,
 marla_EVENT_WEBSOCKET_MUST_READ,
@@ -152,7 +157,7 @@ marla_EVENT_WEBSOCKET_MUST_WRITE,
 marla_EVENT_WEBSOCKET_CLOSING,
 marla_EVENT_WEBSOCKET_CLOSE_REASON,
 marla_EVENT_DESTROYING,
-marla_BACKEND_EVENT_DESTROYING,
+marla_BACKEND_EVENT_DESTROYING
 };
 void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen);
 
@@ -181,11 +186,13 @@ int expect_upgrade;
 int expect_continue;
 int expect_trailer;
 int expect_websocket;
+int expect_chunked;
 int close_after_done;
 void(*handler)(struct marla_Request*, enum marla_ClientEvent, void*, int);
 void* handlerData;
 struct marla_Request* backendPeer;
-long int contentLen;
+long int givenContentLen;
+long int remainingContentLen;
 long int totalContentLen;
 long int chunkSize;
 char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1];
@@ -364,6 +371,7 @@ volatile int sfd;
 int backendfd;
 marla_Connection* backend;
 pthread_t terminal_thread;
+volatile int has_terminal;
 struct marla_ServerModule* first_module;
 struct marla_ServerModule* last_module;
 struct marla_HookList hooks[marla_SERVER_HOOK_MAX];

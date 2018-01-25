@@ -16,6 +16,7 @@ void marla_killRequest(struct marla_Request* req, const char* reason, ...)
     va_start(ap, reason);
     vsnprintf(req->error, sizeof req->error, reason, ap);
     req->cxn->stage = marla_CLIENT_COMPLETE;
+    marla_logMessagef(req->cxn->server, "Killing request: %s", req->error);
     va_end(ap);
 }
 
@@ -56,10 +57,14 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
         return "CLIENT_REQUEST_READING_CHUNK_SIZE";
     case marla_CLIENT_REQUEST_READING_CHUNK_BODY:
         return "CLIENT_REQUEST_READING_CHUNK_BODY";
+    case marla_BACKEND_REQUEST_READING_CHUNK_SIZE:
+        return "BACKEND_REQUEST_READING_CHUNK_SIZE";
+    case marla_BACKEND_REQUEST_READING_CHUNK_BODY:
+        return "BACKEND_REQUEST_READING_CHUNK_BODY";
     case marla_CLIENT_REQUEST_READING_TRAILER:
         return "CLIENT_REQUEST_READING_TRAILER";
-    case marla_BACKEND_REQUEST_READING_RESPONSE_TRAILER:
-        return "BACKEND_REQUEST_READING_RESPONSE_TRAILER";
+    case marla_BACKEND_REQUEST_READING_TRAILER:
+        return "BACKEND_REQUEST_READING_TRAILER";
     case marla_BACKEND_REQUEST_RESPONDING:
         return "BACKEND_REQUEST_RESPONDING";
     case marla_CLIENT_REQUEST_WEBSOCKET:
@@ -120,7 +125,8 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     req->writeStage = marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT;
 
     // Counters
-    req->contentLen = marla_MESSAGE_LENGTH_UNKNOWN;
+    req->givenContentLen = marla_MESSAGE_LENGTH_UNKNOWN;
+    req->remainingContentLen = 0;
     req->totalContentLen = 0;
     req->chunkSize = 0;
 
@@ -171,6 +177,15 @@ void marla_Request_destroy(marla_Request* req)
 {
     if(req->handler) {
         req->handler(req, marla_EVENT_DESTROYING, 0, 0);
+    }
+    if(req->error[0] != 0) {
+        marla_logMessage(req->cxn->server, "Destroying request");
+    }
+    else {
+        marla_logMessage(req->cxn->server, "Destroying request");
+    }
+    if(req->backendPeer) {
+        req->backendPeer->backendPeer = 0;
     }
     free(req);
 }

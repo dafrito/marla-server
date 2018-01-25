@@ -434,6 +434,7 @@ int main(int argc, const char**argv)
         marla_logMessage(&server, "curses disabled.");
     }
     else {
+        server.has_terminal = 1;
         marla_logMessage(&server, "curses enabled.");
     }
     marla_logLeave(&server, "Entering event loop.");
@@ -685,10 +686,11 @@ destroy_without_unlock:
     if(server.backendfd > 0) {
         close(server.backendfd);
     }
-    if(use_curses && server.terminal_thread) {
+    if(use_curses && server.has_terminal) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);
     }
     marla_Server_free(&server);
     apr_pool_terminate();
+    return 0;
 }

@@ -11,3 +11,4 @@ test_small_ring
 test_ring_putback
 test_connection
 run-tests
+vgcore.*

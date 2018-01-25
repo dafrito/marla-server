@@ -55,8 +55,6 @@ void* terminal_operator(void* data)
     char buf[1024];
     int count = 0;
 
-    int end_terminal = 0;
-
     enum TerminalPageMode mode = TerminalPageMode_Menu;
     nodelay(stdscr, TRUE);
     for(;;) {
@@ -64,9 +62,6 @@ void* terminal_operator(void* data)
             // Process a character of input.
             switch(c) {
             case KEY_F(8):
-                //if(server->server_status == marla_SERVER_DESTROYING) {
-                    end_terminal = 1;
-                //}
                 server->server_status = marla_SERVER_DESTROYING;
                 kill(0, SIGUSR1);
                 break;
@@ -205,7 +200,7 @@ void* terminal_operator(void* data)
                 abort();
             }
         }
-        if(end_terminal && server->server_status == marla_SERVER_DESTROYING) {
+        if(server->server_status == marla_SERVER_DESTROYING) {
             break;
         }
         struct timespec rem;
@@ -224,13 +219,15 @@ void* terminal_operator(void* data)
     nocbreak();
     echo();
     endwin();
+    server->has_terminal = 0;
     return 0;
 }
 
 void marla_die(marla_Server* server, const char* fmt, ...)
 {
     server->server_status = marla_SERVER_DESTROYING;
-    if(server->terminal_thread) {
+    kill(0, SIGUSR1);
+    if(server->has_terminal) {
         void* retval;
         pthread_join(server->terminal_thread, &retval);
     }

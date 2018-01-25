@@ -27,9 +27,9 @@ struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, ma
     cpr->req = req;
     cpr->input = marla_Ring_new(bufSize);
     cpr->stage = marla_CHUNK_RESPONSE_GENERATE;
-    cpr->handleStage = 0;
     cpr->index = 0;
     cpr->handleData = 0;
+    cpr->handleStage = 0;
     return cpr;
 }
 

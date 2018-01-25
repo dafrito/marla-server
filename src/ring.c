@@ -33,6 +33,16 @@ size_t marla_Ring_capacity(marla_Ring* ring)
     return ring->capacity;
 }
 
+int marla_Ring_isFull(marla_Ring* ring)
+{
+    return marla_Ring_size(ring) == marla_Ring_capacity(ring);
+}
+
+int marla_Ring_isEmpty(marla_Ring* ring)
+{
+    return marla_Ring_size(ring) == 0;
+}
+
 int marla_Ring_read(marla_Ring* ring, unsigned char* sink, size_t size)
 {
     int nread = 0;
@@ -46,12 +56,13 @@ int marla_Ring_read(marla_Ring* ring, unsigned char* sink, size_t size)
     return nread;
 }
 
-unsigned char marla_Ring_readc(marla_Ring* ring)
+int marla_Ring_readc(marla_Ring* ring, unsigned char* c)
 {
     if(marla_Ring_size(ring) == 0) {
         return 0;
     }
-    return ring->buf[(ring->read_index++) & (ring->capacity-1)];
+    *c = ring->buf[(ring->read_index++) & (ring->capacity-1)];
+    return 1;
 }
 
 size_t marla_Ring_write(marla_Ring* ring, const void* source, size_t size)
@@ -183,9 +194,13 @@ void marla_Ring_simplify(marla_Ring* ring)
     ring->read_index = 0;
 }
 
-void marla_Ring_writec(marla_Ring* ring, unsigned char source)
+int marla_Ring_writec(marla_Ring* ring, unsigned char source)
 {
+    if(marla_Ring_isFull(ring)) {
+        return 0;
+    }
     ring->buf[(ring->write_index++) & (ring->capacity-1)] = source;
+    return 1;
 }
 
 void marla_Ring_putbackRead(marla_Ring* ring, size_t count)

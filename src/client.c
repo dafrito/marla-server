@@ -23,6 +23,8 @@ const char* marla_nameClientEvent(enum marla_ClientEvent ev)
     switch(ev) {
     case marla_BACKEND_EVENT_NEED_HEADERS:
         return "BACKEND_EVENT_NEED_HEADERS";
+    case marla_BACKEND_EVENT_RESPONSE_BODY:
+        return "BACKEND_EVENT_RESPONSE_BODY";
     case marla_BACKEND_EVENT_HEADER:
         return "BACKEND_EVENT_HEADER";
     case marla_BACKEND_EVENT_MUST_READ:
@@ -41,6 +43,8 @@ const char* marla_nameClientEvent(enum marla_ClientEvent ev)
         return "EVENT_HEADER";
     case marla_EVENT_ACCEPTING_REQUEST:
         return "EVENT_ACCEPTING_REQUEST";
+    case marla_BACKEND_EVENT_ACCEPTING_RESPONSE:
+        return "BACKEND_EVENT_ACCEPTING_RESPONSE";
     case marla_EVENT_REQUEST_BODY:
         return "EVENT_REQUEST_BODY";
     case marla_EVENT_FORM_FIELD:
@@ -174,7 +178,15 @@ static int marla_processClientFields(marla_Request* req)
                 marla_Connection_putbackRead(cxn, nread - i - 1);
                 break;
             }
-            if(i < nread - 1 && fieldLine[i] == '\r' && fieldLine[i + 1] == '\n') {
+            if(fieldLine[i] == '\r') {
+                if(i >= nread - 1) {
+                    marla_Connection_putbackRead(cxn, nread);
+                    return -1;
+                }
+                if(fieldLine[i + 1] != '\n') {
+                    marla_killRequest(req, "Header line is not terminated properly, so no valid request.");
+                    return 1;
+                }
                 fieldLine[i] = 0;
                 foundNewline = 1;
                 marla_Connection_putbackRead(cxn, nread - i - 2);
@@ -229,41 +241,43 @@ static int marla_processClientFields(marla_Request* req)
             marla_logMessagecf(req->cxn->server, "HTTP Headers", "%s = %s", fieldName, fieldValue);
 
             if(!strcasecmp(fieldName, "Content-Length")) {
-                if(req->contentLen != -2) {
+                if(req->givenContentLen != marla_MESSAGE_LENGTH_UNKNOWN) {
                     marla_killRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                     return -1;
                 }
                 char* endptr;
-                long int x = strtol(fieldValue, &endptr, 10);
-                if(*endptr != '\0' || x < 0) {
+                long int parsedLen = strtol(fieldValue, &endptr, 10);
+                if(*endptr != '\0' || parsedLen < 0) {
                     marla_killRequest(req, "Content-Length header value could not be read, so no valid request.\n");
                     return -1;
                 }
-                req->contentLen = x;
+                req->givenContentLen = parsedLen;
             }
             else if(!strcasecmp(fieldName, "Host")) {
                 memset(req->host, 0, sizeof(req->host));
                 strncpy(req->host, fieldValue, sizeof(req->host) - 1);
             }
             else if(!strcasecmp(fieldName, "Transfer-Encoding")) {
-                if(req->contentLen != -2) {
+                if(req->givenContentLen != marla_MESSAGE_LENGTH_UNKNOWN) {
                     marla_killRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                     return -1;
                 }
 
                 if(!strcasecmp(fieldValue, "chunked")) {
-                    req->contentLen = marla_MESSAGE_IS_CHUNKED;
+                    req->givenContentLen = marla_MESSAGE_IS_CHUNKED;
                 }
             }
             else if(!strcasecmp(fieldName, "Connection")) {
                 char* sp;
                 char* fieldToken = strtok_r(fieldValue, ", ", &sp);
+                int hasMultiple = 1;
                 if(!fieldToken) {
                     fieldToken = fieldValue;
+                    hasMultiple = 0;
                 }
-                else while(fieldToken) {
+                while(fieldToken) {
                     if(!strcasecmp(fieldToken, "close")) {
-                        req->contentLen = marla_MESSAGE_USES_CLOSE;
+                        req->givenContentLen = marla_MESSAGE_USES_CLOSE;
                         req->close_after_done = 1;
                     }
                     else if(!strcasecmp(fieldToken, "Upgrade")) {
@@ -273,7 +287,9 @@ static int marla_processClientFields(marla_Request* req)
                         marla_killRequest(req, "Connection is not understood, so no valid request.\n");
                         return -1;
                     }
-                    fieldToken = strtok_r(0, ", ", &sp);
+                    if(hasMultiple) {
+                        fieldToken = strtok_r(0, ", ", &sp);
+                    }
                 }
             }
             else if(!strcmp(fieldName, "Trailer")) {
@@ -467,7 +483,7 @@ static int marla_processClientFields(marla_Request* req)
                 req->writeStage = marla_CLIENT_REQUEST_WRITING_CONTINUE;
             }
             else {
-                switch(req->contentLen) {
+                switch(req->givenContentLen) {
                 case marla_MESSAGE_IS_CHUNKED:
                     req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_SIZE;
                     break;
@@ -479,7 +495,12 @@ static int marla_processClientFields(marla_Request* req)
                 case marla_MESSAGE_USES_CLOSE:
                     req->close_after_done = 1;
                     req->readStage = marla_CLIENT_REQUEST_READING_REQUEST_BODY;
+                    req->remainingContentLen = req->givenContentLen;
                     break;
+                }
+                if(req->givenContentLen > 0) {
+                    req->totalContentLen = req->givenContentLen;
+                    req->remainingContentLen = req->givenContentLen;
                 }
                 req->writeStage = marla_CLIENT_REQUEST_WRITING_RESPONSE;
             }
@@ -530,7 +551,15 @@ read_chunk_size:
                 marla_Connection_putbackRead(cxn, nread - (i + 1));
                 break;
             }
-            else if(foundHexDigit && c == '\r' && i < nread - 1 && buf[i + 1] == '\n') {
+            else if(foundHexDigit && c == '\r') {
+                if(i >= nread - 1) {
+                    marla_Connection_putbackRead(cxn, nread);
+                    return -1;
+                }
+                if(buf[i + 1] != '\n') {
+                    marla_killRequest(req, "Chunk is not terminated properly.");
+                    return -1;
+                }
                 // Size-body separator.
                 foundEnd = 1;
                 buf[i] = 0;
@@ -918,7 +947,15 @@ static int marla_processTrailer(marla_Request* req)
                 marla_Connection_putbackRead(cxn, nread - i - 1);
                 break;
             }
-            if(i < nread - 1 && fieldLine[i] == '\r' && fieldLine[i + 1] == '\n') {
+            if(fieldLine[i] == '\r' && fieldLine[i + 1] == '\n') {
+                if(i >= nread - 1) {
+                    marla_Connection_putbackRead(cxn, nread);
+                    return -1;
+                }
+                if(fieldLine[i + 1] != '\n') {
+                    marla_killRequest(req, "Trailer line is not terminated properly, so no valid request.");
+                    return 1;
+                }
                 fieldLine[i] = 0;
                 foundNewline = 1;
                 marla_Connection_putbackRead(cxn, nread - i - 2);
@@ -1248,18 +1285,18 @@ int marla_clientRead(marla_Connection* cxn)
     }
 
     if(req->readStage == marla_CLIENT_REQUEST_READING_REQUEST_BODY) {
-        while(req->contentLen != 0) {
+        while(req->remainingContentLen != 0) {
             // Read request body.
             char buf[marla_BUFSIZE];
             memset(buf, 0, sizeof(buf));
-            int requestedLen = req->contentLen;
+            int requestedLen = req->remainingContentLen;
             if(requestedLen > sizeof(buf)) {
                 requestedLen = sizeof(buf);
             }
             int nread = marla_Connection_read(cxn, (unsigned char*)buf, requestedLen);
             if(nread == 0) {
                 // Zero-length read indicates end of stream.
-                if(req->contentLen > 0) {
+                if(req->remainingContentLen > 0) {
                     marla_killRequest(req, "Premature end of request body.\n");
                     return 1;
                 }
@@ -1270,7 +1307,7 @@ int marla_clientRead(marla_Connection* cxn)
                 marla_killRequest(req, "Error while receiving request body.\n");
                 return 1;
             }
-            if(nread < 4 && req->contentLen > 4) {
+            if(nread < 4 && req->remainingContentLen > 4) {
                 // A read too small.
                 marla_Connection_putbackRead(cxn, nread);
                 return -1;
@@ -1278,7 +1315,7 @@ int marla_clientRead(marla_Connection* cxn)
 
             // Handle input.
             req->totalContentLen += nread;
-            req->contentLen -= nread;
+            req->remainingContentLen -= nread;
             if(req->handler) {
                 req->handler(req, marla_EVENT_REQUEST_BODY, buf, nread);
             }
@@ -1367,14 +1404,15 @@ int marla_clientWrite(marla_Connection* cxn)
             return -1;
         }
 
-        if(req->contentLen == -1) {
+        if(req->givenContentLen == marla_MESSAGE_IS_CHUNKED) {
             req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_SIZE;
         }
-        else if(req->contentLen == 0) {
+        else if(req->givenContentLen == 0) {
             req->readStage = marla_CLIENT_REQUEST_DONE_READING;
         }
-        else if(req->contentLen > 0) {
+        else if(req->givenContentLen > 0) {
             req->readStage = marla_CLIENT_REQUEST_READING_REQUEST_BODY;
+            req->remainingContentLen = req->givenContentLen;
         }
 
         req->writeStage = marla_CLIENT_REQUEST_WRITING_RESPONSE;

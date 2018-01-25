@@ -48,8 +48,8 @@ int main()
     }
 
     marla_Ring_putbackRead(ring, 1);
-    char c = marla_Ring_readc(ring);
-    if(c != 'P') {
+    unsigned char c;
+    if(marla_Ring_readc(ring, &c) != 1 || c != 'P') {
         fprintf(stderr, "P must be found once putback.\n");
         return 4;
     }

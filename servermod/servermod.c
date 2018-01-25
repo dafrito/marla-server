@@ -383,7 +383,7 @@ static void backendHandler(struct marla_Request* req, enum marla_ClientEvent ev,
         }
         return;
     case marla_BACKEND_EVENT_NEED_HEADERS:
-        strcpy(buf, "Host: localhost:8081\r\n\r\n");
+        strcpy(buf, "Host: localhost:8081\r\nAccept: */*\r\n\r\n");
         bufLen = strlen(buf);
         int nwritten = marla_Connection_write(req->cxn, buf, bufLen);
         if(nwritten < bufLen) {

@@ -140,6 +140,7 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     memset(req->websocket_accept, 0, sizeof(req->websocket_accept));
     memset(req->websocket_frame, 0, sizeof(req->websocket_frame));
     memset(req->websocket_ping, 0, sizeof req->websocket_ping);
+    req->websocket_pingLen = 0;
     req->websocket_pongLen = 0;
     memset(req->websocket_pong, 0, sizeof req->websocket_pong);
     memset(req->websocket_closeReason, 0, sizeof req->websocket_closeReason);
@@ -162,6 +163,7 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
 
     // Flags
     req->is_backend = 0;
+    req->backendPeer = 0;
     req->expect_continue = 0;
     req->expect_trailer = 0;
     req->expect_upgrade = 0;

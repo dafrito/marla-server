@@ -1,9 +1,9 @@
-PORT=4400
+PORT=4401
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
 LIBDIR=$(PREFIX)/lib
-MARLAFLAGS=
+MARLAFLAGS=-nossl
 
 CFLAGS=-Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 

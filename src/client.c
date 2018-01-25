@@ -1492,7 +1492,7 @@ int marla_clientWrite(marla_Connection* cxn)
         }
 
         // Check if a pong frame is needed.
-        if(req->websocket_pingLen >= 0) {
+        if(req->websocket_pingLen > 0) {
             req->websocketFrameWritten = 0;
             req->websocketFrameOutLen = req->websocket_pingLen;
             marla_writeWebSocketHeader(req, 10, req->websocketFrameOutLen);

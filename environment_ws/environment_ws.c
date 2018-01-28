@@ -46,6 +46,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 memcpy(session->env.value + session->envReceived, in, len);
                 session->envReceived += len;
                 // Await more data.
+                marla_logMessagef(server, "Awaiting rest of environment");
                 return;
             }
             else {
@@ -54,6 +55,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 in += (neededEnvLength - session->envReceived);
                 len -= (neededEnvLength - session->envReceived);
                 session->envReceived = neededEnvLength;
+                marla_logMessagef(server, "Got the whole environment");
             }
             if(len == 0) {
                 // Only the environment received.
@@ -64,7 +66,9 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
         // TODO handle more events and commands received
 
         // Extraneous data should cause an error.
-        strcpy(session->error, "Received extraneous data.");
+        if(len > 0) {
+            strcpy(session->error, "Received extraneous data.");
+        }
         return;
 
     case marla_EVENT_HEADER:
@@ -148,16 +152,17 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             return;
         }
         if(session->envReceived < neededEnvLength) {
-            return;
+            marla_logMessagef(req->cxn->server, "environment_ws still needs to receive the requested environment ID");
+            goto choked;
         }
         if(!session->login.username) {
-            strcpy(session->error, "Session has no username.");
-            return;
+            strcpy(session->error, "Session is not logged in.");
+            goto choked;
         }
         if(!session->initialData) {
             if(0 != acquireWorldStream()) {
                 strcpy(session->error, "Failed to begin transaction to initialize user.");
-                return;
+                goto choked;
             }
 
             session->initialData = malloc(sizeof(struct printing_item));
@@ -171,15 +176,15 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             if(0 != parsegraph_getEnvironmentRoot(session->pool, worldStreamDBD, &session->env, &session->initialData->listId)) {
                 strcpy(session->error, "Error retrieving environment root.");
                 session->initialData->error = 1;
-                return;
+                goto choked;
             }
         }
         if(session->initialData->error) {
-            return;
+            goto choked;
         }
         if(session->initialData->listId == 0) {
             if(0 != parsegraph_prepareEnvironment(session)) {
-                return;
+                goto choked;
             }
         }
         if(session->initialData->stage != 3) {
@@ -189,19 +194,19 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 if(releaseWorldStream() != 0) {
                     session->initialData->error = 1;
                     strcpy(session->error, "Failed to commit prepared environment.");
-                    return;
+                    goto choked;
                 }
                 break;
             case -1:
                 // Choked.
-                return;
+                goto choked;
             case -2:
             default:
                 // Died.
                 releaseWorldStream();
                 session->initialData->error = 1;
                 strcpy(session->error, "Failed to prepare environment.");
-                return;
+                goto choked;
             }
         }
 
@@ -219,25 +224,20 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             // For each event, interpret and send to user.
             // Update event counter.
             // Stop if choked.
-
-        /*while(1){
-            strcpy(buf + LWS_PRE, "No time.");
-            int written = lws_write(wsi, buf + LWS_PRE, strlen("No time."), LWS_WRITE_TEXT);
-            if(written < 0) {
-                fprintf(stderr, "Failed to write.\n");
-                return -1;
-            }
-            if(written < m) {
-                fprintf(stderr, "Partial write.\n");
-                return -1;
-            }
-        }*/
         break;
     default:
         break;
     }
 
     return;
+choked:
+    marla_logMessagef(req->cxn->server, "environment_ws choked. %s", session->error);
+    (*(int*)in) = -1;
+    if(strlen(session->error) > 0 && !session->closed) {
+        marla_logMessagef(req->cxn->server, "Closing connection. %s", session->error);
+        marla_closeWebSocketRequest(req, 1000, session->error, strlen(session->error));
+        session->closed = 1;
+    }
 }
 
 static void routeHook(struct marla_Request* req, void* hookData)

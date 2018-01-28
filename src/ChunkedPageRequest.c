@@ -1,38 +1,5 @@
 #include "marla.h"
 
-const char* marla_nameChunkResponseStage(enum marla_ChunkResponseStage stage)
-{
-    switch(stage) {
-    case marla_CHUNK_RESPONSE_GENERATE:
-        return "CHUNK_RESPONSE_GENERATE";
-    case marla_CHUNK_RESPONSE_HEADER:
-        return "CHUNK_RESPONSE_HEADER";
-    case marla_CHUNK_RESPONSE_RESPOND:
-        return "CHUNK_RESPONSE_RESPOND";
-    case marla_CHUNK_RESPONSE_TRAILER:
-        return "CHUNK_RESPONSE_TRAILER";
-    case marla_CHUNK_RESPONSE_DONE:
-        return "CHUNK_RESPONSE_DONE";
-    }
-    return "";
-}
-
-struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, marla_Request* req)
-{
-    if(!req) {
-        fprintf(stderr, "No request given.\n");
-        abort();
-    }
-    struct marla_ChunkedPageRequest* cpr = malloc(sizeof(struct marla_ChunkedPageRequest));
-    cpr->req = req;
-    cpr->input = marla_Ring_new(bufSize);
-    cpr->stage = marla_CHUNK_RESPONSE_GENERATE;
-    cpr->index = 0;
-    cpr->handleData = 0;
-    cpr->handleStage = 0;
-    return cpr;
-}
-
 void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
 {
     // Incorporate message padding into chunk.
@@ -63,6 +30,43 @@ void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* a
         slotLen = 0xf + padding;
     }
     *availUsed = slotLen - *prefix_len - suffix_len;
+}
+
+const char* marla_nameChunkResponseStage(enum marla_ChunkResponseStage stage)
+{
+    switch(stage) {
+    case marla_CHUNK_RESPONSE_GENERATE:
+        return "CHUNK_RESPONSE_GENERATE";
+    case marla_CHUNK_RESPONSE_HEADER:
+        return "CHUNK_RESPONSE_HEADER";
+    case marla_CHUNK_RESPONSE_RESPOND:
+        return "CHUNK_RESPONSE_RESPOND";
+    case marla_CHUNK_RESPONSE_TRAILER:
+        return "CHUNK_RESPONSE_TRAILER";
+    case marla_CHUNK_RESPONSE_DONE:
+        return "CHUNK_RESPONSE_DONE";
+    }
+    return "";
+}
+struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, marla_Request* req)
+{
+    if(!req) {
+        fprintf(stderr, "No request given.\n");
+        abort();
+    }
+    struct marla_ChunkedPageRequest* cpr = malloc(sizeof(struct marla_ChunkedPageRequest));
+    cpr->req = req;
+    cpr->input = marla_Ring_new(bufSize);
+    cpr->stage = marla_CHUNK_RESPONSE_GENERATE;
+    cpr->index = 0;
+    cpr->handleData = 0;
+    cpr->handleStage = 0;
+    return cpr;
+}
+
+int marla_ChunkedPageRequest_write(marla_ChunkedPageRequest* cpr, unsigned char* in, size_t len)
+{
+    return marla_Ring_write(cpr->input, in, len);
 }
 
 int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)
@@ -231,3 +235,4 @@ void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEve
         break;
     }
 }
+

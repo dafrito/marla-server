@@ -241,15 +241,6 @@ int main(int argc, const char**argv)
 
     server.server_status = marla_SERVER_STARTED;
 
-    // Create the SSL context
-    SSL_CTX *ctx = 0;
-    if(use_ssl) {
-        marla_logMessage(&server, "Using SSL.");
-        init_openssl();
-        ctx = create_context();
-        configure_context(ctx);
-    }
-
     // Create epoll queue.
     server.efd = epoll_create1(0);
     if(server.efd == -1) {
@@ -419,6 +410,15 @@ int main(int argc, const char**argv)
                 serverModule->prevModule = 0;
             }
         }
+    }
+
+    // Create the SSL context
+    SSL_CTX *ctx = 0;
+    if(use_ssl) {
+        marla_logMessage(&server, "Using SSL.");
+        init_openssl();
+        ctx = create_context();
+        configure_context(ctx);
     }
 
     events = (struct epoll_event*)calloc(MAXEVENTS, sizeof(struct epoll_event));
@@ -632,17 +632,30 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                         cxn->wantsWrite = 0;
                         marla_clientWrite(cxn);
                     }
+
+                    if(cxn->stage == marla_CLIENT_COMPLETE) {
+                        marla_logMessage(&server, "Connection will be destroyed.");
+                    }
+
+                    if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                        int nflushed;
+                        int rv = marla_Connection_flush(cxn, &nflushed);
+                        if(rv <= 0) {
+                            //fprintf(stderr, "Responder choked.\n");
+                            return rv;
+                        }
+                    }
                 }
 
                 // Double-check if the shutdown needs to be run.
-                if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
-                    //fprintf(stderr, "Attempting shutdown for connection\n");
+                if(cxn->stage == marla_CLIENT_COMPLETE) {
+                    marla_logMessage(cxn->server, "Attempting shutdown for connection");
                     // Client needs shutdown.
                     if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
                         cxn->shouldDestroy = 1;
                     }
                     if(cxn->shouldDestroy) {
-                        //fprintf(stderr, "Connection should be destroyed\n");
+                        marla_logMessage(cxn->server, "Connection should be destroyed");
                     }
                 }
                 if(cxn->shouldDestroy) {
@@ -650,7 +663,6 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     marla_logLeave(&server, "Destroying connection.");
                 }
                 else {
-                    //fprintf(stderr, "Waiting for connection to become available.\n");
                     char buf[marla_BUFSIZE];
                     memset(buf, 0, sizeof buf);
                     cxn->describeSource(cxn, buf, sizeof buf);

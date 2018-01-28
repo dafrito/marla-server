@@ -13,12 +13,11 @@ static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
     case 1:
         len = snprintf(buf, sizeof buf,
             "<script>"
-            "function run() { WS=new WebSocket(\"ws://localhost:%s/environment/live\");"
-            "WS.onopen = function() { console.log('Hello'); };"
-            "setInterval(function() {"
-                "WS.send('Hello');"
-                "console.log('written');"
-            "}, 1000); }"
+            "function run() {"
+                "WS=new WebSocket(\"ws://localhost:%s/environment/live\"); "
+                "WS.onopen = function() { WS.send('123456789012345678901234567890123456'); };"
+                "WS.onclose = function(c, r) { console.log(c, r); };"
+            "};"
             "</script>"
             "</head>"
             "<body onload='run()'>"
@@ -439,7 +438,15 @@ static void backendClientHandler(struct marla_Request* req, enum marla_ClientEve
         break;
     case marla_EVENT_REQUEST_BODY:
         marla_logMessage(server, "EVENT_REQUEST_BODY!!!\n");
-        // Process request body, to feed it to resp.
+        // TODO Process request body, to feed it to resp.
+        if(len == 0) {
+            return;
+        }
+        if(!req->backendPeer) {
+            marla_die(req->cxn->server, "Backend request missing.");
+        }
+        resp = req->backendPeer->handlerData;
+
         break;
     case marla_EVENT_MUST_WRITE:
         if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS || req->readStage <= marla_CLIENT_REQUEST_READING_FIELD) {

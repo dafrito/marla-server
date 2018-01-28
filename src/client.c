@@ -16,6 +16,7 @@ void marla_closeWebSocketRequest(marla_Request* req, uint16_t closeCode, const c
         req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, (void*)reason, reasonLen);
         req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, 0, 0);
     }
+    marla_clientWrite(req->cxn);
 }
 
 const char* marla_nameClientEvent(enum marla_ClientEvent ev)
@@ -1442,13 +1443,24 @@ int marla_clientWrite(marla_Connection* cxn)
 
         req->readStage = marla_CLIENT_REQUEST_WEBSOCKET;
         req->writeStage = marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE;
+
         //fprintf(stderr, "Going websocket\n");
         marla_clientRead(cxn);
     }
 
     while(req->writeStage == marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE) {
+        // Write current output.
+        if(marla_Ring_size(req->cxn->output) > 0) {
+            int nflushed;
+            int rv = marla_Connection_flush(req->cxn, &nflushed);
+            if(rv <= 0) {
+                //fprintf(stderr, "Responder choked.\n");
+                return rv;
+            }
+        }
+
         // Check if a close frame is needed.
-        if(req->needWebSocketClose) {
+        if(req->needWebSocketClose && !req->doingWebSocketClose) {
             if(marla_writeWebSocketHeader(req, 8, 2 + req->websocket_closeReasonLen) < 0) {
                 return -1;
             }
@@ -1469,14 +1481,17 @@ int marla_clientWrite(marla_Connection* cxn)
                         }
                         return -1;
                     }
+                    marla_logMessagef(req->cxn->server, "Wrote close code of %d.", req->websocket_closeCode);
                     if(req->websocketFrameOutLen == req->websocketFrameWritten) {
+                        marla_logMessagef(req->cxn->server, "Wrote close frame without any provided reason");
                         goto shutdown;
                     }
                 }
-                int nwritten = marla_writeWebSocket(req, req->websocket_closeReason + req->websocketFrameWritten - 2, req->websocket_closeReasonLen - req->websocketFrameWritten - 2);
-                if(nwritten >= 0 && req->websocketFrameOutLen == req->websocketFrameWritten) {
+                marla_writeWebSocket(req, req->websocket_closeReason + req->websocketFrameWritten - 2, req->websocket_closeReasonLen - req->websocketFrameWritten + 2);
+                if(req->websocketFrameOutLen == req->websocketFrameWritten) {
                     goto shutdown;
                 }
+                marla_logMessagef(req->cxn->server, "Failed to write enter close frame");
                 return -1;
             }
             else if(req->doingPong) {
@@ -1509,16 +1524,6 @@ int marla_clientWrite(marla_Connection* cxn)
         }
         else {
             return -1;
-        }
-
-        // Write current output.
-        if(marla_Ring_size(req->cxn->output) > 0) {
-            int nflushed;
-            int rv = marla_Connection_flush(req->cxn, &nflushed);
-            if(rv <= 0) {
-                //fprintf(stderr, "Responder choked.\n");
-                return rv;
-            }
         }
     }
 

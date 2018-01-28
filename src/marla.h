@@ -58,7 +58,6 @@ marla_BACKEND_REQUEST_READING_CHUNK_SIZE,
 marla_BACKEND_REQUEST_READING_CHUNK_BODY,
 marla_CLIENT_REQUEST_READING_TRAILER,
 marla_BACKEND_REQUEST_READING_TRAILER,
-marla_BACKEND_REQUEST_RESPONDING,
 marla_CLIENT_REQUEST_DONE_READING,
 marla_BACKEND_REQUEST_DONE_READING,
 marla_BACKEND_REQUEST_AWAITING_ACCEPT
@@ -122,6 +121,7 @@ int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output);
 void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed);
 void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr);
 int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr);
+int marla_ChunkedPageRequest_write(marla_ChunkedPageRequest* cpr, unsigned char* in, size_t len);
 
 struct marla_BackendResponder {
 struct marla_Request* req;

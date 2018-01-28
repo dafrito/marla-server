@@ -53,11 +53,25 @@ static void acceptSource(marla_Connection* cxn)
 
 static int shutdownSource(marla_Connection* cxn)
 {
-    return 0;
+    marla_logMessage(cxn->server, "Shutting down cleartext source.");
+    marla_ClearTextSource* cxnSource = cxn->source;
+
+    while(!marla_Ring_isEmpty(cxn->output)) {
+        int nflushed;
+        if(marla_Connection_flush(cxn, &nflushed) <= 0) {
+            return -1;
+        }
+    }
+    fsync(cxnSource->fd);
+    int rv = shutdown(cxnSource->fd, SHUT_RDWR);
+    marla_logMessagef(cxn->server, "shutdown() returned %d", rv);
+    close(cxnSource->fd);
+    return 1;
 }
 
 static void destroySource(marla_Connection* cxn)
 {
+    marla_logMessage(cxn->server, "Destroying cleartext source.");
     marla_ClearTextSource* cxnSource = cxn->source;
     close(cxnSource->fd);
     free(cxn->source);

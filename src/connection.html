@@ -40,7 +40,7 @@ border: 1px solid grey;
 <tr><td>int(*readSource)(struct marla_Connection*, void*, size_t)<td>Function to read from source.
 <tr><td>int(*writeSource)(struct marla_Connection*, void*, size_t)<td>Function to write to source.
 <tr><td>void(*acceptSource)(struct marla_Connection*)<td>Function to accept a new connection. Must set the connection stage to ACCEPTED once done.
-<tr><td>int(*shutdownSource)(struct marla_Connection*)<td>Function to shutdown a connection before closing. Returns 0 if shutdown is complete, -1 otherwise.
+<tr><td>int(*shutdownSource)(struct marla_Connection*)<td>Function to shutdown a connection before closing. Returns 1 if shutdown is complete, 0 if the shutdown is not yet completed, and -1 if an error occurred.
 <tr><td>void(*destroySource)(struct marla_Connection*)<td>Function to destroy this connection's source.
 <tr><td>int(*describeSource)(struct marla_Connection*, char*, size_t)<td>Function to describe this connection's source to the user.
 <tr><td>struct epoll_event poll<td>epoll event queue
@@ -74,6 +74,10 @@ actually written to the source.
 <h2>int marla_Connection_write(marla_Connection* cxn, const char* source, size_t requested)</h2>
 Writes up to the requested number of bytes from source to the connection's output. The number of bytes actually written
 is returned, or -1 if the underlying source is not ready for writing.
+<h2>int marla_SSL_init(marla_Connection* cxn, SSL_CTX* ctx, int fd)</h2>
+Initializes a connection for use with the given <a href="https://www.openssl.org/docs/manmaster/man3/SSL_CTX_new.html">SSL_CTX</a> to provide a HTTPS connection.
+<h2>int marla_cleartext_init(marla_Connection* cxn, int fd)</h2>
+Initialilzes a connection to provide a HTTP connection.
 </main>
 <nav class=toc>
 <h3>Connection - <a href="index.html">Marla</a></h3>
@@ -90,6 +94,8 @@ is returned, or -1 if the underlying source is not ready for writing.
 <li>void <b>marla_Connection_destroy</b>(marla_Connection* cxn)
 <li>int <b>marla_Connection_flush</b>(marla_Connection* cxn, int* outnflushed)
 <li>int <b>marla_Connection_write</b>(marla_Connection* cxn, const char* source, size_t requested)
+<li>int <b>marla_SSL_init</b>(marla_Connection* cxn, SSL_CTX* ctx, int fd)
+<li>int <b>marla_cleartext_init</b>(marla_Connection* cxn, int fd)
 </ul>
 <h3>Marla</h3>
 Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
@@ -100,7 +106,7 @@ Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</
 <li><a href="server.html">Server</a>
 <li><a href="connection.html">Connection</a>
 <li><a href="request.html">Request</a>
-<li><a href="chunks.html">Chunks</a>
+<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
 <li><a href="ring.html">Ring</a>
 </ol>
 </nav>

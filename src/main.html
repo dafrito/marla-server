@@ -18,13 +18,16 @@ border: 1px solid grey;
 <h1>Main - <a href="index.html">Marla</a></h1>
 marla <em>server-port</em> <em>backend-port</em> <em>logging-port</em> [<em>modules-or-flags</em>, ...]
 <p>
-The first three arguments choose ports to use. The following arguments are either flags or module definitions.
+The first three arguments choose ports to use. Remaining arguments are server flags or server module definitions.
 <h3>Server port</h3>
-The TCP port served.
+The TCP port serving HTTP or HTTPS.
 <h3>Backend port</h3>
-The TCP port of the local backend server.
+The TCP port of the local backend HTTP server.
 <h3>Logging port</h3>
 The TCP port of the logging server.
+<pre>
+java -jar logviewer.jar
+</pre>
 <h3>Server module definitions</h3>
 Marla expects each server module to be passed in the command-line in the form <code>modulepath?modulefunc</code>.
 <p>
@@ -49,8 +52,8 @@ void module_servermod_init(struct marla_Server* server, enum marla_ServerModuleE
 If the prior function was defined in a suitable library named libservermod.so, then to invoke it as a server module, you would use <code>libservermod.so?module_servermod_init</code>.
 <h3>Server flags</h3>
 <table>
-<tr><td>-curses<td>Enable curses interface. Default is enabled.
-<tr><td>-ssl<td>Enable encryption over OpenSSL. Default is enabled.
+<tr><td>-curses<td>Enable curses interface. Default.
+<tr><td>-ssl<td>Enable encryption over OpenSSL. Default.
 <tr><td>-nossl<td>Disable encryption over OpenSSL.
 <tr><td>-nocurses<td>Disable curses interface.
 </table>
@@ -73,7 +76,7 @@ Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</
 <li><a href="server.html">Server</a>
 <li><a href="connection.html">Connection</a>
 <li><a href="request.html">Request</a>
-<li><a href="chunks.html">Chunks</a>
+<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
 <li><a href="ring.html">Ring</a>
 </ol>
 </nav>

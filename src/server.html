@@ -19,7 +19,7 @@ border: 1px solid grey;
 <h1>Server - <a href="index.html">Marla</a></h1>
 Global context.
 <h2>#define marla_LOGBUFSIZE</h2>
-The size of the server's log buffer. Defined as 32*1024.
+The size of the server's log buffer, in bytes. Defined as 32*1024.
 <h2>struct marla_Server</h2>
 <table>
 <tr><td>struct marla_Connection* first_connection<td>Server's first active connection
@@ -105,8 +105,36 @@ Runs the server's hooks for the given hook and request.
 Removes up to one hook.
 <h2>void marla_Server_addHook(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(marla_ClientRequest* req, void*), void* hookData)</h2>
 Adds one hook.
-<h2>void marla_Server_log(marla_Server* server, const char* output, size_t len)</h2>
-Logs the given string to the server's log.
+<h2>void marla_die(marla_Server* server, const char* fmt, ...)</h2>
+Aborts the server with the given error message. This function does not return.
+<h2>void marla_Server_flushLog(struct marla_Server* server)</h2>
+Flushes the log's output to the socket.
+<h2>void marla_logEntercf(marla_Server* server, const char* category, const char* fmt, ...)</h2>
+Logs the categorized and formatted message.
+<h2>void marla_logEnterc(marla_Server* server, const char* category, const char* message)</h2>
+Logs the categorized message.
+<h2>void marla_logEnter(marla_Server* server, const char* message)</h2>
+Enters a logging node with the given message.
+<h2>void marla_logEnterf(marla_Server* server, const char* fmt, ...)</h2>
+Enters a logging node with the given formatted message.
+<h2>void marla_logLeave(marla_Server* server, const char* message)</h2>
+Leaves a logging node. Message, if given, is added to the logging node before leaving.
+<h2>void marla_logLeavec(marla_Server* server, const char* category, const char* message)</h2>
+Leaves a logging node. The categorized message, if given, is added to the logging node before leaving.
+<h2>void marla_logLeavef(marla_Server* server, const char* fmt, ...)</h2>
+Leaves a logging node. Message, if given, is added to the logging node before leaving.
+<h2>void marla_logReset(marla_Server* server, const char* message)</h2>
+Resets logging output, leaving all logging nodes. The message is added to the root if non-null.
+<h2>void marla_logResetc(marla_Server* server, const char* category, const char* message)</h2>
+Resets logging output, leaving all logging nodes. The categorized message is added to the root if non-null.
+<h2>void marla_logMessagec(marla_Server* server, const char* category, const char* message)</h2>
+Adds a logging node with the given categorized message.
+<h2>void marla_logMessage(marla_Server* server, const char* message)</h2>
+Adds a logging node with the given message.
+<h2>void marla_logMessagecf(marla_Server* server, const char* category, const char* fmt, ...)</h2>
+Adds a logging node with the given categorized message.
+<h2>void marla_logMessagef(marla_Server* server, const char* fmt, ...)</h2>
+Adds a logging node with the given formatted message.
 </main>
 <nav class=toc>
 <h3>Server - <a href="index.html">Marla</a></h3>
@@ -126,7 +154,21 @@ Logs the given string to the server's log.
 <li>void <b>marla_Server_invokeHook</b>(marla_Server* server, enum marla_ServerHook serverHook, struct marla_ClientRequest* req)
 <li>int <b>marla_Server_removeHook</b>(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(struct marla_ClientRequest* req, void*), void* hookData)
 <li>void <b>marla_Server_addHook</b>(marla_Server* server, enum marla_ServerHook serverHook, enum marla_ServerHookStatus(*hookFunc)(marla_ClientRequest* req, void*), void* hookData)
-<li>void <b>marla_Server_log</b>(marla_Server* server, const char* output, size_t len)
+<li>void <b>marla_die</b>(marla_Server* server, const char* fmt, ...)</li>
+<li>void <b>marla_Server_flushLog</b>(struct marla_Server* server)
+<li>void <b>marla_logEntercf</b>(marla_Server* server, const char* category, const char* fmt, ...)
+<li>void <b>marla_logEnterc</b>(marla_Server* server, const char* category, const char* message)
+<li>void <b>marla_logEnter</b>(marla_Server* server, const char* message)
+<li>void <b>marla_logEnterf</b>(marla_Server* server, const char* fmt, ...)
+<li>void <b>marla_logLeave</b>(marla_Server* server, const char* message)
+<li>void <b>marla_logLeavec</b>(marla_Server* server, const char* category, const char* message)
+<li>void <b>marla_logLeavef</b>(marla_Server* server, const char* fmt, ...)
+<li>void <b>marla_logReset</b>(marla_Server* server, const char* message)
+<li>void <b>marla_logResetc</b>(marla_Server* server, const char* category, const char* message)
+<li>void <b>marla_logMessagec</b>(marla_Server* server, const char* category, const char* message)
+<li>void <b>marla_logMessage</b>(marla_Server* server, const char* message)
+<li>void <b>marla_logMessagecf</b>(marla_Server* server, const char* category, const char* fmt, ...)
+<li>void <b>marla_logMessagef</b>(marla_Server* server, const char* fmt, ...)
 </ul>
 <h3>Marla</h3>
 Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
@@ -137,7 +179,7 @@ Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</
 <li><a href="server.html">Server</a>
 <li><a href="connection.html">Connection</a>
 <li><a href="request.html">Request</a>
-<li><a href="chunks.html">Chunks</a>
+<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
 <li><a href="ring.html">Ring</a>
 </ol>
 </nav>

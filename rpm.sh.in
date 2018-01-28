@@ -1,0 +1,21 @@
+#!/bin/bash
+PATH=/usr/bin
+
+RPMDIR=$HOME/rpmbuild
+mkdir -p $RPMDIR
+cd $RPMDIR && mkdir -p SOURCES SPECS BUILD RPMS SRPMS && cd -
+
+RPMFLAGS=--ba
+SRCRPM=@PACKAGE_NAME@-@PACKAGE_VERSION@-@PACKAGE_RELEASE@.src.rpm
+
+make dist-gzip
+mv -u @PACKAGE_NAME@-@PACKAGE_VERSION@.tar.gz $RPMDIR/SOURCES
+cp -u @PACKAGE_NAME@.spec $RPMDIR/SPECS/@PACKAGE_NAME@.spec
+rpmbuild $RPMFLAGS $RPMDIR/SPECS/@PACKAGE_NAME@.spec
+
+for package in `rpm -q --specfile @PACKAGE_NAME@.spec`; do
+    arch=`echo $package | grep -E -o '[^.]+$$'`;
+    filename="$RPMDIR/RPMS/$arch/$package.rpm";
+    [ -h ../rpm/`basename $filename` ] || ln -v -s $filename ../rpm/`basename $filename`;
+done
+[ -h ../rpm/$SRCRPM ] || ln -v -s $RPMDIR/SRPMS/@PACKAGE_NAME@-@PACKAGE_VERSION@-@PACKAGE_RELEASE@`rpmbuild -E '%{?dist}' @PACKAGE_NAME@.spec`.src.rpm ../rpm/$SRCRPM

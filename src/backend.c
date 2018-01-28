@@ -210,7 +210,7 @@ int marla_backendWrite(marla_Connection* cxn)
     return 0;
 }
 
-int marla_readBackendRequestChunks(marla_Request* req)
+static int marla_readBackendRequestChunks(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
 read_chunk_size:

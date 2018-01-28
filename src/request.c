@@ -65,8 +65,6 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
         return "CLIENT_REQUEST_READING_TRAILER";
     case marla_BACKEND_REQUEST_READING_TRAILER:
         return "BACKEND_REQUEST_READING_TRAILER";
-    case marla_BACKEND_REQUEST_RESPONDING:
-        return "BACKEND_REQUEST_RESPONDING";
     case marla_CLIENT_REQUEST_WEBSOCKET:
         return "CLIENT_REQUEST_WEBSOCKET";
     case marla_BACKEND_REQUEST_DONE_READING:
@@ -144,6 +142,7 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     req->websocket_pongLen = 0;
     memset(req->websocket_pong, 0, sizeof req->websocket_pong);
     memset(req->websocket_closeReason, 0, sizeof req->websocket_closeReason);
+    req->websocket_closeCode = 0;
     req->websocket_closeReasonLen = 0;
 
     req->websocket_type = -1;

@@ -238,5 +238,10 @@ void marla_Connection_destroy(marla_Connection* cxn)
     marla_Ring_free(cxn->input);
     marla_Ring_free(cxn->output);
 
+    if(cxn->server->backend == cxn) {
+        cxn->server->backend = 0;
+        cxn->server->backendfd = 0;
+    }
+
     free(cxn);
 }

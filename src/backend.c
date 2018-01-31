@@ -166,8 +166,9 @@ int marla_Backend_connect(marla_Server* server)
 
 void marla_Backend_enqueue(marla_Server* server, marla_Request* req)
 {
-    marla_Backend_connect(server);
-
+    if(marla_Backend_connect(server) != 0) {
+        marla_die(server, "Failed to connect to backend");
+    }
     marla_Connection* cxn = server->backend;
     req->cxn = cxn;
     req->readStage = marla_BACKEND_REQUEST_READING_RESPONSE_LINE;

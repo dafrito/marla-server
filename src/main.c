@@ -181,6 +181,37 @@ int main(int argc, const char**argv)
         exit(EXIT_FAILURE);
     }
 
+    // Create the logging socket
+    server.logfd = create_and_connect("localhost", argv[3]);
+    if(server.logfd == -1) {
+        perror("Connecting to logging server");
+        exit_value = EXIT_FAILURE;
+        marla_logLeave(&server, "Failed to connect to logging server.");
+        goto destroy;
+    }
+    else {
+        strcpy(server.logaddress, argv[3]);
+        marla_logMessagef(&server, "Server is logging on port %s", server.logaddress);
+        s = make_socket_non_blocking(server.logfd);
+        if(s == -1) {
+            exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to make logging server non-blocking.");
+            goto destroy;
+        }
+
+        struct epoll_event event;
+        memset(&event, 0, sizeof(struct epoll_event));
+        event.data.fd = server.logfd;
+        event.events = EPOLLOUT | EPOLLRDHUP | EPOLLET;
+        s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.logfd, &event);
+        if(s == -1) {
+            perror("Adding logging file descriptor to epoll queue");
+            exit_value = EXIT_FAILURE;
+            marla_logLeave(&server, "Failed to add logging server to epoll queue.");
+            goto destroy;
+        }
+    }
+
     // Create the server socket
     server.sfd = create_and_bind(argv[1]);
     if(server.sfd == -1) {
@@ -219,37 +250,6 @@ int main(int argc, const char**argv)
 
     // Create the backend socket
     strcpy(server.backendport, argv[2]);
-
-    // Create the logging socket
-    server.logfd = create_and_connect("localhost", argv[3]);
-    if(server.logfd == -1) {
-        perror("Connecting to logging server");
-        exit_value = EXIT_FAILURE;
-        marla_logLeave(&server, "Failed to connect to logging server.");
-        goto destroy;
-    }
-    else {
-        strcpy(server.logaddress, argv[3]);
-        marla_logMessagef(&server, "Server is logging on port %s", server.logaddress);
-        s = make_socket_non_blocking(server.logfd);
-        if(s == -1) {
-            exit_value = EXIT_FAILURE;
-            marla_logLeave(&server, "Failed to make logging server non-blocking.");
-            goto destroy;
-        }
-
-        struct epoll_event event;
-        memset(&event, 0, sizeof(struct epoll_event));
-        event.data.fd = server.logfd;
-        event.events = EPOLLOUT | EPOLLRDHUP | EPOLLET;
-        s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.logfd, &event);
-        if(s == -1) {
-            perror("Adding logging file descriptor to epoll queue");
-            exit_value = EXIT_FAILURE;
-            marla_logLeave(&server, "Failed to add logging server to epoll queue.");
-            goto destroy;
-        }
-    }
 
     if(argc > MIN_ARGS) {
         for(int n = MIN_ARGS; n < argc; ++n) {
@@ -470,6 +470,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     if(events[i].events & EPOLLRDHUP) {
                         if(cxn == server.backend) {
                             marla_logMessagef(&server, "Backend connection done sending data.");
+                            marla_Connection_destroy(cxn);
                         }
                         continue;
                     }
@@ -595,8 +596,8 @@ destroy_without_unlock:
     if(server.logfd > 0) {
         close(server.logfd);
     }
-    if(server.backendfd > 0) {
-        close(server.backendfd);
+    if(server.backend) {
+        marla_Connection_destroy(server.backend);
     }
     if(use_curses && server.has_terminal) {
         void* retval;

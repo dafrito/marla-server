@@ -69,24 +69,23 @@ int marla_ChunkedPageRequest_write(marla_ChunkedPageRequest* cpr, unsigned char*
     return marla_Ring_write(cpr->input, in, len);
 }
 
-int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)
+int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output)
 {
-    int avail = marla_Ring_size(cpr->input);
-    if(avail == 0) {
-        cpr->stage = marla_CHUNK_RESPONSE_TRAILER;
-        //fprintf(stderr, "Chunk input buffer was empty.\n");
+    if(marla_Ring_isFull(output)) {
+        marla_logMessage(server, "Output ring is full.");
         return -1;
     }
-    if(marla_Ring_size(output) == marla_Ring_capacity(output)) {
-        // Output ring is full.
-        return -1;
+    int avail = marla_Ring_size(input);
+    if(avail == 0) {
+        marla_logMessage(server, "Chunk input buffer was empty.");
+        return 1;
     }
     void* slotData;
     size_t slotLen;
     marla_Ring_writeSlot(output, &slotData, &slotLen);
 
     // Ignore slots of insufficient size.
-    //fprintf(stderr, "output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
+    marla_logMessagef(server, "output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
     if(slotLen <= 5) {
         marla_Ring_putbackWrite(output, slotLen);
         //fprintf(stderr, "presimplifying. output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
@@ -94,13 +93,13 @@ int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)
         //fprintf(stderr, "postsimplifying. output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
         marla_Ring_writeSlot(output, &slotData, &slotLen);
         if(slotLen <= 5) {
-            //fprintf(stderr, "Slot provided is of insufficient size (%ld). Size=%ld, rindex=%d, windex=%d\n", slotLen, marla_Ring_size(cpr->req->cxn->output), cpr->req->cxn->output->read_index, cpr->req->cxn->output->write_index);
+            marla_logMessagef(server, "Slot provided is of insufficient size (%ld). Size=%ld, rindex=%d, windex=%d\n", slotLen, marla_Ring_size(output), output->read_index, output->write_index);
             marla_Ring_putbackWrite(output, slotLen);
             return -1;
         }
     }
     unsigned char* slot = slotData;
-    //fprintf(stderr, "CHUNK length: %ld\n", slotLen);
+    marla_logMessagef(server, "CHUNK length: %ld\n", slotLen);
 
     size_t prefix_len;
     size_t availUsed;
@@ -117,27 +116,23 @@ int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)
     // suffix_len = length of the suffix. always 2 bytes.
     // padding = prefix_len + suffix_len
 
-    //fprintf(stderr, "CHUNK: slot=%lx, avail=%d, slotLen=%ld prefix_len=%ld availUsed=%ld\n", (long unsigned int)slot, avail, slotLen, prefix_len, availUsed);
+    marla_logMessagef(server, "CHUNK: slot=%lx, avail=%d, slotLen=%ld prefix_len=%ld availUsed=%ld\n", (long unsigned int)slot, avail, slotLen, prefix_len, availUsed);
 
     // Construct the chunk within the slot.
     int true_prefix_size = snprintf((char*)slot, prefix_len + 1, "%lx\r\n", availUsed);
     if(true_prefix_size < 0) {
-        fprintf(stderr, "Failed to generate chunk header.\n");
-        abort();
+        marla_die(server, "snprintf failed to generate chunk header.");
     }
     if(true_prefix_size != prefix_len) {
-        fprintf(stderr, "Realized prefix length %d must match the calculated prefix length %ld for %d bytes avail with slotLen of %ld (%ld padding).\n", true_prefix_size, prefix_len, avail, slotLen, padding);
-        abort();
+        marla_die(server, "Realized prefix length %d must match the calculated prefix length %ld for %d bytes avail with slotLen of %ld (%ld padding).\n", true_prefix_size, prefix_len, avail, slotLen, padding);
     }
-    int true_written = marla_Ring_read(cpr->input, slot + prefix_len, availUsed);
+    int true_written = marla_Ring_read(input, slot + prefix_len, availUsed);
     if(true_written != availUsed) {
-        fprintf(stderr, "Realized written length %d must match the calculated written length %ld.\n", true_written, availUsed);
+        marla_die(server, "Realized written length %d must match the calculated written length %ld.\n", true_written, availUsed);
         abort();
     }
     slot[slotLen - 2] = '\r';
     slot[slotLen - 1] = '\n';
-    //write(0, "CHUNK: ", 7);
-    //write(0, slot, slotLen);
     return 0;
 }
 
@@ -183,27 +178,27 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
         }
         //marla_Connection_flush(cpr->req->cxn, 0);
         cpr->handler(cpr);
-        if(0 != marla_writeChunk(cpr, cpr->req->cxn->output)) {
-            if(cpr->stage != marla_CHUNK_RESPONSE_RESPOND) {
-                break;
+        int rv = marla_writeChunk(cpr->req->cxn->server, cpr->input, cpr->req->cxn->output);
+        if(rv == 1) {
+            switch(marla_writeChunkTrailer(cpr->req->cxn->output)) {
+            case 1:
+                cpr->stage = marla_CHUNK_RESPONSE_TRAILER;
+                continue;
+            case -1:
+                //fprintf(stderr, "writeChunk choked on ending trailer.\n");
+                return -1;
             }
+        }
+        if(rv != -1) {
             int nflushed = 0;
             if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
-                fprintf(stderr, "writeChunk choked.\n");
+                //fprintf(stderr, "writeChunk choked.\n");
                 return -1;
             }
         }
     }
 
     if(cpr->stage == marla_CHUNK_RESPONSE_TRAILER) {
-        int nwritten = marla_Connection_write(cpr->req->cxn, "0\r\n\r\n", 5);
-        if(nwritten < 5) {
-            if(nwritten > 0) {
-                marla_Connection_putbackWrite(cpr->req->cxn, nwritten);
-            }
-            //fprintf(stderr, "writing trailer choked.\n");
-            return -1;
-        }
         cpr->stage = marla_CHUNK_RESPONSE_DONE;
     }
 
@@ -213,6 +208,18 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
     }
 
     return 0;
+}
+
+int marla_writeChunkTrailer(marla_Ring* output)
+{
+    int nwritten = marla_Ring_writeStr(output, "0\r\n\r\n");
+    if(nwritten < 5) {
+        if(nwritten > 0) {
+            marla_Ring_putbackWrite(output, nwritten);
+        }
+        return -1;
+    }
+    return 1;
 }
 
 void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen)

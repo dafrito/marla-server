@@ -1,11 +1,15 @@
 #include "marla.h"
 #include <time.h>
+#include <unistd.h>
 
 void marla_logAction(marla_Server* server, const char* scope, const char* category, const char* message)
 {
+    if(!message) {
+        message = "";
+    }
     struct timespec now;
     if(0 != clock_gettime(CLOCK_MONOTONIC, &now)) {
-        perror("marla_logAction");
+        fprintf(stderr, "Failed to get time for logging\n");
         abort();
     }
     char buf[marla_BUFSIZE];
@@ -38,6 +42,10 @@ void marla_logAction(marla_Server* server, const char* scope, const char* catego
         buf[1023] = 0;
     }
 
+    if(!server->logfd) {
+        //write(2, buf, nwritten);
+        return;
+    }
     int true_written = marla_Ring_write(server->log, buf, nwritten);
     if(true_written != nwritten) {
         fprintf(stderr, "Logging overflow\n");

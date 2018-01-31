@@ -117,7 +117,8 @@ void* handleData;
 typedef struct marla_ChunkedPageRequest marla_ChunkedPageRequest;
 
 struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t, struct marla_Request*);
-int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output);
+struct marla_Server;
+int marla_writeChunk(struct marla_Server* server, marla_Ring* input, marla_Ring* output);
 void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed);
 void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr);
 int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr);
@@ -128,13 +129,17 @@ struct marla_Request* req;
 void(*handler)(struct marla_BackendResponder*);
 int handleStage;
 int index;
-marla_Ring* input;
-marla_Ring* output;
+marla_Ring* backendRequestBody;
+marla_Ring* backendResponse;
+marla_Ring* clientResponse;
 void* handleData;
 };
 typedef struct marla_BackendResponder marla_BackendResponder;
+int marla_Backend_connect(struct marla_Server* server);
 struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, struct marla_Request* req);
-int marla_BackendResponder_flushOutput(marla_BackendResponder* resp);
+void marla_BackendResponder_free(marla_BackendResponder* resp);
+int marla_BackendResponder_flushClientResponse(marla_BackendResponder* resp, size_t* nflushed);
+int marla_BackendResponder_writeRequestBody(marla_BackendResponder* resp, unsigned char* in, size_t len);
 
 enum marla_ClientEvent {
 marla_BACKEND_EVENT_NEED_HEADERS,
@@ -244,6 +249,8 @@ int shouldDestroy;
 int wantsWrite;
 int wantsRead;
 enum marla_ConnectionStage stage;
+int in_read;
+int in_write;
 
 struct marla_Server* server;
 struct marla_Connection* prev_connection;
@@ -308,10 +315,11 @@ void marla_default_websocket_handler(struct marla_Request* req, enum marla_Clien
 int marla_backendRead(marla_Connection* cxn);
 int marla_backendWrite(marla_Connection* cxn);
 void marla_Backend_init(marla_Connection* cxn, int fd);
-void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req);
+void marla_Backend_enqueue(struct marla_Server* server, marla_Request* req);
 int marla_clientRead(marla_Connection* cxn);
 int marla_clientAccept(marla_Connection* cxn);
 int marla_clientWrite(marla_Connection* cxn);
+int marla_writeChunkTrailer(marla_Ring* output);
 
 // Server
 

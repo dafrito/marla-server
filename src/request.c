@@ -97,7 +97,7 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
     case marla_BACKEND_REQUEST_WRITING_REQUEST_LINE:
         return "BACKEND_REQUEST_WRITING_REQUEST_LINE";
     case marla_BACKEND_REQUEST_WRITING_REQUEST_BODY:
-        return "BACKEND_REQUEST_WRITING_TRAILERS";
+        return "BACKEND_REQUEST_WRITING_REQUEST_BODY";
     case marla_BACKEND_REQUEST_WRITING_TRAILERS:
         return "BACKEND_REQUEST_WRITING_TRAILERS";
     case marla_BACKEND_REQUEST_DONE_WRITING:
@@ -180,10 +180,10 @@ void marla_Request_destroy(marla_Request* req)
         req->handler(req, marla_EVENT_DESTROYING, 0, 0);
     }
     if(req->error[0] != 0) {
-        marla_logMessage(req->cxn->server, "Destroying request");
+        marla_logMessagef(req->cxn->server, "Destroying request %d with error %s", req->id, req->error);
     }
     else {
-        marla_logMessage(req->cxn->server, "Destroying request");
+        marla_logMessagef(req->cxn->server, "Destroying request %d", req->id);
     }
     if(req->backendPeer) {
         req->backendPeer->backendPeer = 0;

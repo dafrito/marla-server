@@ -365,7 +365,7 @@ static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
 static void backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 {
     marla_Server* server = req->cxn->server;
-    marla_logMessagef(server, "BACKEND %s", marla_nameClientEvent(ev));
+    marla_logEntercf(server, "Handling", "Handling backend event on backend: %s", marla_nameClientEvent(ev));
     marla_BackendResponder* resp;
 
     char buf[marla_BUFSIZE];
@@ -373,16 +373,22 @@ static void backendHandler(struct marla_Request* req, enum marla_ClientEvent ev,
 
     switch(ev) {
     case marla_BACKEND_EVENT_RESPONSE_BODY:
-        marla_logMessagef(server, "Reading %d bytes. %s", len);
+        if(len == 0) {
+            marla_logLeave(server, 0);
+            return;
+        }
         resp = req->handlerData;
-        marla_Ring_write(resp->input, in, len);
-
         if(!resp) {
             marla_die(req->cxn->server, "Backend peer must have responder handlerData\n");
         }
+        marla_logMessagef(server, "Forwarding %d bytes from backend's response to client.", len);
+        marla_Ring_write(resp->backendResponse, in, len);
+        marla_clientWrite(req->backendPeer->cxn);
+        marla_logLeave(server, 0);
         return;
     case marla_BACKEND_EVENT_NEED_HEADERS:
-        strcpy(buf, "Host: localhost:8081\r\nAccept: */*\r\n\r\n");
+        req->givenContentLen = marla_MESSAGE_IS_CHUNKED;
+        strcpy(buf, "Host: localhost:8081\r\nTransfer-Encoding: chunked\r\nAccept: */*\r\n\r\n");
         bufLen = strlen(buf);
         int nwritten = marla_Connection_write(req->cxn, buf, bufLen);
         if(nwritten < bufLen) {
@@ -393,30 +399,71 @@ static void backendHandler(struct marla_Request* req, enum marla_ClientEvent ev,
         }
         goto done;
     case marla_BACKEND_EVENT_MUST_WRITE:
-        // Writing to the backend means flushing resp->input to the backend
-        // connection and potentially generating more content to fill it.
-        goto done;
+        resp = req->handlerData;
+        for(;;) {
+            switch(marla_writeChunk(server, resp->backendRequestBody, req->cxn->output)) {
+            case 0:
+                continue;
+            case 1:
+                if(!marla_Ring_isEmpty(resp->backendRequestBody)) {
+                    marla_die(req->cxn->server, "Chunk writer indicated no more request data, but there is data is still to be written");
+                }
+                if(req->backendPeer->readStage <= marla_CLIENT_REQUEST_READING_REQUEST_BODY) {
+                    marla_logMessagef(req->cxn->server, "Client has not completed writing their request. %s", marla_nameRequestReadStage(req->backendPeer->readStage));
+                    goto choked;
+                }
+                switch(marla_writeChunkTrailer(req->cxn->output)) {
+                case -1:
+                    marla_logMessage(req->cxn->server, "Failed to write request chunk trailer.");
+                    goto choked;
+                case 1:
+                    goto done;
+                }
+                marla_die(req->cxn->server, "Unreachable");
+            case -1:
+                marla_logMessage(req->cxn->server, "Chunk writer choked");
+                goto choked;
+            }
+        }
+        marla_die(req->cxn->server, "Unreachable");
     case marla_BACKEND_EVENT_NEED_TRAILERS:
         goto done;
+    case marla_EVENT_DESTROYING:
+        resp = req->handlerData;
+        if(resp) {
+            marla_BackendResponder_free(resp);
+            req->handlerData = 0;
+            req->handler = 0;
+        }
+        if(req->backendPeer) {
+            req->backendPeer->backendPeer = 0;
+        }
+        req->backendPeer = 0;
     default:
+        marla_logLeave(server, 0);
         return;
     }
 
+    marla_die(server, "Unreachable");
 done:
+    marla_logLeave(server, 0);
     (*(int*)in) = 1;
     return;
 choked:
+    marla_logLeave(server, 0);
     (*(int*)in) = -1;
+    return;
 }
 
 static void backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 {
     marla_Server* server = req->cxn->server;
-    marla_logMessagef(server, "Backend Client %s\n", marla_nameClientEvent(ev));
+    marla_logEntercf(server, "Handling", "Handling backend event on client: %s\n", marla_nameClientEvent(ev));
     marla_BackendResponder* resp;
     switch(ev) {
     case marla_EVENT_HEADER:
-        break;
+        marla_logLeave(server, 0);
+        return;
     case marla_EVENT_ACCEPTING_REQUEST:
         // Accept the request.
         (*(int*)in) = 1;
@@ -432,26 +479,34 @@ static void backendClientHandler(struct marla_Request* req, enum marla_ClientEve
         req->backendPeer = backendReq;
 
         // Enqueue the backend request.
-        marla_logMessagef(server, "ENQUEUED backend request %d!!!\n", req->givenContentLen);
-        marla_Backend_enqueue(req->cxn->server->backend, backendReq);
-
-        break;
+        marla_logMessagef(server, "ENQUEUED backend request %d!!!\n", req->id);
+        marla_Backend_enqueue(server, backendReq);
+        marla_logLeave(server, 0);
+        return;
     case marla_EVENT_REQUEST_BODY:
         marla_logMessage(server, "EVENT_REQUEST_BODY!!!\n");
-        // TODO Process request body, to feed it to resp.
         if(len == 0) {
+            marla_logLeave(server, 0);
             return;
         }
         if(!req->backendPeer) {
             marla_die(req->cxn->server, "Backend request missing.");
         }
         resp = req->backendPeer->handlerData;
-
-        break;
+        marla_BackendResponder_writeRequestBody(resp, in, len);
+        marla_backendWrite(req->backendPeer->cxn);
+        marla_logLeave(server, 0);
+        return;
     case marla_EVENT_MUST_WRITE:
-        if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS || req->readStage <= marla_CLIENT_REQUEST_READING_FIELD) {
-            (*(int*)in) = -1;
-            return;
+        if(req->readStage <= marla_CLIENT_REQUEST_READING_FIELD) {
+            goto choked;
+        }
+        if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS) {
+            int rv = marla_backendRead(req->backendPeer->cxn);
+            if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS) {
+                marla_logMessagef(req->cxn->server, "Not a good time to write %s %s %d", marla_nameRequestReadStage(req->backendPeer->readStage), marla_nameRequestReadStage(req->readStage), rv);
+                goto choked;
+            }
         }
         resp = req->backendPeer->handlerData;
         if(resp->handleStage == 0) {
@@ -463,8 +518,7 @@ static void backendClientHandler(struct marla_Request* req, enum marla_ClientEve
                 resp->handleStage = 1;
             }
             if(resp->handleStage != 1) {
-                (*(int*)in) = -1;
-                return;
+                goto choked;
             }
         }
         if(resp->handleStage == 1) {
@@ -506,83 +560,103 @@ static void backendClientHandler(struct marla_Request* req, enum marla_ClientEve
             }
 
             int len;
-            if(req->backendPeer->givenContentLen == marla_MESSAGE_IS_CHUNKED) {
-                len = snprintf(buf, sizeof buf, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nTransfer-Encoding: chunked\r\n\r\n",
-                    req->backendPeer->statusCode,
-                    req->backendPeer->statusLine,
-                    req->backendPeer->contentType
-                );
-                marla_logMessagef(req->cxn->server, "Sending chunked client request: %d", req->backendPeer->givenContentLen);
-            }
-            else if(req->backendPeer->givenContentLen == marla_MESSAGE_LENGTH_UNKNOWN || req->backendPeer->givenContentLen == marla_MESSAGE_USES_CLOSE) {
-                req->close_after_done = 1;
-                len = snprintf(buf, sizeof buf, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nConnection: close\r\n\r\n",
-                    req->backendPeer->statusCode,
-                    req->backendPeer->statusLine,
-                    req->backendPeer->contentType
-                );
-                marla_logMessagef(req->cxn->server, "Sending client request bounded by connection close: %d", req->backendPeer->givenContentLen);
-            }
-            else {
-                len = snprintf(buf, sizeof buf, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n",
-                    req->backendPeer->statusCode,
-                    req->backendPeer->statusLine,
-                    req->backendPeer->contentType,
-                    req->backendPeer->givenContentLen
-                );
-                marla_logMessagef(req->cxn->server, "Sending client request of fixed length: %d", req->backendPeer->givenContentLen);
-            }
+            len = snprintf(buf, sizeof buf, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nTransfer-Encoding: chunked\r\n\r\n",
+                req->backendPeer->statusCode,
+                req->backendPeer->statusLine,
+                req->backendPeer->contentType
+            );
+            marla_logMessagef(req->cxn->server, "Sending chunked client request: %d", req->backendPeer->givenContentLen);
             int true_written = marla_Connection_write(req->cxn, buf, len);
             if(true_written < len) {
                 marla_Connection_putbackWrite(req->cxn, true_written);
-                (*(int*)in) = -1;
-                return;
+                goto choked;
             }
             resp->handleStage = 2;
         }
-        if(resp->handleStage == 2) {
-            marla_logMessagef(req->cxn->server, "Sending processed input data");
-            int noInput = 1;
-            int flushed = 1;
-            while(flushed > 0) {
-                noInput = 1;
-                for(;;) {
-                    char c;
-                    if(marla_Ring_readc(resp->input, &c) == 0) {
-                        break;
+
+        while(resp->handleStage == 2) {
+            marla_logMessagef(req->cxn->server, "Writing backend response to client");
+            size_t nflushed;
+            switch(marla_writeChunk(server, resp->backendResponse, resp->clientResponse)) {
+            case 0:
+                continue;
+            case -1:
+                // Downstream choked.
+                switch(marla_BackendResponder_flushClientResponse(resp, &nflushed)) {
+                case 1:
+                    marla_die(server, "Impossible");
+                    break;
+                case -1:
+                    if(nflushed == 0) {
+                        goto choked;
                     }
-                    else {
-                        noInput = 0;
-                    }
-                    if(marla_Ring_writec(resp->output, c) == 0) {
-                        marla_Ring_putbackRead(resp->input, 1);
-                        break;
-                    }
+                    continue;
                 }
-
-                flushed = marla_BackendResponder_flushOutput(req->backendPeer->handlerData);
-            }
-
-            if(marla_Ring_isEmpty(resp->output) && noInput && req->backendPeer->readStage == marla_BACKEND_REQUEST_DONE_READING) {
-                resp->handleStage = 3;
-            }
-            else {
-                marla_logMessagef(req->cxn->server, "Waiting for rest of input: %s", marla_nameRequestReadStage(req->backendPeer->readStage));
-                (*(int*)in) = -1;
-                return;
+            case 1:
+                if(!marla_Ring_isEmpty(resp->backendResponse)) {
+                    marla_die(req->cxn->server, "Chunk writer indicated no more data, but there is data is still to be written");
+                }
+                if(req->backendPeer->readStage < marla_BACKEND_REQUEST_DONE_READING) {
+                    marla_backendRead(req->backendPeer->cxn);
+                    if(req->backendPeer->readStage < marla_BACKEND_REQUEST_DONE_READING) {
+                        marla_logMessagef(req->cxn->server, "Backend has not finished writing their response. %s", marla_nameRequestReadStage(req->backendPeer->readStage));
+                        goto choked;
+                    }
+                    continue;
+                }
+                switch(marla_writeChunkTrailer(resp->clientResponse)) {
+                case -1:
+                    marla_logMessage(req->cxn->server, "Failed to write chunk trailer.");
+                    goto choked;
+                case 1:
+                    ++resp->handleStage;
+                    continue;
+                }
+                marla_die(server, "Unreachable");
             }
         }
-        if(resp->handleStage == 3) {
-            marla_logMessagef(req->cxn->server, "Processed all input data.");
-            (*(int*)in) = 1;
-            return;
+        while(resp->handleStage == 3) {
+            if(marla_Ring_isEmpty(resp->clientResponse)) {
+                resp->handleStage = 4;
+                break;
+            }
+            marla_logMessagef(server, "Flushing input data.");
+            size_t nflushed;
+            switch(marla_BackendResponder_flushClientResponse(resp, &nflushed)) {
+            case -1:
+                goto choked;
+            case 0:
+                continue;
+            case 1:
+                ++resp->handleStage;
+            }
         }
+
+        if(resp->handleStage == 4) {
+            marla_logMessagef(server, "Processed all input data.");
+            goto done;
+        }
+
+        marla_die(server, "Invalid BackendResponder handleStage=%d", resp->handleStage);
         break;
     case marla_EVENT_DESTROYING:
-        break;
+        marla_logLeave(server, 0);
+        return;
     default:
-        break;
+        marla_logLeave(server, "Defaulted");
+        return;
     }
+
+    marla_die(server, "Unreachable");
+done:
+    resp->handleStage = 4;
+    (*(int*)in) = 1;
+    marla_logLeave(server, "Done");
+    return;
+choked:
+    (*(int*)in) = -1;
+    marla_logLeave(server, "Choked");
+    return;
 }
 
 void routeHook(struct marla_Request* req, void* hookData)

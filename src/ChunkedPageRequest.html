@@ -42,10 +42,23 @@ Set this to marla_CHUNK_RESPONSE_TRAILER in the handler when the output is compl
 Returns a user-readable string representing the chunk response stage.
 <h2>struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t inputBufSize, marla_ClientRequest* req)</h2>
 Creates and returns a new marla_ChunkedPageRequest using the given input buffer size and client request.
-<h2>int marla_writeChunk(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)</h2>
-Writes a chunk from the marla_ChunkedPageRequest's generated input ring to the given output ring.
+<h2>int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output)</h2>
+Writes a HTTP 1.1 chunk from the given input ring to the given output ring.
 <p>
-Returns 0 and sets the stage to marla_CHUNK_RESPONSE_TRAILER if no more data is to be written.
+Returns:
+<ul>
+<li>-1 if output is full
+<li>0 if this function could be invoked again
+<li>1 if input is empty
+</ul>
+<h2>int marla_writeChunkTrailer(marla_Ring* output)</h2>
+Writes a HTTP 1.1 empty chunk to the given output ring.
+<p>
+Returns:
+<ul>
+<li>-1 if output is full. No characters are written.
+<li>1 on success
+</ul>
 <h2>void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)</h2>
 Measures into the given prefix_len and availUsed, the size of a chunk that will best fit the
 given slot.
@@ -62,13 +75,14 @@ A request handler, for use with a marla_ClientRequest.
 <li>struct <b>marla_ChunkedPageRequest</b>
 <li>const char* <b>marla_nameChunkResponseStage</b>(enum marla_ChunkResponseStage stage)
 <li>struct marla_ChunkedPageRequest* <b>marla_ChunkedPageRequest_new</b>()
-<li>int <b>marla_writeChunk</b>(struct marla_ChunkedPageRequest* cpr, marla_Ring* output)
+<li>int <b>marla_writeChunk</b>(marla_Server* server, marla_Ring* input, marla_Ring* output)
+<li>int <b>marla_writeChunkTrailer</b>(marla_Ring* output)
 <li>void <b>marla_measureChunk</b>(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
 <li>void <b>marla_ChunkedPageRequest_free</b>(struct marla_ChunkedPageRequest* cpr)
 <li>void <b>marla_ChunkedPageRequest_process</b>(struct marla_ChunkedPageRequest* cpr)
 </ul>
 <h3>Marla</h3>
-Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
 <p>
 <h3>Table of Contents</h3>
 <ol>

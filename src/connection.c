@@ -54,6 +54,8 @@ marla_Connection* marla_Connection_new(struct marla_Server* server)
     cxn->wantsWrite = 0;
     cxn->wantsRead = 0;
     cxn->flushed = 0;
+    cxn->in_read = 0;
+    cxn->in_write = 0;
 
     cxn->source = 0;
     cxn->describeSource = 0;
@@ -138,13 +140,13 @@ int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t req
 
 void marla_Connection_putbackRead(marla_Connection* cxn, size_t amount)
 {
-    marla_logMessagef(cxn->server, "Putting back %d bytes read", amount);
+    //marla_logMessagef(cxn->server, "Putting back %d bytes read", amount);
     return marla_Ring_putbackRead(cxn->input, amount);
 }
 
 void marla_Connection_putbackWrite(marla_Connection* cxn, size_t amount)
 {
-    marla_logMessagef(cxn->server, "Putting back %d bytes written", amount);
+    //marla_logMessagef(cxn->server, "Putting back %d bytes written", amount);
     return marla_Ring_putbackWrite(cxn->output, amount);
 }
 
@@ -190,7 +192,7 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
 
 void marla_Connection_destroy(marla_Connection* cxn)
 {
-    //fprintf(stderr, "Destroying connection.\n");
+    marla_logMessage(cxn->server, "Destroying connection");
     if(cxn->destroySource) {
         cxn->destroySource(cxn);
         cxn->destroySource = 0;

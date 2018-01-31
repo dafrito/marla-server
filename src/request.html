@@ -232,10 +232,17 @@ Write to the given client connection.
 <li>Returns -1 if the function has choked on I/O and should not be called again.
 <li>Returns 1 if the function needs to close the connection.
 </ul>
+<h2>int marla_Backend_connect(marla_Server* server)</h2>
+Connects the server's backend if not already connected.
 <h2>struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, marla_Request* req)</h2>
 Constructs a new backend responder, using a output buffer of the given size, for the given request.
-<h2>int marla_BackendResponder_flushOutput(marla_BackendResponder* resp)</h2>
-Takes data from the responder's output buffer and writes it to underlying request's connection. Returns the total number of bytes flushed.
+<h2>int marla_BackendResponder_flushClientResponse(marla_BackendResponder* resp, size_t* nflushed)</h2>
+Takes data from the responder's output buffer and writes it to underlying request's connection.
+<p>
+Returns:
+<ul>
+<li>
+</ul>
 <h2>void marla_Backend_init(marla_Connection* cxn, int fd)</h2>
 Initialize a backend connection using the given file descriptor.
 <h2>void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)</h2>
@@ -295,10 +302,9 @@ Write to the given backend connection.
 <li>void <b>marla_Backend_enqueue</b>(marla_Connection* cxn, marla_Request* req)
 <li>int <b>marla_backendWrite</b>(marla_Connection* cxn)
 <li>int <b>marla_backendRead</b>(marla_Connection* cxn)
-Process the given backend connection.
 </ul>
 <h3>Marla</h3>
-Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
 <p>
 <h3>Table of Contents</h3>
 <ol>

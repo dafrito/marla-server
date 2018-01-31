@@ -38,73 +38,6 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-static void init_openssl()
-{
-    SSL_load_error_strings();	
-    OpenSSL_add_ssl_algorithms();
-}
-
-static void cleanup_openssl()
-{
-    EVP_cleanup();
-}
-
-static SSL_CTX *create_context()
-{
-    const SSL_METHOD *method;
-    SSL_CTX *ctx;
-
-    method = TLS_server_method();
-
-    ctx = SSL_CTX_new(method);
-    if (!ctx) {
-	perror("Unable to create SSL context");
-	ERR_print_errors_fp(stderr);
-	exit(EXIT_FAILURE);
-    }
-
-    return ctx;
-}
-
-static void configure_context(SSL_CTX *ctx)
-{
-    SSL_CTX_set_ecdh_auto(ctx, 1);
-
-    /* Set the key and cert */
-    if (SSL_CTX_use_certificate_file(ctx, "certificate.pem", SSL_FILETYPE_PEM) <= 0) {
-        ERR_print_errors_fp(stderr);
-	exit(EXIT_FAILURE);
-    }
-
-    if (SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM) <= 0 ) {
-        ERR_print_errors_fp(stderr);
-	exit(EXIT_FAILURE);
-    }
-}
-
-static int
-make_socket_non_blocking (int sfd)
-{
-  int flags, s;
-
-  flags = fcntl (sfd, F_GETFL, 0);
-  if (flags == -1)
-    {
-      perror ("fcntl");
-      return -1;
-    }
-
-  flags |= O_NONBLOCK;
-  s = fcntl (sfd, F_SETFL, flags);
-  if (s == -1)
-    {
-      perror ("fcntl");
-      return -1;
-    }
-
-  return 0;
-}
-
 static int
 create_and_bind (const char *port)
 {
@@ -154,52 +87,51 @@ create_and_bind (const char *port)
   return sfd;
 }
 
-static int
-create_and_connect(const char* node, const char* port)
+static void init_openssl()
 {
-   struct addrinfo *result, *rp;
-   int sfd, s;
-
-   /* Obtain address(es) matching host/port */
-
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET;    /* Allow IPv4 or IPv6 */
-    hints.ai_socktype = SOCK_STREAM; /* TCP socket */
-    hints.ai_flags = 0;
-    hints.ai_protocol = 0;          /* Any protocol */
-
-    s = getaddrinfo(node, port, &hints, &result);
-    if (s != 0) {
-       fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
-       exit(EXIT_FAILURE);
-    }
-
-    /* getaddrinfo() returns a list of address structures.
-      Try each address until we successfully connect(2).
-      If socket(2) (or connect(2)) fails, we (close the socket
-      and) try the next address. */
-
-    for (rp = result; rp != NULL; rp = rp->ai_next) {
-        sfd = socket(rp->ai_family, rp->ai_socktype,
-                rp->ai_protocol);
-        if (sfd == -1)
-            continue;
-
-        if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1)
-            break;                  /* Success */
-
-        close(sfd);
-    }
-
-    if (rp == NULL) {               /* No address succeeded */
-        return -1;
-    }
-
-    freeaddrinfo(result);           /* No longer needed */
-
-    return sfd;
+    SSL_load_error_strings();	
+    OpenSSL_add_ssl_algorithms();
 }
+
+static void cleanup_openssl()
+{
+    EVP_cleanup();
+}
+
+static SSL_CTX *create_context()
+{
+    const SSL_METHOD *method;
+    SSL_CTX *ctx;
+
+    method = TLS_server_method();
+
+    ctx = SSL_CTX_new(method);
+    if (!ctx) {
+	perror("Unable to create SSL context");
+	ERR_print_errors_fp(stderr);
+	exit(EXIT_FAILURE);
+    }
+
+    return ctx;
+}
+
+static void configure_context(SSL_CTX *ctx)
+{
+    SSL_CTX_set_ecdh_auto(ctx, 1);
+
+    /* Set the key and cert */
+    if (SSL_CTX_use_certificate_file(ctx, "certificate.pem", SSL_FILETYPE_PEM) <= 0) {
+        ERR_print_errors_fp(stderr);
+	exit(EXIT_FAILURE);
+    }
+
+    if (SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM) <= 0 ) {
+        ERR_print_errors_fp(stderr);
+	exit(EXIT_FAILURE);
+    }
+}
+
+#include "socket_funcs.c"
 
 void on_sigusr1()
 {
@@ -286,39 +218,7 @@ int main(int argc, const char**argv)
     }
 
     // Create the backend socket
-    server.backendfd = create_and_connect("localhost", argv[2]);
-    if(server.backendfd == -1) {
-        perror("Connecting to backend server");
-        exit_value = EXIT_FAILURE;
-        marla_logLeave(&server, "Failed to connect to backend server.");
-        goto destroy;
-    }
-    else {
-        strcpy(server.backendport, argv[2]);
-        marla_logMessagef(&server, "Server is using backend on port %s", server.backendport);
-        s = make_socket_non_blocking(server.backendfd);
-        if(s == -1) {
-            exit_value = EXIT_FAILURE;
-            marla_logLeave(&server, "Failed to make backend server non-blocking.");
-            goto destroy;
-        }
-
-        marla_Connection* backend = marla_Connection_new(&server);
-        marla_Backend_init(backend, server.backendfd);
-        server.backend = backend;
-
-        struct epoll_event event;
-        memset(&event, 0, sizeof(struct epoll_event));
-        event.data.ptr = backend;
-        event.events = EPOLLIN | EPOLLOUT | EPOLLET;
-        s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.backendfd, &event);
-        if(s == -1) {
-            perror("Adding backend file descriptor to epoll queue");
-            exit_value = EXIT_FAILURE;
-            marla_logLeave(&server, "Failed to add backend server to epoll queue.");
-            goto destroy;
-        }
-    }
+    strcpy(server.backendport, argv[2]);
 
     // Create the logging socket
     server.logfd = create_and_connect("localhost", argv[3]);
@@ -341,7 +241,7 @@ int main(int argc, const char**argv)
         struct epoll_event event;
         memset(&event, 0, sizeof(struct epoll_event));
         event.data.fd = server.logfd;
-        event.events = EPOLLOUT | EPOLLET;
+        event.events = EPOLLOUT | EPOLLRDHUP | EPOLLET;
         s = epoll_ctl(server.efd, EPOLL_CTL_ADD, server.logfd, &event);
         if(s == -1) {
             perror("Adding logging file descriptor to epoll queue");
@@ -475,14 +375,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
         server.server_status = marla_SERVER_PROCESSING;
 
         for(i = 0; i < n; i++) {
-            if(events[i].data.fd == server.backendfd) {
-                marla_logEnterc(&server, "Server processing", "Received backend event.");
-                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
-                }
-                marla_logLeave(&server, "");
-                continue;
-            }
-            else if(events[i].data.fd == server.logfd) {
+            if(events[i].data.fd == server.logfd) {
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
                     if(events[i].events & EPOLLRDHUP) {
                         continue;
@@ -558,7 +451,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     struct epoll_event event;
                     memset(&event, 0, sizeof(struct epoll_event));
                     event.data.ptr = cxn;
-                    event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+                    event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET;
                     s = epoll_ctl(server.efd, EPOLL_CTL_ADD, infd, &event);
                     if(s == -1) {
                         perror ("epoll_ctl");
@@ -570,14 +463,21 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 continue;
             }
             else {
-                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                marla_logMessagef(&server, "%d", events[i].events);
+                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (events[i].events & EPOLLRDHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
+                    marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
                     // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
                     if(events[i].events & EPOLLRDHUP) {
+                        if(cxn == server.backend) {
+                            marla_logMessagef(&server, "Backend connection done sending data.");
+                        }
                         continue;
                     }
-                    marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
                     if(events[i].events & EPOLLHUP) {
                         marla_Connection_destroy(cxn);
+                        if(cxn == server.backend) {
+                            marla_logMessagef(&server, "Backend connection done accepting connections.");
+                        }
                         continue;
                     }
                     marla_Connection_destroy(cxn);

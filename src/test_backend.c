@@ -89,6 +89,7 @@ static void marla_backendResponderClientHandler(struct marla_Request* req, enum 
 {
     fprintf(stderr, "Client %s\n", marla_nameClientEvent(ev));
     marla_BackendResponder* resp;
+    marla_Server* server = req->cxn->server;
     switch(ev) {
     case marla_EVENT_HEADER:
         break;
@@ -108,7 +109,7 @@ static void marla_backendResponderClientHandler(struct marla_Request* req, enum 
 
         // Enqueue the backend request.
         fprintf(stderr, "ENQUEUED!!!\n");
-        marla_Backend_enqueue(req->cxn->server->backend, backendReq);
+        marla_Backend_enqueue(req->cxn->server, backendReq);
 
         break;
     case marla_EVENT_REQUEST_BODY:
@@ -119,6 +120,13 @@ static void marla_backendResponderClientHandler(struct marla_Request* req, enum 
             abort();
         }
         // Read the client's request body into resp->input and flush resp->input afterwards.
+        if(!req->backendPeer) {
+            marla_die(req->cxn->server, "Backend request missing.");
+        }
+        resp = req->backendPeer->handlerData;
+        marla_BackendResponder_writeRequestBody(resp, in, len);
+        marla_backendWrite(req->backendPeer->cxn);
+        marla_logLeave(server, 0);
         break;
     case marla_EVENT_MUST_WRITE:
         // Check the input buffer.
@@ -126,8 +134,8 @@ static void marla_backendResponderClientHandler(struct marla_Request* req, enum 
         if(!resp) {
             marla_die(req->cxn->server, "Backend peer must have responder handlerData\n");
         }
-        // Write resp->output to the client.
-        marla_BackendResponder_flushOutput(resp);
+        size_t nflushed;
+        marla_BackendResponder_flushClientResponse(resp, &nflushed);
         (*(int*)in) = -1;
         break;
     case marla_EVENT_DESTROYING:
@@ -180,7 +188,7 @@ static int test_backend(struct marla_Server* server)
     // Create the test input.
     char source_str[1024];
     memset(source_str, 0, sizeof(source_str));
-    int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET /user HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server->serverport);
+    int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET /user HTTP/1.1\r\nHost: localhost:%s\r\nAccept: */*\r\n\r\n", server->serverport);
     marla_Ring_write(clientRings[0], source_str, nwritten);
 
     // Read from the source.

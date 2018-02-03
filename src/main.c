@@ -183,13 +183,7 @@ int main(int argc, const char**argv)
 
     // Create the logging socket
     server.logfd = create_and_connect("localhost", argv[3]);
-    if(server.logfd == -1) {
-        perror("Connecting to logging server");
-        exit_value = EXIT_FAILURE;
-        marla_logLeave(&server, "Failed to connect to logging server.");
-        goto destroy;
-    }
-    else {
+    if(server.logfd != -1) {
         strcpy(server.logaddress, argv[3]);
         marla_logMessagef(&server, "Server is logging on port %s", server.logaddress);
         s = make_socket_non_blocking(server.logfd);

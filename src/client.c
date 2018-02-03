@@ -1006,7 +1006,7 @@ static int marla_processTrailer(marla_Request* req)
                 marla_killRequest(req, "Header line contains control characters, so no valid request.\n");
                 return -1;
             }
-            if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%' || c == '"')) {
+            if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%')) {
                 marla_killRequest(req, "Header name contains delimiters, so no valid request.\n");
                 return -1;
             }

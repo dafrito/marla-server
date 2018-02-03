@@ -106,7 +106,7 @@ int marla_BackendResponder_flushClientResponse(marla_BackendResponder* resp, siz
         marla_Ring_putbackRead(resp->clientResponse, len);
         return -1;
     }
-    marla_logMessagef(server, "Flushed %d bytes from backend to client", true_written);
+    //marla_logMessagef(server, "Flushed %d bytes from backend to client", true_written);
     *nflushed = true_written;
     if(true_written < len) {
         marla_Ring_putbackRead(resp->clientResponse, len - true_written);
@@ -523,7 +523,7 @@ static int marla_processBackendTrailer(marla_Request* req)
                 marla_killRequest(req, "Header line contains control characters, so no valid request.\n");
                 return -1;
             }
-            if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%' || c == '"')) {
+            if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%')) {
                 marla_killRequest(req, "Header name contains delimiters, so no valid request.\n");
                 return -1;
             }
@@ -597,7 +597,7 @@ int marla_backendRead(marla_Connection* cxn)
 
     while(req) {
         if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_LINE) {
-            int nr = marla_Connection_read(cxn, (unsigned char*)out, sizeof out);
+            int nr = marla_Connection_read(cxn, (unsigned char*)out, MAX_RESPONSE_LINE_LENGTH);
             if(nr <= 0) {
                 marla_logLeave(server, 0);
                 cxn->in_read = 0;
@@ -611,10 +611,14 @@ int marla_backendRead(marla_Connection* cxn)
                     int excess = 0;
                     if(out[i] == '\n' && nr - i > 0) {
                         excess = nr - i - 1;
+                        //fprintf(stderr, "Before putback:\n");
+                        //fprintf(stderr, cxn->input->buf + cxn->input->read_index);
                         marla_Connection_putbackRead(cxn, excess);
                     }
                     if(out[i] == '\r' && nr - i > 1) {
                         excess = nr - i - 2;
+                        //fprintf(stderr, "Before putback:\n");
+                        //fprintf(stderr, cxn->input->buf + cxn->input->read_index);
                         marla_Connection_putbackRead(cxn, excess);
                     }
                     if(excess > 0) {
@@ -721,9 +725,12 @@ int marla_backendRead(marla_Connection* cxn)
             req->readStage = marla_BACKEND_REQUEST_READING_HEADERS;
         }
 
+        //fprintf(stderr, "AFter putback:\n");
+        //fprintf(stderr, cxn->input->buf + cxn->input->read_index);
+
         while(req->readStage == marla_BACKEND_REQUEST_READING_HEADERS) {
             //marla_logMessagecf(cxn->server, "HTTP Headers", "Reading headers");
-            int nr = marla_Connection_read(cxn, (unsigned char*)out, sizeof out);
+            int nr = marla_Connection_read(cxn, (unsigned char*)out, MAX_FIELD_NAME_LENGTH + MAX_FIELD_VALUE_LENGTH);
             if(nr <= 0) {
                 marla_logLeavef(cxn->server, "Nothing to read.");
                 cxn->in_read = 0;
@@ -794,7 +801,7 @@ int marla_backendRead(marla_Connection* cxn)
                     cxn->in_read = 0;
                     return -1;
                 }
-                if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
+                if(c == '<' || c == '>' || c == '#' || c == '%') {
                     marla_killRequest(req, "Header contains delimiters, so no valid request.");
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
@@ -983,6 +990,7 @@ int marla_backendRead(marla_Connection* cxn)
                 }
 
                 // Handle input.
+                //fprintf(stderr, "Consuming %d bytes\n", nread);
                 req->totalContentLen += nread;
                 req->remainingContentLen -= nread;
                 if(req->remainingContentLen == 0) {
@@ -1419,7 +1427,7 @@ void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEven
         }
 
         while(resp->handleStage == 5) {
-            marla_logMessagef(req->cxn->server, "Writing backend response to client");
+            //marla_logMessagef(req->cxn->server, "Writing backend response to client");
             size_t nflushed;
             switch(marla_writeChunk(server, resp->backendResponse, resp->clientResponse)) {
             case 0:
@@ -1453,6 +1461,7 @@ void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEven
                     marla_logMessage(req->cxn->server, "Failed to write chunk trailer.");
                     goto choked;
                 case 1:
+                    marla_logMessage(req->cxn->server, "Wrote chunk trailer.");
                     ++resp->handleStage;
                     continue;
                 }
@@ -1469,7 +1478,10 @@ void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEven
             size_t nflushed;
             switch(marla_BackendResponder_flushClientResponse(resp, &nflushed)) {
             case -1:
-                goto choked;
+                if(nflushed == 0) {
+                    goto choked;
+                }
+                continue;
             case 0:
                 continue;
             case 1:

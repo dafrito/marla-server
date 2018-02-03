@@ -72,12 +72,12 @@ int marla_ChunkedPageRequest_write(marla_ChunkedPageRequest* cpr, unsigned char*
 int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output)
 {
     if(marla_Ring_isFull(output)) {
-        marla_logMessage(server, "Output ring is full.");
+        //marla_logMessage(server, "Output ring is full.");
         return -1;
     }
     int avail = marla_Ring_size(input);
     if(avail == 0) {
-        marla_logMessage(server, "Chunk input buffer was empty.");
+        //marla_logMessage(server, "Chunk input buffer was empty.");
         return 1;
     }
     void* slotData;
@@ -85,7 +85,7 @@ int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output
     marla_Ring_writeSlot(output, &slotData, &slotLen);
 
     // Ignore slots of insufficient size.
-    marla_logMessagef(server, "output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
+    //marla_logMessagef(server, "output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
     if(slotLen <= 5) {
         marla_Ring_putbackWrite(output, slotLen);
         //fprintf(stderr, "presimplifying. output->read_index=%d output->write_index=%d\n", output->read_index, output->write_index);
@@ -99,7 +99,7 @@ int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output
         }
     }
     unsigned char* slot = slotData;
-    marla_logMessagef(server, "CHUNK length: %ld\n", slotLen);
+    //marla_logMessagef(server, "CHUNK length: %ld\n", slotLen);
 
     size_t prefix_len;
     size_t availUsed;
@@ -116,7 +116,7 @@ int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output
     // suffix_len = length of the suffix. always 2 bytes.
     // padding = prefix_len + suffix_len
 
-    marla_logMessagef(server, "CHUNK: slot=%lx, avail=%d, slotLen=%ld prefix_len=%ld availUsed=%ld\n", (long unsigned int)slot, avail, slotLen, prefix_len, availUsed);
+    //marla_logMessagef(server, "CHUNK: slot=%lx, avail=%d, slotLen=%ld prefix_len=%ld availUsed=%ld\n", (long unsigned int)slot, avail, slotLen, prefix_len, availUsed);
 
     // Construct the chunk within the slot.
     int true_prefix_size = snprintf((char*)slot, prefix_len + 1, "%lx\r\n", availUsed);
@@ -129,7 +129,6 @@ int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output
     int true_written = marla_Ring_read(input, slot + prefix_len, availUsed);
     if(true_written != availUsed) {
         marla_die(server, "Realized written length %d must match the calculated written length %ld.\n", true_written, availUsed);
-        abort();
     }
     slot[slotLen - 2] = '\r';
     slot[slotLen - 1] = '\n';

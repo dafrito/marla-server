@@ -42,7 +42,7 @@ void marla_logAction(marla_Server* server, const char* scope, const char* catego
         buf[1023] = 0;
     }
 
-    if(!server->logfd) {
+    if(server->logfd == -1) {
         //write(2, buf, nwritten);
         return;
     }

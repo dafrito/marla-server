@@ -5,7 +5,7 @@
 #include <openssl/ssl.h>
 #include <apr_pools.h>
 
-#define marla_BUFSIZE 1024
+#define marla_BUFSIZE 2048
 #define marla_LOGBUFSIZE 32*1024
 
 // ring.c
@@ -84,6 +84,7 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage);
 #define MAX_METHOD_LENGTH 7
 #define MAX_FIELD_NAME_LENGTH 64
 #define MAX_FIELD_VALUE_LENGTH 510
+#define MAX_RESPONSE_LINE_LENGTH 510
 #define MAX_WEBSOCKET_NONCE_LENGTH 255
 #define MAX_URI_LENGTH 255
 #define marla_MAX_CHUNK_SIZE 0xFFFFFFFF

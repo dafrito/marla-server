@@ -94,71 +94,51 @@ marla_Connection* marla_Connection_new(struct marla_Server* server)
     return cxn;
 }
 
-int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t requested)
+int marla_Connection_refill(marla_Connection* cxn, size_t* total)
 {
-    if(requested == 0) {
-        return -1;
-    }
-    marla_Ring* const input = cxn->input;
-
-    int sinkread = 0;
-    int partialRead = 0;
-    while(sinkread < requested) {
-        //marla_logMessagef(cxn->server, "Requesting %ld bytes of input data. %d/%d bytes in cxn->input.", requested-sinkread, marla_Ring_size(input),marla_Ring_capacity(input));
-        int nbufread = marla_Ring_read(input, sink + sinkread, requested - sinkread);
-        if(nbufread < 0) {
-            // Pass error return value through to caller.
-            marla_Ring_putbackRead(input, sinkread);
-            //marla_logMessagef(cxn->server, "Failed to read from input buffer.");
-            return nbufread;
-        }
-        sinkread += nbufread;
-        if(sinkread >= requested) {
-            break;
-        }
-
-        if(partialRead) {
-            //marla_logMessage(cxn->server, "Nothing more to read.");
-            break;
-        }
-
-        // Refill buffer.
-        if(cxn->wantsRead) {
-            //marla_logMessagef(cxn->server, "Connection wants read.");
-            break;
-        }
+    marla_Ring* input = cxn->input;
+    for(; !cxn->wantsRead;) {
         void* ringBuf;
         size_t slotLen;
         marla_Ring_writeSlot(input, &ringBuf, &slotLen);
         if(slotLen == 0) {
-            //marla_logMessage(cxn->server, "Input buffer is full.");
+            marla_logMessagef(cxn->server, "Connection %d's input buffer is full.", cxn->id);
             break;
         }
+
         int nread = cxn->readSource(cxn, ringBuf, slotLen);
-        //marla_logMessagef(cxn->server, "Read %d bytes from source into input slot of size %d.", nread, slotLen);
+        marla_logMessagef(cxn->server, "Read %d bytes from source into input slot of size %d.", nread, slotLen);
         if(nread <= 0) {
-            if(cxn->shouldDestroy) {
-                // Error; put everything back.
-                marla_Ring_putbackWrite(input, sinkread + slotLen);
-                return nread;
-            }
             marla_Ring_putbackWrite(input, slotLen);
-            //marla_logMessagef(cxn->server, "Connection is done reading. %d bytes read", sinkread);
-            if(sinkread <= 0) {
-                return -1;
-            }
-            return sinkread;
+            return nread;
+        }
+        if(total) {
+            *total += nread;
         }
         if(nread < slotLen) {
             marla_Ring_putbackWrite(input, slotLen - nread);
-            partialRead = 1;
+            break;
         }
     }
-    //marla_logMessagef(cxn->server, "Read %d bytes in total.", sinkread);
-    if(sinkread == 0) {
+    return -1;
+}
+
+int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t requested)
+{
+    marla_Connection_refill(cxn, 0);
+    if(cxn->shouldDestroy) {
         return -1;
     }
-    return sinkread;
+    if(requested == 0) {
+        return -1;
+    }
+    marla_Ring* const input = cxn->input;
+    marla_logMessagef(cxn->server, "Requesting %ld bytes of input data. %d/%d bytes in cxn->input.", requested, marla_Ring_size(input),marla_Ring_capacity(input));
+    if(marla_Ring_isEmpty(input)) {
+        return -1;
+    }
+    int true_read = marla_Ring_read(input, sink, requested);
+    return true_read;
 }
 
 void marla_Connection_putbackRead(marla_Connection* cxn, size_t amount)

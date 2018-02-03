@@ -1,4 +1,4 @@
-PORT=4580
+PORT=4596
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
@@ -132,7 +132,7 @@ clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
 	cd servermod && $(MAKE) clean
 	cd environment_ws && $(MAKE) clean
-	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend
+	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem

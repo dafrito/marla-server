@@ -34,7 +34,7 @@ void marla_Server_init(struct marla_Server* server)
     server->server_status = marla_SERVER_STOPPED;
     pthread_mutex_init(&server->server_mutex, 0);
     server->has_terminal = 0;
-    server->logfd = 0;
+    server->logfd = -1;
     server->wantsLogWrite = 0;
     server->efd = 0;
     server->sfd = 0;

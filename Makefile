@@ -31,6 +31,8 @@ src/test-ring.sh: src/test_ring src/test_small_ring src/test_ring_putback src/te
 
 src/test-connection.sh: src/test_connection src/test_websocket src/test_chunks src/test_backend
 
+create_environment: create_environment.c
+
 servermod/libservermod.so:
 	cd servermod && $(MAKE)
 

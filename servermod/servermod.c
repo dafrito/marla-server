@@ -392,7 +392,7 @@ void routeHook(struct marla_Request* req, void* hookData)
     int len = strlen("/environment");
     if(!strncmp(req->uri, "/environment", len)) {
         // Check for suitable termination
-        if(req->uri[len] != 0 && req->uri[len] != '/' && req->uri[len] != '?') {
+        if(req->uri[len] != 0 && req->uri[len] != '/' && req->uri[len] != '?' && req->uri[len] != '.' ) {
             // Not really handled.
             return;
         }

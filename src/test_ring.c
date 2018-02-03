@@ -167,10 +167,90 @@ int test_ring_simplify()
     return 0;
 }
 
+int test_ring_write_with_full_ring()
+{
+    marla_Ring* ring = marla_Ring_new(marla_BUFSIZE);
+
+    char buf[256];
+    memset(buf, 16, sizeof buf);
+
+    marla_Ring_write(ring, buf, sizeof buf);
+
+    void* slotData;
+    size_t slotLen;
+    marla_Ring_writeSlot(ring, &slotData, &slotLen);
+
+    if(slotLen == 0) {
+        fprintf(stderr, "slotLen must be equal to the BUFSIZE for an empty ring.\n");
+        return 1;
+    }
+
+    if(slotLen + sizeof buf != marla_BUFSIZE) {
+        fprintf(stderr, "Unexpected slot size: %ld", slotLen);
+        return 1;
+    }
+
+    marla_Ring_writeSlot(ring, &slotData, &slotLen);
+    if(slotLen != 0) {
+        fprintf(stderr, "writeSlot must not treat full rings as empty. Size reported was %ld\n", marla_Ring_size(ring));
+        return 1;
+    }
+
+    marla_Ring_putbackWrite(ring, 50);
+
+    unsigned char bigbuf[marla_BUFSIZE];
+    marla_Ring_read(ring, bigbuf, sizeof bigbuf);
+
+    marla_Ring_writeSlot(ring, &slotData, &slotLen);
+    if(slotLen != 50) {
+        fprintf(stderr, "WriteSlot size %ld isn't expected %d %d\n", slotLen, ring->read_index, ring->write_index);
+        return 1;
+    }
+    if(ring->read_index != marla_BUFSIZE-50) {
+        fprintf(stderr, "Read index isn't marla_BUFSIZE-50, but is %d.\n", ring->read_index);
+        return 1;
+    }
+
+    marla_Ring_writeSlot(ring, &slotData, &slotLen);
+    if(slotLen != marla_BUFSIZE - 50) {
+        fprintf(stderr, "WriteSlot size %ld isn't expected %d %d\n", slotLen, ring->read_index, ring->write_index);
+        return 1;
+    }
+    if(ring->read_index != marla_BUFSIZE-50) {
+        fprintf(stderr, "Read index isn't marla_BUFSIZE-50, but is %d.\n", ring->read_index);
+        return 1;
+    }
+
+    marla_Ring_writeSlot(ring, &slotData, &slotLen);
+    if(slotLen != 0) {
+        fprintf(stderr, "Write Slotlen must be zero for full rings");
+        return 1;
+    }
+
+    void* zbuf;
+    size_t zlen;
+    marla_Ring_readSlot(ring, &zbuf, &zlen);
+    if(zlen != 50) {
+        fprintf(stderr, "zlen isn't %d, but is %ld.\n", marla_BUFSIZE, zlen);
+        return 1;
+    }
+
+    marla_Ring_putbackRead(ring, marla_BUFSIZE-10);
+    if(ring->read_index != 10) {
+        fprintf(stderr, "Read index isn't %d, but is %d.\n", marla_BUFSIZE-40, ring->read_index);
+        return 1;
+    }
+
+    marla_Ring_free(ring);
+    return 0;
+}
+
 int main()
 {
+    fprintf(stderr, "test_ring\n");
     return test_ring_read() ||
         test_ring_write() ||
+        test_ring_write_with_full_ring() ||
         test_ring_readSlot() ||
         test_ring_nearFullReads() ||
         test_ring_emptyWrite() ||

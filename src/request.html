@@ -114,7 +114,7 @@ Websocket events:
 </p>
 <table>
 <tr><td>marla_EVENT_WEBSOCKET_MUST_READ<td><td>Pointer to data buffer of WebSocket frame. This is set to zero when the frame has ended.<td>Length of data at buffer. This is set to zero when the frame has ended.
-<tr><td>marla_EVENT_WEBSOCKET_MUST_WRITE<td>WebSocket is ready for writing<td>Pointer to integer. Set to -1 if the handler has choked; set to 1 if the handler needs an immediate shutdown<td>None
+<tr><td>marla_EVENT_WEBSOCKET_MUST_WRITE<td>WebSocket is ready for writing<td>Pointer to integer. Set to -1 if the handler has choked; set to 1 if the handler needs an immediate shutdown. Default is -1.<td>None
 <tr><td>marla_EVENT_WEBSOCKET_CLOSING<td>A WebSocket close frame was received<td><a href="https://tools.ietf.org/html/rfc6455#section-7.4.1">2-byte character Close status code</a><td>The length of the status code. Defined as 2.
 <tr><td>marla_EVENT_WEBSOCKET_CLOSE_REASON<td>The reason for the close is being received<td>Bytes received in the WebSocket close reason<td>Number of characters read
 </table>
@@ -160,6 +160,9 @@ Names the given client event.
 <tr><td>long int contentLen<td>
 <tr><td>long int totalContentLen<td>
 <tr><td>long int chunkSize<td>
+<tr><td>char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1]<td>The Location: header value
+<tr><td>char setCookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Set-Cookie: header value
+<tr><td>char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Cookie: header value
 <tr><td>char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1]<td>
 <tr><td>char websocket_accept[2 * SHA_DIGEST_LENGTH + 1]<td>
 <tr><td>unsigned char websocket_frame[7]<td>
@@ -263,6 +266,10 @@ Write to the given backend connection.
 <li>Returns -1 if the function has choked on I/O and should not be called again.
 <li>Returns 1 if the function needs to close the connection.
 </ul>
+<h2>void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)</h2>
+Handler to be installed for backend requests. Uses marla_BackendResponder for handlerData.
+<h2>void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)</h2>
+Handler to be installed for clients that are routing backend requests. Uses backendPeer's marla_BackendResponder for handlerData.
 </main>
 <nav class=toc>
 <h3>Request - <a href="index.html">Marla</a></h3>
@@ -302,6 +309,8 @@ Write to the given backend connection.
 <li>void <b>marla_Backend_enqueue</b>(marla_Connection* cxn, marla_Request* req)
 <li>int <b>marla_backendWrite</b>(marla_Connection* cxn)
 <li>int <b>marla_backendRead</b>(marla_Connection* cxn)
+<li>void <b>marla_backendHandler</b>(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
+<li>void <b>marla_backendClientHandler</b>(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 </ul>
 <h3>Marla</h3>
 Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.

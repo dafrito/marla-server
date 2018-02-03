@@ -24,6 +24,7 @@ border: 1px solid grey;
 <tr><td>int shouldDestroy<td>Indicates this connection be closed and destroyed immediately.
 <tr><td>int wantsWrite<td>Indicates this connection will wait for a write.
 <tr><td>int wantsRead<td>Indicates this connection will wait for a read.
+<tr><td>int is_backend<td>If nonzero, this connection is a backend.
 <tr><td>int in_read<td>If nonzero, this connection is currently being read. Calls to reading functions like marla_clientRead on this connection will return -1.
 <tr><td>int in_write<td>If nonzero, this connection is currently being written. Calls to writing functions like marla_clientWrite on this connection will return -1.
 <tr><td>enum marla_ConnectionStage stage<td>Processing stage.

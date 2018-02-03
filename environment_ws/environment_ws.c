@@ -93,21 +93,21 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                     cookieType = 0;
                 }
 
-                partTok = strtok_r(0, "=", &partSavePtr);
+                partTok = strtok_r(0, ";", &partSavePtr);
                 if(!partTok) {
                     return;
                 }
 
                 if(cookieType == 1) {
                     // This cookie value is the session identifier; authenticate.
-                    marla_logMessagef(req->cxn->server, "Found session cookie.");
+                    marla_logMessagef(req->cxn->server, "Found session cookie: %s", partTok);
                     char* sessionValue = partTok;
                     session->login.username = 0;
                     session->login.userId = -1;
                     if(sessionValue && 0 == parsegraph_deconstructSessionString(session->pool, sessionValue, &session->login.session_selector, &session->login.session_token)) {
-                        parsegraph_UserStatus rv = parsegraph_refreshUserLogin(session->pool, controlDBD, &session->login);
+                        /*parsegraph_UserStatus rv = parsegraph_refreshUserLogin(session->pool, controlDBD, &session->login);
                         if(rv != parsegraph_OK) {
-                            marla_logMessagef(req->cxn->server, "Failed to refresh session's login.");
+                            marla_logMessagef(req->cxn->server, "Failed to refresh session's login: %s", parsegraph_nameUserStatus(rv));
                             strcpy(session->error, parsegraph_nameUserStatus(rv));
                             return;
                         }
@@ -117,7 +117,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                             marla_logMessagef(req->cxn->server, "Failed to retrieve ID for authenticated login.");
                             strcpy(session->error, "Failed to retrieve ID for authenticated login.\n");
                             return;
-                        }
+                        }*/
                     }
                     if(!session->login.username) {
                         marla_logMessagef(req->cxn->server, "Session does not match any user.");
@@ -277,7 +277,7 @@ static int prepareDBD(ap_dbd_t** dbdPointer)
     dbd->prepared = apr_hash_make(modpool);
 
     // Prepare the database connection.
-    /*rv = parsegraph_prepareLoginStatements(modpool, dbd);
+    rv = parsegraph_prepareLoginStatements(modpool, dbd);
     if(rv != 0) {
         fprintf(stderr, "Failed preparing user SQL statements, status of %d.\n", rv);
         return -1;
@@ -294,7 +294,7 @@ static int prepareDBD(ap_dbd_t** dbdPointer)
     if(erv != parsegraph_Environment_OK) {
         fprintf(stderr, "Failed preparing environment SQL statements, status of %d.\n", rv);
         return -1;
-    }*/
+    }
 
     return 0;
 }

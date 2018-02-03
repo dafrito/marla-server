@@ -83,7 +83,7 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage);
 #define MIN_METHOD_LENGTH 3
 #define MAX_METHOD_LENGTH 7
 #define MAX_FIELD_NAME_LENGTH 64
-#define MAX_FIELD_VALUE_LENGTH 255
+#define MAX_FIELD_VALUE_LENGTH 510
 #define MAX_WEBSOCKET_NONCE_LENGTH 255
 #define MAX_URI_LENGTH 255
 #define marla_MAX_CHUNK_SIZE 0xFFFFFFFF
@@ -165,6 +165,8 @@ marla_EVENT_DESTROYING,
 marla_BACKEND_EVENT_DESTROYING
 };
 void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen);
+void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len);
+void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len);
 
 struct marla_Connection;
 
@@ -200,6 +202,9 @@ long int givenContentLen;
 long int remainingContentLen;
 long int totalContentLen;
 long int chunkSize;
+char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1];
+char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1];
+char setCookieHeader[MAX_FIELD_VALUE_LENGTH + 1];
 char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1];
 char websocket_accept[2 * SHA_DIGEST_LENGTH + 1];
 unsigned char websocket_frame[7];
@@ -251,7 +256,9 @@ int wantsRead;
 enum marla_ConnectionStage stage;
 int in_read;
 int in_write;
+int is_backend;
 
+int id;
 struct marla_Server* server;
 struct marla_Connection* prev_connection;
 struct marla_Connection* next_connection;

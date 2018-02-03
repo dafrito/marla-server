@@ -147,6 +147,114 @@ static int test_simple_response(struct marla_Server* server)
     return 0;
 }
 
+static int test_broken_bits_response(struct marla_Server* server)
+{
+    // Create the test input.
+    char source_str[1024];
+    memset(source_str, 0, sizeof(source_str));
+    marla_Ring* ring = marla_Ring_new(marla_BUFSIZE);
+
+    marla_Ring* outputRing = marla_Ring_new(marla_BUFSIZE);
+    marla_Ring* rings[2];
+    rings[0] = ring;
+    rings[1] = outputRing;
+
+    // Create the connection.
+    marla_Connection* cxn = marla_Connection_new(server);
+    cxn->source = &rings;
+    cxn->readSource = readDuplexSource;
+    cxn->writeSource = writeDuplexSource;
+    cxn->destroySource = destroyDuplexSource;
+
+    int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET ");
+    marla_Ring_write(ring, source_str, nwritten);
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
+    if(cxn->requests_in_process != 1) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    marla_Request* req = cxn->latest_request;
+    if(!req) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->readStage != marla_CLIENT_REQUEST_PAST_METHOD) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->writeStage != marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "/ H");
+    marla_Ring_write(ring, source_str, nwritten);
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
+    if(cxn->requests_in_process != 1) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->readStage != marla_CLIENT_REQUEST_READING_VERSION) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->writeStage != marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "TTP/1.1\r\nHost: ");
+    marla_Ring_write(ring, source_str, nwritten);
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
+    if(cxn->requests_in_process != 1) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->readStage != marla_CLIENT_REQUEST_READING_FIELD) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->writeStage != marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "localhost:%s\r\n\r", server->serverport);
+    marla_Ring_write(ring, source_str, nwritten);
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
+    if(cxn->requests_in_process != 1) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->readStage != marla_CLIENT_REQUEST_READING_FIELD) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+    if(req->writeStage != marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "\n");
+    marla_Ring_write(ring, source_str, nwritten);
+    marla_clientRead(cxn);
+    marla_clientWrite(cxn);
+    if(cxn->requests_in_process != 0) {
+        marla_Connection_destroy(cxn);
+        return 1;
+    }
+
+    // Destroy the connection and test input.
+    marla_Connection_destroy(cxn);
+
+    return 0;
+}
+
 static int test_chunks(struct marla_Server* server)
 {
     // Create the test input.
@@ -737,6 +845,15 @@ int main(int argc, char* argv[])
     strcpy(server.serverport, argv[1]);
 
     int failed = 0;
+
+    printf("test_broken_bits_response:");
+    if(0 == test_broken_bits_response(&server)) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
 
     printf("test_simple:");
     if(0 == test_simple(&server)) {

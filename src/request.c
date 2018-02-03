@@ -134,6 +134,9 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     memset(req->uri, 0, sizeof(req->uri));
     memset(req->method, 0, sizeof(req->method));
     memset(req->contentType, 0, sizeof(req->contentType));
+    memset(req->redirectLocation, 0, sizeof req->redirectLocation);
+    memset(req->cookieHeader, 0, sizeof req->cookieHeader);
+    memset(req->setCookieHeader, 0, sizeof req->setCookieHeader);
     memset(req->websocket_nonce, 0, sizeof(req->websocket_nonce));
     memset(req->websocket_accept, 0, sizeof(req->websocket_accept));
     memset(req->websocket_frame, 0, sizeof(req->websocket_frame));

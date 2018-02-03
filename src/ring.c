@@ -25,7 +25,11 @@ marla_Ring* marla_Ring_new(size_t capacity)
 
 size_t marla_Ring_size(marla_Ring* ring)
 {
-    return ring->write_index-ring->read_index;
+    size_t size = ring->write_index-ring->read_index;
+    if(size > marla_Ring_capacity(ring)) {
+        return size&(marla_Ring_capacity(ring)-1);
+    }
+    return size;
 }
 
 size_t marla_Ring_capacity(marla_Ring* ring)

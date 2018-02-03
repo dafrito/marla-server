@@ -463,7 +463,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 continue;
             }
             else {
-                marla_logMessagef(&server, "%d", events[i].events);
+                //marla_logMessagef(&server, "%d", events[i].events);
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (events[i].events & EPOLLRDHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
                     marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
                     // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
@@ -472,6 +472,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                             marla_logMessagef(&server, "Backend connection done sending data.");
                             marla_Connection_destroy(cxn);
                         }
+                        marla_logMessagef(&server, "Connection done sending data.");
                         continue;
                     }
                     if(events[i].events & EPOLLHUP) {

@@ -107,13 +107,7 @@ static int test_backend(struct marla_Server* server)
     marla_Ring_writeStr(backendRings[0], "HTTP/1.1 200 OK\r\n\r\n");
     marla_clientWrite(client);
 
-    if(!client->current_request) {
-        return 1;
-    }
-    if(client->current_request->readStage != marla_CLIENT_REQUEST_DONE_READING) {
-        return 1;
-    }
-    if(client->current_request->writeStage != marla_CLIENT_REQUEST_WRITING_RESPONSE) {
+    if(client->current_request) {
         return 1;
     }
 

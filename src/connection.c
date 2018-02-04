@@ -195,7 +195,19 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
 
 void marla_Connection_destroy(marla_Connection* cxn)
 {
+    for(marla_Request* req = cxn->current_request; req != 0;) {
+        if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_BODY && (req->close_after_done || req->givenContentLen == marla_MESSAGE_USES_CLOSE)) {
+            req->readStage = marla_BACKEND_REQUEST_DONE_READING;
+        }
+        req = req->next_request;
+    }
+
     marla_logMessagef(cxn->server, "Destroying connection %d", cxn->id);
+
+    // Force reads and writes to fail.
+    cxn->in_write = 1;
+    cxn->in_read = 1;
+
     if(cxn->destroySource) {
         cxn->destroySource(cxn);
         cxn->destroySource = 0;

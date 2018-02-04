@@ -1,11 +1,11 @@
-PORT=4596
+PORT=4632
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
 BINDIR=$(PREFIX)/bin
 LIBDIR=$(PREFIX)/lib
 INCLUDEDIR=$(PREFIX)/include
-MARLAFLAGS=-nossl
+MARLAFLAGS=
 USER=$(shell whoami)
 UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)

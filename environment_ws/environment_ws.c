@@ -105,7 +105,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                     session->login.username = 0;
                     session->login.userId = -1;
                     if(sessionValue && 0 == parsegraph_deconstructSessionString(session->pool, sessionValue, &session->login.session_selector, &session->login.session_token)) {
-                        /*parsegraph_UserStatus rv = parsegraph_refreshUserLogin(session->pool, controlDBD, &session->login);
+                        parsegraph_UserStatus rv = parsegraph_refreshUserLogin(session->pool, controlDBD, &session->login);
                         if(rv != parsegraph_OK) {
                             marla_logMessagef(req->cxn->server, "Failed to refresh session's login: %s", parsegraph_nameUserStatus(rv));
                             strcpy(session->error, parsegraph_nameUserStatus(rv));
@@ -117,7 +117,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                             marla_logMessagef(req->cxn->server, "Failed to retrieve ID for authenticated login.");
                             strcpy(session->error, "Failed to retrieve ID for authenticated login.\n");
                             return;
-                        }*/
+                        }
                     }
                     if(!session->login.username) {
                         marla_logMessagef(req->cxn->server, "Session does not match any user.");
@@ -187,7 +187,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 goto choked;
             }
         }
-        if(session->initialData->stage != 3) {
+        while(session->initialData->stage != 3) {
             switch(parsegraph_printItem(req, session, session->initialData)) {
             case 0:
                 // Done!
@@ -199,7 +199,14 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 break;
             case -1:
                 // Choked.
-                goto choked;
+                {
+                    int nflushed;
+                    marla_Connection_flush(req->cxn, &nflushed);
+                    if(nflushed == 0) {
+                        goto choked;
+                    }
+                    continue;
+                }
             case -2:
             default:
                 // Died.
@@ -209,6 +216,8 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 goto choked;
             }
         }
+
+        marla_logMessage(server, "Finished writing initial environment.");
 
         // Get storage event log since last transmit.
             // For each event, interpret and send to user.
@@ -476,6 +485,7 @@ module_environment_ws_init(struct marla_Server* server, enum marla_ServerModuleE
 
 int initialize_parsegraph_live_session(parsegraph_live_session* session)
 {
+    parsegraph_guid_init(&session->env);
     session->envReceived = 0;
     session->errorBufSize = 255;
     memset(session->error, 0, session->errorBufSize + 1);
@@ -590,13 +600,17 @@ int parsegraph_printItem(marla_Request* req, parsegraph_live_session* session, s
             }
 
             //fprintf(stderr, "printing stage 1\n");
-            if(marla_writeWebSocketHeader(req, 1, written) < 0) {
+            int hlen = marla_writeWebSocketHeader(req, 1, written);
+            if (hlen < 0) {
                 goto choked;
             }
             int nwritten = marla_Connection_write(req->cxn, buf, written);
             if(nwritten < written) {
                 if(nwritten > 0) {
-                    marla_Connection_putbackWrite(req->cxn, nwritten);
+                    marla_Connection_putbackWrite(req->cxn, hlen + nwritten);
+                }
+                else {
+                    marla_Connection_putbackWrite(req->cxn, hlen);
                 }
                 goto choked;
             }
@@ -651,23 +665,28 @@ int parsegraph_printItem(marla_Request* req, parsegraph_live_session* session, s
             int written;
             if(level->parentLevel && (level->parentLevel->index < level->parentLevel->nvalues)) {
                 strcpy(buf, "]},");
-                if(marla_writeWebSocketHeader(req, 1, strlen("]},")) < 0) {
+                int hlen = marla_writeWebSocketHeader(req, 1, strlen("]},"));
+                if(hlen < 0) {
                     goto choked;
                 }
                 written = marla_Connection_write(req->cxn, buf, strlen("]},"));
                 if(written < strlen("]},")) {
                     if(written > 0) {
-                        marla_Connection_putbackWrite(req->cxn, written);
+                        marla_Connection_putbackWrite(req->cxn, written + hlen);
                     }
                     goto choked;
                 }
             }
             else {
                 strcpy(buf, "]}");
+                int hlen = marla_writeWebSocketHeader(req, 1, strlen("]}"));
+                if(hlen < 0) {
+                    goto choked;
+                }
                 written = marla_Connection_write(req->cxn, buf, strlen("]}"));
                 if(written < strlen("]}")) {
                     if(written > 0) {
-                        marla_Connection_putbackWrite(req->cxn, written);
+                        marla_Connection_putbackWrite(req->cxn, written + hlen);
                     }
                     goto choked;
                 }

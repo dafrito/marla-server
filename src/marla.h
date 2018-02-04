@@ -125,10 +125,21 @@ void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr);
 int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr);
 int marla_ChunkedPageRequest_write(marla_ChunkedPageRequest* cpr, unsigned char* in, size_t len);
 
+enum marla_BackendResponderStage {
+marla_BackendResponderStage_STARTED,
+marla_BackendResponderStage_RESPONSE_LINE,
+marla_BackendResponderStage_LOCATION_HEADER,
+marla_BackendResponderStage_SET_COOKIE_HEADER,
+marla_BackendResponderStage_TERMINAL_HEADER,
+marla_BackendResponderStage_RESPONSE,
+marla_BackendResponderStage_FLUSHING,
+marla_BackendResponderStage_DONE,
+};
+
 struct marla_BackendResponder {
 struct marla_Request* req;
 void(*handler)(struct marla_BackendResponder*);
-int handleStage;
+enum marla_BackendResponderStage handleStage;
 int index;
 marla_Ring* backendRequestBody;
 marla_Ring* backendResponse;
@@ -203,6 +214,7 @@ long int givenContentLen;
 long int remainingContentLen;
 long int totalContentLen;
 long int chunkSize;
+char acceptHeader[MAX_FIELD_VALUE_LENGTH + 1];
 char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1];
 char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1];
 char setCookieHeader[MAX_FIELD_VALUE_LENGTH + 1];

@@ -369,7 +369,7 @@ static int marla_processClientFields(marla_Request* req)
                 }
             }
             else if(!strcmp(fieldName, "Accept")) {
-
+                strncpy(req->acceptHeader, fieldValue, MAX_FIELD_VALUE_LENGTH);
             }
             else if(!strcmp(fieldName, "Upgrade")) {
                 if(!strcmp(fieldValue, "websocket")) {
@@ -1663,12 +1663,7 @@ int marla_clientWrite(marla_Connection* cxn)
         }
     }
 
-    while(req->writeStage == marla_CLIENT_REQUEST_WRITING_RESPONSE) {
-        int result = 0;
-        if(req->handler) {
-            req->handler(req, marla_EVENT_MUST_WRITE, &result, 0);
-        }
-
+    for(int result = 0; req->cxn->stage != marla_CLIENT_COMPLETE && req->writeStage == marla_CLIENT_REQUEST_WRITING_RESPONSE; ) {
         // Write current output.
         if(marla_Ring_size(output) > 0) {
             int nflushed;
@@ -1679,13 +1674,29 @@ int marla_clientWrite(marla_Connection* cxn)
                 return rv;
             }
         }
-        if(result == 1 || !req->handler) {
-            req->writeStage = marla_CLIENT_REQUEST_DONE_WRITING;
-        }
-        if(result == -1) {
+        else if(result == -1) {
             marla_logLeave(server, 0);
             cxn->in_write = 0;
             return -1;
+        }
+        if(req->handler) {
+            req->handler(req, marla_EVENT_MUST_WRITE, &result, 0);
+            marla_logMessagef(req->cxn->server, "Handler indicated %d", result);
+        }
+        if(result == 1 || !req->handler) {
+            marla_logMessagef(req->cxn->server, "Done writing request %d to client ", req->id);
+            if(marla_Ring_size(cxn->output) > 0) {
+                int nflushed;
+                int rv = marla_Connection_flush(cxn, &nflushed);
+                if(rv <= 0) {
+                    marla_logLeave(server, "Responder choked.");
+                    cxn->in_write = 0;
+                    return rv;
+                }
+            }
+            if(marla_Ring_size(cxn->output) == 0) {
+                req->writeStage = marla_CLIENT_REQUEST_DONE_WRITING;
+            }
         }
     }
 

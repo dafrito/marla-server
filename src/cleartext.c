@@ -62,7 +62,6 @@ static int shutdownSource(marla_Connection* cxn)
             return -1;
         }
     }
-    fsync(cxnSource->fd);
     int rv = shutdown(cxnSource->fd, SHUT_RDWR);
     marla_logMessagef(cxn->server, "shutdown() returned %d", rv);
     close(cxnSource->fd);

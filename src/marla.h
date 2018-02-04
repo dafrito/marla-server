@@ -146,6 +146,7 @@ marla_Ring* backendResponse;
 marla_Ring* clientResponse;
 void* handleData;
 };
+
 typedef struct marla_BackendResponder marla_BackendResponder;
 int marla_Backend_connect(struct marla_Server* server);
 struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, struct marla_Request* req);

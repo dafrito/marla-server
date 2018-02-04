@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table
+{
+border-collapse: collapse;
+}
+table td, table th
+{
+border: 1px solid grey;
+}
+
+tr.backend td {
+background: lightgrey;
+}
+</style>
+<title>Backend - Marla</title>
+<link rel=stylesheet type=text/css href="style.css">
+</head>
+<body>
+<main class=content>
+<h1>Backend - <a href="index.html">Marla</a></h1>
+Backend server connections.
+<h2>enum marla_BackendResponderStage</h2>
+<table>
+<tr><td>marla_BackendResponderStage_STARTED<td>
+<tr><td>marla_BackendResponderStage_RESPONSE_LINE<td>
+<tr><td>marla_BackendResponderStage_LOCATION_HEADER<td>
+<tr><td>marla_BackendResponderStage_SET_COOKIE_HEADE<td>
+<tr><td>marla_BackendResponderStage_TERMINAL_HEADER<td>
+<tr><td>marla_BackendResponderStage_RESPONSE<td>
+<tr><td>marla_BackendResponderStage_FLUSHING<td>
+<tr><td>marla_BackendResponderStage_DONE<td>
+</table>
+<h2>struct marla_BackendResponder</h2>
+<table>
+<tr><td>struct marla_Request* req<td>
+<tr><td>void(*handler)(struct marla_BackendResponder*)<td>
+<tr><td>enum marla_BackendResponderStage handleStage<td>
+<tr><td>int index<td>
+<tr><td>marla_Ring* backendRequestBody<td>
+<tr><td>marla_Ring* backendResponse<td>
+<tr><td>marla_Ring* clientResponse<td>
+<tr><td>void* handleData<td>
+</table>
+<h2>int marla_Backend_connect(marla_Server* server)</h2>
+Connects the server's backend if not already connected.
+<h2>struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, marla_Request* req)</h2>
+Constructs a new backend responder, using a output buffer of the given size, for the given request.
+<h2>void marla_BackendResponder_free(marla_BackendResponder* resp)</h2>
+<h2>int marla_BackendResponder_writeRequestBody(marla_BackendResponder* resp, unsigned char* in, size_t len)</h2>
+<h2>int marla_BackendResponder_flushClientResponse(marla_BackendResponder* resp, size_t* nflushed)</h2>
+Takes data from the responder's output buffer and writes it to underlying request's connection.
+<p>
+Returns:
+<ul>
+<li>
+</ul>
+<h2>void marla_Backend_init(marla_Connection* cxn, int fd)</h2>
+Initialize a backend connection using the given file descriptor.
+<h2>void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)</h2>
+Adds the given request to the given backend connection.
+<p>
+The backend connection is processed.
+<h2>int marla_backendWrite(marla_Connection* cxn)</h2>
+Write to the given backend connection.
+<ul>
+<li>Returns 0 if the function should be called again.
+<li>Returns -1 if the function has choked on I/O and should not be called again.
+<li>Returns 1 if the function needs to close the connection.
+</ul>
+<h2>int marla_backendRead(marla_Connection* cxn)</h2>
+Write to the given backend connection.
+<ul>
+<li>Returns 0 if the function should be called again.
+<li>Returns -1 if the function has choked on I/O and should not be called again.
+<li>Returns 1 if the function needs to close the connection.
+</ul>
+<h2>void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)</h2>
+Handler to be installed for backend requests. Uses marla_BackendResponder for handlerData.
+<h2>void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)</h2>
+Handler to be installed for clients that are routing backend requests. Uses backendPeer's marla_BackendResponder for handlerData.
+</main>
+<nav class=toc>
+<h3>Backend - <a href="index.html">Marla</a></h3>
+<ul>
+<li>enum <b>marla_BackendResponderStage</b>
+<li>struct <b>marla_BackendResponder</b>
+<li>int <b>marla_Backend_connect</b>(marla_Server* server)
+<li>struct marla_BackendResponder* <b>marla_BackendResponder_new</b>(size_t bufSize, marla_Request* req)
+<li>void <b>marla_BackendResponder_free</b>(marla_BackendResponder* resp)
+<li>int <b>marla_BackendResponder_writeRequestBody</b>(marla_BackendResponder* resp, unsigned char* in, size_t len)
+<li>int <b>marla_BackendResponder_flushClientResponse</b>(marla_BackendResponder* resp, size_t* nflushed)
+<li>void <b>marla_Backend_init</b>(marla_Connection* cxn, int fd)
+<li>void <b>marla_Backend_enqueue</b>(marla_Connection* cxn, marla_Request* req)
+<li>int <b>marla_backendWrite</b>(marla_Connection* cxn)
+<li>int <b>marla_backendRead</b>(marla_Connection* cxn)
+<li>void <b>marla_backendHandler</b>(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
+<li>void <b>marla_backendClientHandler</b>(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
+</ul>
+<h3>Marla</h3>
+Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+<p>
+<h3>Table of Contents</h3>
+<ol>
+<li><a href="main.html">Main</a>
+<li><a href="server.html">Server</a>
+<li><a href="connection.html">Connection</a>
+<li><a href="request.html">Request</a>
+<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
+<li><a href="backend.html">Backend</a>
+<li><a href="ring.html">Ring</a>
+</ol>
+</nav>
+</body>
+</html>

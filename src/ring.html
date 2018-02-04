@@ -58,7 +58,7 @@ Returns, in slot and slotLen, a continuous area of memory in this ring for which
 <h2>void marla_Ring_readSlot(ring, void** slot, size_t* slotLen)</h2>
 Returns, in slot and slotLen, a continuous stretch of bytes to read from this ring.
 <h2>#define marla_BUFSIZE</h2>
-A power-of-two buffer size considered reasonable for normal use. Defined as 1,024 bytes. The server does not tolerate sizes smaller than 512 bytes.
+A power-of-two buffer size considered reasonable for normal use. Defined as 2,048 bytes. The server cannot work with sizes smaller than 1,024 bytes.
 </main>
 <nav class=toc>
 <h3>Ring - <a href="index.html">Marla</a></h3>
@@ -91,6 +91,7 @@ Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</
 <li><a href="connection.html">Connection</a>
 <li><a href="request.html">Request</a>
 <li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
+<li><a href="backend.html">Backend</a>
 <li><a href="ring.html">Ring</a>
 </ol>
 </nav>

@@ -405,6 +405,21 @@ void routeHook(struct marla_Request* req, void* hookData)
         req->handler = marla_backendClientHandler;
         return;
     }
+    if(!strncmp(req->uri, "/parsegraph-widgets-1", strlen("/parsegraph-widgets-1"))) {
+        // Install backend handler.
+        req->handler = marla_backendClientHandler;
+        return;
+    }
+    if(!strncmp(req->uri, "/sga.css", strlen("/sga.css"))) {
+        // Install backend handler.
+        req->handler = marla_backendClientHandler;
+        return;
+    }
+    if(!strncmp(req->uri, "/UnicodeData.txt", strlen("/UnicodeData.txt"))) {
+        // Install backend handler.
+        req->handler = marla_backendClientHandler;
+        return;
+    }
 
     // Default handler.
     cpr = marla_ChunkedPageRequest_new(marla_BUFSIZE, req);

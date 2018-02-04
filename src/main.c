@@ -24,6 +24,8 @@
 
 static int use_curses = 1;
 static int use_ssl = 1;
+static char ssl_certificate_path[1024];
+static char ssl_key_path[1024];
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
@@ -38,53 +40,58 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-static int
-create_and_bind (const char *port)
+static int create_and_bind(const char *given_port)
 {
-  struct addrinfo hints;
-  struct addrinfo *result, *rp;
-  int s, sfd;
+    struct addrinfo hints;
+    struct addrinfo *result, *rp;
+    int s, sfd;
 
-  memset (&hints, 0, sizeof (struct addrinfo));
-  hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
-  hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
-  hints.ai_flags = AI_PASSIVE;     /* All interfaces */
+    memset(&hints, 0, sizeof (struct addrinfo));
+    hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
+    hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
+    hints.ai_flags = AI_PASSIVE;     /* All interfaces */
 
-  s = getaddrinfo (NULL, port, &hints, &result);
-  if (s != 0)
-    {
-      fprintf (stderr, "getaddrinfo: %s\n", gai_strerror (s));
-      return -1;
+    char portbuf[512];
+    strcpy(portbuf, given_port);
+    const char* hostname = 0;
+    const char* port = portbuf;
+    char* sep = index(portbuf, ':');
+    if(sep) {
+        *sep = 0;
+        hostname = portbuf;
+        port = sep + 1;
     }
 
-  for (rp = result; rp != NULL; rp = rp->ai_next)
-    {
-      sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-      if (sfd == -1)
-        continue;
+    s = getaddrinfo (hostname, port, &hints, &result);
+    if(s != 0) {
+        fprintf (stderr, "getaddrinfo: %s\n", gai_strerror (s));
+        return -1;
+    }
 
-      s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
-      if (s == 0)
-        {
-          /* We managed to bind successfully! */
-          break;
+    for(rp = result; rp != NULL; rp = rp->ai_next) {
+        sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if(sfd == -1) {
+            continue;
+        }
+
+        s = bind(sfd, rp->ai_addr, rp->ai_addrlen);
+        if(s == 0) {
+            /* We managed to bind successfully! */
+            break;
         }
         else {
-          fprintf(stderr, "Could not bind: %s (errno=%d)\n", strerror(errno), errno);
-      }
+            fprintf(stderr, "Could not bind: %s (errno=%d)\n", strerror(errno), errno);
+        }
 
-      close (sfd);
+        close(sfd);
     }
 
-  if (rp == NULL)
-    {
-      fprintf(stderr, "Could not bind on any sockets.");
-      return -1;
+    if(rp == NULL) {
+        fprintf(stderr, "Could not bind on any sockets.");
+        return -1;
     }
-
-  freeaddrinfo (result);
-
-  return sfd;
+    freeaddrinfo (result);
+    return sfd;
 }
 
 static void init_openssl()
@@ -115,17 +122,17 @@ static SSL_CTX *create_context()
     return ctx;
 }
 
-static void configure_context(SSL_CTX *ctx)
+static void configure_context(SSL_CTX *ctx, const char* certfile, const char* keyfile)
 {
     SSL_CTX_set_ecdh_auto(ctx, 1);
 
     /* Set the key and cert */
-    if (SSL_CTX_use_certificate_file(ctx, "certificate.pem", SSL_FILETYPE_PEM) <= 0) {
+    if (SSL_CTX_use_certificate_file(ctx, certfile, SSL_FILETYPE_PEM) <= 0) {
         ERR_print_errors_fp(stderr);
 	exit(EXIT_FAILURE);
     }
 
-    if (SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM) <= 0 ) {
+    if (SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM) <= 0 ) {
         ERR_print_errors_fp(stderr);
 	exit(EXIT_FAILURE);
     }
@@ -245,6 +252,10 @@ int main(int argc, const char**argv)
     // Create the backend socket
     strcpy(server.backendport, argv[2]);
 
+    strcpy(ssl_key_path, "key.pem");
+    strcpy(ssl_certificate_path, "certificate.pem");
+    strcpy(server.db_path, "/home/dafrito/var/parsegraph/users.sqlite");
+
     if(argc > MIN_ARGS) {
         for(int n = MIN_ARGS; n < argc; ++n) {
             const char* arg = argv[n];
@@ -263,6 +274,23 @@ int main(int argc, const char**argv)
             if(!strcmp(arg, "-curses")) {
                 use_curses = 1;
                 continue;
+            }
+            if(n < argc - 1) {
+                if(!strcmp(arg, "-key")) {
+                    strncpy(ssl_key_path, argv[n+1], sizeof ssl_key_path);
+                    ++n;
+                    continue;
+                }
+                if(!strcmp(arg, "-cert")) {
+                    strncpy(ssl_certificate_path, argv[n+1], sizeof ssl_certificate_path);
+                    ++n;
+                    continue;
+                }
+                if(!strcmp(arg, "-db")) {
+                    strncpy(server.db_path, argv[n+1], sizeof server.db_path);
+                    ++n;
+                    continue;
+                }
             }
             char* loc = index(arg, '?');
             if(loc == 0) {
@@ -312,7 +340,8 @@ int main(int argc, const char**argv)
         marla_logMessage(&server, "Using SSL.");
         init_openssl();
         ctx = create_context();
-        configure_context(ctx);
+        configure_context(ctx, ssl_certificate_path, ssl_key_path);
+        server.using_ssl = 1;
     }
 
     events = (struct epoll_event*)calloc(MAXEVENTS, sizeof(struct epoll_event));

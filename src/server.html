@@ -26,6 +26,7 @@ The size of the server's log buffer, in bytes. Defined as 32*1024.
 <tr><td>struct marla_Connection* last_connection<td>Server's last active connection
 <tr><td>marla_Ring* log<td>Log buffer
 <tr><td>char logaddress[1024]<td>TCP URL of the logging server
+<tr><td>int using_ssl<td>1 if this server is using TLS encryption for its connections.
 <tr><td>int logfd<td>Logging file descriptor
 <tr><td>char serverport[64]<td>Server port, copied from command-line.
 <tr><td>char backendport[64]<td>Backend port, as passed from commandline.

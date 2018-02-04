@@ -30,6 +30,10 @@ mkdir -p %{buildroot}/%{_includedir}
 cp marla %{buildroot}/%{_bindir}
 cp libmarla.so %{buildroot}/%{_libdir}
 cp src/marla.h %{buildroot}/%{_includedir}
+cp environment_ws/libenvironment_ws.so %{buildroot}/%{_libdir}
+cp servermod/libservermod.so %{buildroot}/%{_libdir}
+mkdir -p %{buildroot}/%{_datadir}/parsegraph
+mkdir -p %{buildroot}/%{_sysconfdir}/parsegraph
 
 %package devel
 Group: Development/Libraries
@@ -40,7 +44,29 @@ Development libraries for Marla.
 
 %files
 %{_bindir}/*
-%{_libdir}/*
+%{_libdir}/libmarla.so
+%{_datadir}/parsegraph
+%{_sysconfdir}/parsegraph
 
 %files devel
 %{_includedir}/*
+
+%package environment_ws
+Group: Development/Libraries
+Summary: environment_ws module for Parsegraph
+
+%description environment_ws
+Module that provides the /environment/ routes for Parsegraph.
+
+%files environment_ws
+%{_libdir}/libenvironment_ws.so
+
+%package servermod
+Group: Development/Libraries
+Summary: servermod module for Parsegraph
+
+%description servermod
+Module that provides the Marla routes for Parsegraph.
+
+%files servermod
+%{_libdir}/libservermod.so

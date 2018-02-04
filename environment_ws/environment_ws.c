@@ -10,7 +10,7 @@ ap_dbd_t* controlDBD = 0;
 ap_dbd_t* worldStreamDBD = 0;
 
 static int acquireWorldStream();
-static int releaseWorldStream();
+static int releaseWorldStream(int commit);
 
 static void
 callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEvent reason, void *in, int len)
@@ -28,7 +28,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             if(session->initialData->stage != 3 && !session->initialData->error) {
                 // World streaming interrupted, decrement usage counter.
                 session->initialData->error = 1;
-                if(releaseWorldStream() != 0) {
+                if(releaseWorldStream(1) != 0) {
                     return;
                 }
             }
@@ -191,7 +191,8 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             switch(parsegraph_printItem(req, session, session->initialData)) {
             case 0:
                 // Done!
-                if(releaseWorldStream() != 0) {
+                if(releaseWorldStream(1) != 0) {
+                    releaseWorldStream(0);
                     session->initialData->error = 1;
                     strcpy(session->error, "Failed to commit prepared environment.");
                     goto choked;
@@ -210,7 +211,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             case -2:
             default:
                 // Died.
-                releaseWorldStream();
+                releaseWorldStream(0);
                 session->initialData->error = 1;
                 strcpy(session->error, "Failed to prepare environment.");
                 goto choked;
@@ -264,7 +265,7 @@ static void routeHook(struct marla_Request* req, void* hookData)
     }
 }
 
-static int prepareDBD(ap_dbd_t** dbdPointer)
+static int prepareDBD(ap_dbd_t** dbdPointer, const char* db_path)
 {
     ap_dbd_t* dbd = apr_palloc(modpool, sizeof(*dbd));
     if(dbd == NULL) {
@@ -277,7 +278,6 @@ static int prepareDBD(ap_dbd_t** dbdPointer)
         fprintf(stderr, "Failed creating DBD driver, APR status of %d.\n", rv);
         return -1;
     }
-    const char* db_path = "/home/dafrito/var/parsegraph/users.sqlite";
     rv = apr_dbd_open(dbd->driver, modpool, db_path, &dbd->handle);
     if(rv != APR_SUCCESS) {
         fprintf(stderr, "Failed connecting to database at %s, APR status of %d.\n", db_path, rv);
@@ -337,37 +337,6 @@ static int initialize_module(struct marla_Server* server)
         return -1;
     }
 
-    // Create the PID file.
-    int pidFile = open("rainback.pid", O_WRONLY | O_TRUNC | O_CREAT, 0664);
-    if(pidFile < 0) {
-        fprintf(stderr, "Error %d while creating pid file: %s\n", errno, strerror(errno));
-        return -1;
-    }
-    char buf[256];
-    int written = snprintf(buf, sizeof(buf), "%d\n", getpid());
-    if(written < 0) {
-        fprintf(stderr, "Error %d while formatting pid number: %s\n", errno, strerror(errno));
-        return -1;
-    }
-    if(written > sizeof(buf) - 1) {
-        fprintf(stderr, "Buffer too small to write PID number.\n");
-        return -1;
-    }
-    int pidStrSize = written;
-    written = write(pidFile, buf, written);
-    if(written < 0) {
-        fprintf(stderr, "Error %d while formatting pid number: %s\n", errno, strerror(errno));
-        return -1;
-    }
-    if(written < pidStrSize) {
-        fprintf(stderr, "Partial write of PID to file not tolerated.\n");
-        return -1;
-    }
-    if(close(pidFile) < 0) {
-        fprintf(stderr, "Error %d while closing pid file: %s\n", errno, strerror(errno));
-        return -1;
-    }
-
     // Initialize DBD.
     rv = apr_dbd_init(modpool);
     if(rv != APR_SUCCESS) {
@@ -375,10 +344,11 @@ static int initialize_module(struct marla_Server* server)
         return -1;
     }
 
-    if(0 != prepareDBD(&controlDBD)) {
+    const char* db_path = server->db_path;
+    if(0 != prepareDBD(&controlDBD, db_path)) {
         return -1;
     }
-    if(0 != prepareDBD(&worldStreamDBD)) {
+    if(0 != prepareDBD(&worldStreamDBD, db_path)) {
         return -1;
     }
 
@@ -391,10 +361,6 @@ static int initialize_module(struct marla_Server* server)
 
 static int destroy_module(struct marla_Server* server)
 {
-    if(remove("rainback.pid") < 0) {
-        fprintf(stderr, "Error %d while removing pid file: %s\n", errno, strerror(errno));
-    }
-
     // Close the world streaming DBD connection.
     int rv = apr_dbd_close(worldStreamDBD->driver, worldStreamDBD->handle);
     if(rv != APR_SUCCESS) {
@@ -429,7 +395,7 @@ static int acquireWorldStream()
     return 0;
 }
 
-static int releaseWorldStream()
+static int releaseWorldStream(int commit)
 {
     if(openWorldStreams == 0) {
         // Invalid.
@@ -440,7 +406,7 @@ static int releaseWorldStream()
     }
 
     int nrows;
-    int dbrv = apr_dbd_query(worldStreamDBD->driver, worldStreamDBD->handle, &nrows, "ROLLBACK");
+    int dbrv = apr_dbd_query(worldStreamDBD->driver, worldStreamDBD->handle, &nrows, commit ? "COMMIT" : "ROLLBACK");
     if(dbrv != 0) {
         return -1;
     }
@@ -674,6 +640,9 @@ int parsegraph_printItem(marla_Request* req, parsegraph_live_session* session, s
                     if(written > 0) {
                         marla_Connection_putbackWrite(req->cxn, written + hlen);
                     }
+                    else {
+                        marla_Connection_putbackWrite(req->cxn, hlen);
+                    }
                     goto choked;
                 }
             }
@@ -687,6 +656,9 @@ int parsegraph_printItem(marla_Request* req, parsegraph_live_session* session, s
                 if(written < strlen("]}")) {
                     if(written > 0) {
                         marla_Connection_putbackWrite(req->cxn, written + hlen);
+                    }
+                    else {
+                        marla_Connection_putbackWrite(req->cxn, hlen);
                     }
                     goto choked;
                 }

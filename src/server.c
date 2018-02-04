@@ -36,6 +36,7 @@ void marla_Server_init(struct marla_Server* server)
     server->has_terminal = 0;
     server->logfd = -1;
     server->wantsLogWrite = 0;
+    server->using_ssl = 0;
     server->efd = 0;
     server->sfd = 0;
     server->backendfd = 0;
@@ -44,6 +45,7 @@ void marla_Server_init(struct marla_Server* server)
     server->log = marla_Ring_new(marla_LOGBUFSIZE);
     memset(server->serverport, 0, sizeof server->serverport);
     memset(server->backendport, 0, sizeof server->backendport);
+    memset(server->db_path, 0, sizeof server->db_path);
 
     server->first_connection = 0;
     server->last_connection = 0;

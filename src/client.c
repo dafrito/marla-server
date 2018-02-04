@@ -1140,6 +1140,9 @@ int marla_clientRead(marla_Connection* cxn)
     }
 
     while(req->readStage == marla_CLIENT_REQUEST_WEBSOCKET) {
+        if(req->needWebSocketClose) {
+            return -1;
+        }
         unsigned char buf[marla_BUFSIZE + 1];
         int nread;
         memset(buf, 0, sizeof buf);
@@ -1271,7 +1274,7 @@ int marla_clientRead(marla_Connection* cxn)
             req->websocketFrameRead = 0;
         }
 
-        while(req->websocketFrameLen > req->websocketFrameRead) {
+        while(!req->needWebSocketClose && req->websocketFrameLen > req->websocketFrameRead) {
             switch(req->websocket_type) {
             case 8:
                 // Close frame.
@@ -1310,6 +1313,7 @@ int marla_clientRead(marla_Connection* cxn)
                 else if(req->handler) {
                     req->handler(req, marla_EVENT_WEBSOCKET_CLOSE_REASON, closeReasonWritten, nread);
                 }
+
                 break;
             case 9:
                 // Ping frame.

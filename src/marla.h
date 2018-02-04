@@ -384,6 +384,7 @@ struct marla_Server {
 struct marla_Connection* first_connection;
 struct marla_Connection* last_connection;
 
+int using_ssl;
 int wantsLogWrite;
 int logfd;
 marla_Ring* log;
@@ -391,6 +392,7 @@ char logbuf[4096];
 char logaddress[1024];
 char serverport[64];
 char backendport[64];
+char db_path[1024];
 const char* backendPort;
 pthread_mutex_t server_mutex;
 volatile enum marla_ServerStatus server_status;

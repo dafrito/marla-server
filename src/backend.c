@@ -1459,22 +1459,25 @@ void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEven
 
         while(resp->handleStage == marla_BackendResponderStage_RESPONSE) {
             //marla_logMessagef(req->cxn->server, "Writing backend response to client");
-            size_t nflushed;
-            switch(marla_writeChunk(server, resp->backendResponse, resp->clientResponse)) {
-            case 0:
-                continue;
-            case -1:
-                // Downstream choked.
+            if(!marla_Ring_isEmpty(resp->clientResponse)) {
+                size_t nflushed;
                 switch(marla_BackendResponder_flushClientResponse(resp, &nflushed)) {
-                case 1:
-                    marla_die(server, "Impossible");
-                    break;
                 case -1:
                     if(nflushed == 0) {
                         goto choked;
                     }
                     continue;
+                default:
+                    marla_die(server, "Impossible");
+                    break;
                 }
+            }
+            switch(marla_writeChunk(server, resp->backendResponse, resp->clientResponse)) {
+            case 0:
+                continue;
+            case -1:
+                // Downstream choked.
+                continue;
             case 1:
                 if(!marla_Ring_isEmpty(resp->backendResponse)) {
                     marla_die(req->cxn->server, "Chunk writer indicated no more data, but there is data is still to be written");

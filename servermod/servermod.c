@@ -5,6 +5,18 @@ static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
     char buf[1024];
     int len;
 
+    marla_Server* server = cpr->req->cxn->server;
+    char websocket_url[256];
+    memset(websocket_url, 0, sizeof websocket_url);
+    int off = sprintf(websocket_url, server->using_ssl ? "wss://" : "ws://");
+    if(index(server->serverport, ':') != 0) {
+        off += sprintf(websocket_url + off, server->serverport);
+    }
+    else {
+        off += sprintf(websocket_url + off, "localhost:%s", server->serverport);
+    }
+    off += sprintf(websocket_url + off, "/environment/live");
+
     // Generate the page.
     switch(cpr->handleStage) {
     case 0:
@@ -14,7 +26,7 @@ static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
         len = snprintf(buf, sizeof buf,
             "<script>"
             "function run() {"
-                "WS=new WebSocket(\"ws://localhost:%s/environment/live\"); "
+                "WS=new WebSocket(\"%s\"); "
                 "WS.onopen = function() { WS.send('123456789012345678901234567890123456'); };"
                 "WS.onclose = function(c, r) { console.log(c, r); };"
             "};"
@@ -27,7 +39,7 @@ static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
             "<p>"
             "<a href='/contact'>Contact us!</a>"
             "</body></html>",
-            cpr->req->cxn->server->serverport,
+            websocket_url,
             cpr->req->id
         );
         break;
@@ -336,13 +348,25 @@ static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
     char buf[1024];
     int len;
 
+    marla_Server* server = cpr->req->cxn->server;
+    char websocket_url[256];
+    memset(websocket_url, 0, sizeof websocket_url);
+    int off = sprintf(websocket_url, server->using_ssl ? "wss://" : "ws://");
+    if(index(server->serverport, ':') != 0) {
+        off += sprintf(websocket_url + off, server->serverport);
+    }
+    else {
+        off += sprintf(websocket_url + off, "localhost:%s", server->serverport);
+    }
+    off += sprintf(websocket_url + off, "/environment/live");
+
     // Generate the page.
     switch(cpr->handleStage) {
     case 0:
         len = snprintf(buf, sizeof buf, "<!DOCTYPE html>");
         break;
     case 1:
-        len = snprintf(buf, sizeof buf, "<html><head><meta charset=\"UTF-8\"><script>function run() { WS=new WebSocket(\"ws://localhost:%s/\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", cpr->req->cxn->server->serverport, cpr->req->id);
+        len = snprintf(buf, sizeof buf, "<html><head><meta charset=\"UTF-8\"><script>function run() { WS=new WebSocket(\"%s\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", websocket_url, cpr->req->id);
         break;
     default:
         return;
@@ -400,25 +424,55 @@ void routeHook(struct marla_Request* req, void* hookData)
         req->handler = marla_backendClientHandler;
         return;
     }
-    if(!strncmp(req->uri, "/parsegraph-1.", strlen("/parsegraph-1."))) {
-        // Install backend handler.
-        req->handler = marla_backendClientHandler;
-        return;
-    }
-    if(!strncmp(req->uri, "/parsegraph-widgets-1", strlen("/parsegraph-widgets-1"))) {
-        // Install backend handler.
-        req->handler = marla_backendClientHandler;
-        return;
-    }
-    if(!strncmp(req->uri, "/sga.css", strlen("/sga.css"))) {
-        // Install backend handler.
-        req->handler = marla_backendClientHandler;
-        return;
-    }
-    if(!strncmp(req->uri, "/UnicodeData.txt", strlen("/UnicodeData.txt"))) {
-        // Install backend handler.
-        req->handler = marla_backendClientHandler;
-        return;
+
+    const char* bufs[] = {
+        "/parsegraph-1.2.js",
+        "/parsegraph-widgets-1.2.js",
+        "/parsegraph-1.0.js",
+        "/parsegraph-widgets-1.0.js",
+        "/sga.css",
+        "/UnicodeData.txt",
+        "/chat.html",
+        "/float.html",
+        "/woodwork.html",
+        "/GLWidget.js",
+        "/bible.html",
+        "/primes.html",
+        "/corporate.html",
+        "/alpha.html",
+        "/weetcubes.html",
+        "/week.html",
+        "/calendar.html",
+        "/ulam.html",
+        "/piers.html",
+        "/lisp.html",
+        "/anthonylispjs-1.0.js",
+        "/chess.html",
+        "/ip.html",
+        "/todo.html",
+        "/start.html",
+        "/multislot.html",
+        "/esprima.js",
+        "/finish.html",
+        "/surface.lisp",
+        "/terminal.html",
+        "/initial.html",
+        "/javascript.html",
+        "/builder.html",
+        "/htmlgraph.html",
+        "/audio.html",
+        0
+    };
+    for(int i = 0; ; ++i) {
+        const char* path = bufs[i];
+        if(!path) {
+            break;
+        }
+        if(!strncmp(req->uri, path, strlen(path))) {
+            // Install backend handler.
+            req->handler = marla_backendClientHandler;
+            return;
+        }
     }
 
     // Default handler.

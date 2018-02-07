@@ -274,6 +274,7 @@ static int test_BackendResponder(struct marla_Server* server)
     marla_Request* req = marla_Request_new(cxn);
     marla_BackendResponder* resp = marla_BackendResponder_new(marla_BUFSIZE, req);
     marla_BackendResponder_free(resp);
+    marla_Request_destroy(req);
     marla_Connection_destroy(cxn);
     return 0;
 }
@@ -566,5 +567,6 @@ int main(int argc, char* argv[])
         ++failed;
     }
 
+    marla_Server_free(&server);
     return failed;
 }

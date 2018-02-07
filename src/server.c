@@ -9,6 +9,7 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include "marla.h"
+#include <dlfcn.h>
 
 const char* marla_nameServerStatus(enum marla_ServerStatus ss)
 {
@@ -39,6 +40,7 @@ void marla_Server_init(struct marla_Server* server)
     server->using_ssl = 0;
     server->efd = 0;
     server->sfd = 0;
+    server->backend = 0;
     server->backendfd = 0;
     server->first_module = 0;
     server->last_module = 0;
@@ -82,5 +84,28 @@ void marla_Server_flushLog(struct marla_Server* server)
 
 void marla_Server_free(struct marla_Server* server)
 {
+    while(server->first_connection) {
+        marla_Connection_destroy(server->first_connection);
+    }
+
+    for(enum marla_ServerHook serverHook = 0; serverHook < marla_SERVER_HOOK_MAX; ++serverHook) {
+        struct marla_HookList* hookList = server->hooks + serverHook;
+        struct marla_HookEntry* hook = hookList->firstHook;
+        while(hook) {
+            struct marla_HookEntry* nhook = hook->nextHook;
+            free(hook);
+            hook = nhook;
+        }
+    }
+
+    struct marla_ServerModule* serverModule = server->last_module;
+    while(serverModule) {
+        struct marla_ServerModule* nextModule = serverModule->prevModule;
+        serverModule->moduleFunc(server, marla_EVENT_SERVER_MODULE_STOP);
+        dlclose(serverModule->moduleHandle);
+        free(serverModule);
+        serverModule = nextModule;
+    }
+
     marla_Ring_free(server->log);
 }

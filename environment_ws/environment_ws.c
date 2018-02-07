@@ -377,7 +377,6 @@ static int destroy_module(struct marla_Server* server)
     apr_pool_destroy(modpool);
     modpool = NULL;
 
-    apr_terminate();
     return 0;
 }
 

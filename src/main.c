@@ -150,6 +150,12 @@ extern void* terminal_operator(void* data);
 
 struct marla_Server server;
 
+void on_sigint()
+{
+    // Do nothing, but don't ignore it, so that it interrupts epoll_wait
+    server.server_status = marla_SERVER_DESTROYING;
+}
+
 int main(int argc, const char**argv)
 {
     int s;
@@ -176,6 +182,7 @@ int main(int argc, const char**argv)
 
     // Do not die from SIGPIPE.
     signal(SIGUSR1, on_sigusr1);
+    signal(SIGINT, on_sigint);
     signal(SIGPIPE, SIG_IGN);
 
     server.server_status = marla_SERVER_STARTED;
@@ -321,10 +328,11 @@ int main(int argc, const char**argv)
             serverModule->moduleDef = arg;
             serverModule->moduleHandle = loaded;
             serverModule->nextModule = 0;
+            serverModule->prevModule = 0;
             if(server.last_module) {
                 server.last_module->nextModule = serverModule;
-                server.last_module = serverModule;
                 serverModule->prevModule = server.last_module;
+                server.last_module = serverModule;
             }
             else {
                 server.first_module = serverModule;
@@ -603,10 +611,6 @@ destroy:
         exit_value = EXIT_FAILURE;
     }
 destroy_without_unlock:
-    for(struct marla_ServerModule* serverModule = server.first_module; serverModule != 0; serverModule = serverModule->nextModule) {
-        serverModule->moduleFunc(serverModule->moduleHandle, marla_EVENT_SERVER_MODULE_STOP);
-    }
-
     if(events) {
         free(events);
     }
@@ -626,6 +630,7 @@ destroy_without_unlock:
     if(use_curses && server.has_terminal) {
         void* retval;
         pthread_join(server.terminal_thread, &retval);
+        server.has_terminal = 0;
     }
     marla_Server_free(&server);
     apr_pool_terminate();

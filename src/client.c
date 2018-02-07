@@ -349,13 +349,20 @@ static int marla_processClientFields(marla_Request* req)
                 }
             }
             else if(!strcmp(fieldName, "Accept-Language")) {
-
+                if(req->handler) {
+                    req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
+                }
             }
             else if(!strcmp(fieldName, "Accept-Encoding")) {
+                if(req->handler) {
+                    req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
+                }
 
             }
             else if(!strcmp(fieldName, "Accept-Charset")) {
-
+                if(req->handler) {
+                    req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
+                }
             }
             else if(!strcmp(fieldName, "Sec-WebSocket-Key")) {
                 strncpy(req->websocket_nonce, fieldValue, MAX_WEBSOCKET_NONCE_LENGTH);
@@ -370,6 +377,9 @@ static int marla_processClientFields(marla_Request* req)
             }
             else if(!strcmp(fieldName, "Accept")) {
                 strncpy(req->acceptHeader, fieldValue, MAX_FIELD_VALUE_LENGTH);
+                if(req->handler) {
+                    req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
+                }
             }
             else if(!strcmp(fieldName, "Upgrade")) {
                 if(!strcmp(fieldValue, "websocket")) {

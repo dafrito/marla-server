@@ -63,9 +63,15 @@ void* terminal_operator(void* data)
             // Process a character of input.
             switch(c) {
             case KEY_F(8):
+                keypad(stdscr, FALSE);
+                intrflush(stdscr, TRUE);
+                nl();
+                nocbreak();
+                echo();
+                endwin();
                 server->server_status = marla_SERVER_DESTROYING;
                 kill(0, SIGUSR1);
-                break;
+                return 0;
             case KEY_LEFT:
                 if(mode > 0) {
                     --mode;
@@ -234,7 +240,6 @@ void* terminal_operator(void* data)
     nocbreak();
     echo();
     endwin();
-    server->has_terminal = 0;
     return 0;
 }
 
@@ -245,6 +250,7 @@ void marla_die(marla_Server* server, const char* fmt, ...)
     if(server->has_terminal) {
         void* retval;
         pthread_join(server->terminal_thread, &retval);
+        server->has_terminal = 0;
     }
     va_list ap;
     va_start(ap, fmt);

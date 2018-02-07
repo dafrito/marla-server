@@ -237,6 +237,10 @@ void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEve
             *((int*)data) = 1;
         }
         break;
+    case marla_EVENT_DESTROYING:
+        cpr = req->handlerData;
+        marla_ChunkedPageRequest_free(cpr);
+        break;
     default:
         break;
     }

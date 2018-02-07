@@ -176,5 +176,6 @@ int main(int argc, char* argv[])
         printf("FAILED\n");
         ++failed;
     }
+    marla_Server_free(&server);
     return failed;
 }

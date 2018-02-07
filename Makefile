@@ -1,4 +1,4 @@
-PORT=127.0.0.1:4656
+PORT=127.0.0.1:4699
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
@@ -59,11 +59,11 @@ run: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libe
 .PHONY: run
 
 debug: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init'
+	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init'
 .PHONY: debug
 
 valgrind: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	valgrind --leak-check=full ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
 .PHONY: valgrind
 
 4400: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so

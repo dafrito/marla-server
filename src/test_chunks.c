@@ -461,7 +461,6 @@ static int test_chunk_math(struct marla_Server* server)
     //Realized prefix length 4 must match the calculated prefix length 5 for 347 bytes avail with slotLen of 262 (7 padding).
 
     marla_Connection_destroy(cxn);
-    marla_ChunkedPageRequest_free(cpr);
     return 0;
 }
 
@@ -663,5 +662,6 @@ int main(int argc, char* argv[])
         printf("FAILED\n");
         ++failed;
     }
+    marla_Server_free(&server);
     return failed;
 }

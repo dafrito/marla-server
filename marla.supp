@@ -1,0 +1,15 @@
+{
+<terminal_operator>
+   Memcheck:Leak
+   ...
+   fun:terminal_operator
+}
+{
+   <_dlerror_run>
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:calloc
+   fun:_dlerror_run
+   fun:dlopen@@GLIBC_2.2.5
+   fun:main
+}

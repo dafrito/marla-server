@@ -970,5 +970,6 @@ int main(int argc, char* argv[])
         ++failed;
     }
 
+    marla_Server_free(&server);
     return failed;
 }

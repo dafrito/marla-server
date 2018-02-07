@@ -1100,6 +1100,7 @@ int marla_backendRead(marla_Connection* cxn)
             if(req->backendPeer) {
                 marla_clientWrite(req->backendPeer->cxn);
             }
+            marla_Request* nreq = req->next_request;
             if(!req->backendPeer) {
                 if(cxn->current_request == cxn->latest_request) {
                     cxn->current_request = 0;
@@ -1111,7 +1112,7 @@ int marla_backendRead(marla_Connection* cxn)
                 marla_Request_destroy(req);
                 --cxn->requests_in_process;
             }
-            req = req->next_request;
+            req = nreq;
         }
         else {
             marla_killRequest(req, "Unexpected request stage.\n");

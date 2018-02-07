@@ -164,6 +164,7 @@ int test_ring_simplify()
         return 1;
     }
     marla_Ring_simplify(ring);
+    marla_Ring_free(ring);
     return 0;
 }
 

@@ -64,12 +64,12 @@ create_and_connect(const char* node, const char* port)
 
         close(sfd);
     }
+    freeaddrinfo(result);           /* No longer needed */
+
 
     if (rp == NULL) {               /* No address succeeded */
         return -1;
     }
-
-    freeaddrinfo(result);           /* No longer needed */
 
     return sfd;
 }

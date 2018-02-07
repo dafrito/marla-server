@@ -14,6 +14,7 @@ test_ring_putback
 test_connection
 test_backend
 test_chunks
+test_ring_po2
 run-tests
 vgcore.*
 *.tar.gz

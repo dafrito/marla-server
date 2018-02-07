@@ -250,6 +250,7 @@ struct marla_Server;
 marla_Request* marla_Request_new(struct marla_Connection* cxn);
 void marla_Request_destroy(marla_Request*);
 void marla_killRequest(struct marla_Request* req, const char* reason, ...);
+void marla_dumpRequest(marla_Request* req);
 
 // connection.c
 
@@ -317,6 +318,15 @@ typedef struct {
 int fd;
 } marla_ClearTextSource;
 int marla_cleartext_init(marla_Connection* cxn, int fd);
+int marla_readDuplex(marla_Connection* cxn, void* sink, size_t len);
+int marla_writeDuplex(marla_Connection* cxn, void* source, size_t len);
+
+struct marla_DuplexSource {
+marla_Ring* input;
+marla_Ring* output;
+};
+typedef struct marla_DuplexSource marla_DuplexSource;
+void marla_Duplex_init(marla_Connection* cxn, size_t input_size, size_t output_size);
 
 // ssl.c
 int marla_SSL_init(marla_Connection* cxn, SSL_CTX* ctx, int fd);

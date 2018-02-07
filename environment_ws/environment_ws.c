@@ -63,10 +63,10 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
             }
         }
 
-        // TODO handle more events and commands received
-
-        // Extraneous data should cause an error.
         if(len > 0) {
+            // TODO handle more events and commands received
+
+            // Extraneous data should cause an error.
             strcpy(session->error, "Received extraneous data.");
         }
         return;
@@ -197,6 +197,7 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                     strcpy(session->error, "Failed to commit prepared environment.");
                     goto choked;
                 }
+                marla_logMessage(server, "Finished writing initial environment.");
                 break;
             case -1:
                 // Choked.
@@ -217,8 +218,6 @@ callback_parsegraph_environment(struct marla_Request* req, enum marla_ClientEven
                 goto choked;
             }
         }
-
-        marla_logMessage(server, "Finished writing initial environment.");
 
         // Get storage event log since last transmit.
             // For each event, interpret and send to user.

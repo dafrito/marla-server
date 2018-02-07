@@ -16,6 +16,7 @@
 #include <locale.h>
 
 extern int marla_Request_NEXT_ID;
+extern int marla_Request_numKilled;
 
 static char status_line[255];
 
@@ -149,8 +150,22 @@ void* terminal_operator(void* data)
                 move(++y, 0);
                 len = snprintf(buf, sizeof buf, "%d request%s served", (marla_Request_NEXT_ID-1), marla_Request_NEXT_ID == 2 ? "" : "s");
                 addnstr(buf, len);
+                if(marla_Request_numKilled > 0) {
+                    move(++y, 0);
+                    len = snprintf(buf, sizeof buf, "%d request%s killed", marla_Request_numKilled, marla_Request_numKilled > 1 ? "s" : "");
+                    addnstr(buf, len);
+                }
                 move(++y, 0);
                 len = snprintf(buf, sizeof buf, "%ld bytes in log buffer", marla_Ring_size(server->log));
+                addnstr(buf, len);
+                move(++y, 0);
+                len = snprintf(buf, sizeof buf, "sizeof(marla_Request): %ld bytes", sizeof(marla_Request));
+                addnstr(buf, len);
+                move(++y, 0);
+                len = snprintf(buf, sizeof buf, "sizeof(marla_Connection): %ld bytes", sizeof(marla_Connection));
+                addnstr(buf, len);
+                move(++y, 0);
+                len = snprintf(buf, sizeof buf, "marla_BUFSIZE: %d bytes", marla_BUFSIZE);
                 addnstr(buf, len);
             }
             else if(mode == TerminalPageMode_Connections) {

@@ -565,8 +565,6 @@ read_chunk_size:
             return -1;
         }
         if(nread < 0) {
-            // Error.
-            marla_killRequest(req, "Error %d while receiving request body.\n", nread);
             return -1;
         }
         if(nread < 3) {
@@ -673,8 +671,6 @@ read_chunk_size:
                 break;
             }
             if(nread < 0) {
-                // Error.
-                marla_killRequest(req, "Error while receiving request chunk body.\n");
                 return -1;
             }
             if(nread < 4 && req->chunkSize > 4) {
@@ -700,8 +696,6 @@ read_chunk_size:
             return -1;
         }
         if(nread < 0) {
-            // Error.
-            marla_killRequest(req, "Error while receiving request chunk body.\n");
             return -1;
         }
         if(nread >= 1 && buf[0] == '\n') {
@@ -752,7 +746,7 @@ static int marla_processStatusLine(marla_Request* req)
 
     if(req->readStage == marla_CLIENT_REQUEST_READING_METHOD) {
         memset(req->method, 0, sizeof(req->method));
-        size_t nread = marla_Connection_read(cxn, (unsigned char*)req->method, MAX_METHOD_LENGTH + 1);
+        int nread = marla_Connection_read(cxn, (unsigned char*)req->method, MAX_METHOD_LENGTH + 1);
         if(nread <= 0) {
             // Error.
             return -1;
@@ -915,35 +909,49 @@ static int marla_processStatusLine(marla_Request* req)
 
     if(req->readStage == marla_CLIENT_REQUEST_READING_VERSION) {
         //                     "01234567"
+        //fprintf(stderr, "PROCESS STATUS LINe\n");
+        //marla_dumpRequest(req);
         const char* expected = "HTTP/1.1";
         size_t versionLen = strlen(expected);
         unsigned char givenVersion[8];
         memset(givenVersion, 0, sizeof(givenVersion));
-        size_t nread = marla_Connection_read(cxn, givenVersion, versionLen + 1);
+        int nread = marla_Connection_read(cxn, givenVersion, versionLen + 1);
         if(nread <= 0) {
-            // Error.
+            //fprintf(stderr, "nread is %ld\n", nread);
             return -1;
         }
         if(nread < versionLen + 1) {
             // Incomplete.
             marla_Connection_putbackRead(cxn, nread);
+            //fprintf(stderr, "nread is incomplete: %ld\n", nread);
             return -1;
         }
 
         // Validate.
+        int invalid = 0;
         for(int i = 0; i < versionLen; ++i) {
             if(givenVersion[i] != expected[i]) {
                 marla_killRequest(req, "Request version is unknown, so no valid request.\n");
-                return -1;
+                //fprintf(stderr, "Request at character %d is invalid. %d(%c) vs expected %c\n", i, (int)givenVersion[i], givenVersion[i], expected[i]);
+                invalid = 1;
+                //return -1;
             }
+        }
+        if(invalid != 0) {
+            return -1;
         }
 
         if(givenVersion[versionLen] == '\r') {
             unsigned char c;
-            size_t nwritten = marla_Connection_read(cxn, &c, 1);
+            int nwritten = marla_Connection_read(cxn, &c, 1);
+            //fprintf(stderr, "%d %d %ld %d\n", (int)'\r', (int)givenVersion[versionLen], nread, nwritten);
             if(nwritten < 1) {
+                //fprintf(stderr, "No last character!\n");
                 marla_Connection_putbackRead(cxn, nread);
                 return -1;
+            }
+            if(nwritten != 1) {
+                marla_die(req->cxn->server, "Unexpected number of characters read: %d", nwritten);
             }
             if(c != '\n') {
                 marla_killRequest(req, "Unterminated request line.\n");
@@ -1717,6 +1725,10 @@ int marla_clientWrite(marla_Connection* cxn)
             }
         }
 
+        marla_Connection* backend = 0;
+        if(req->backendPeer) {
+            backend = req->backendPeer->cxn;
+        }
         if(cxn->current_request == cxn->latest_request) {
             cxn->current_request = 0;
             cxn->latest_request = 0;
@@ -1730,6 +1742,9 @@ int marla_clientWrite(marla_Connection* cxn)
         }
         marla_Request_destroy(req);
         --cxn->requests_in_process;
+        if(backend) {
+            marla_backendRead(backend);
+        }
         if(cxn->stage == marla_CLIENT_COMPLETE) {
             marla_logLeave(server, 0);
             cxn->in_write = 0;

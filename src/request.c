@@ -10,6 +10,8 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 
+int marla_Request_numKilled = 0;
+
 void marla_killRequest(struct marla_Request* req, const char* reason, ...)
 {
     va_list ap;
@@ -18,6 +20,12 @@ void marla_killRequest(struct marla_Request* req, const char* reason, ...)
     req->cxn->stage = marla_CLIENT_COMPLETE;
     marla_logMessagef(req->cxn->server, "Killing request: %s", req->error);
     va_end(ap);
+    ++marla_Request_numKilled;
+}
+
+void marla_dumpRequest(marla_Request* req)
+{
+    fprintf(stderr, "Request %d (%s, %s)\n", req->id, marla_nameRequestReadStage(req->readStage), marla_nameRequestWriteStage(req->writeStage));
 }
 
 const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)

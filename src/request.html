@@ -158,6 +158,8 @@ Backend events:
 </table>
 <h2>marla_Request* marla_Request_new(marla_Connection* connection)</h2>
 Creates a new marla_Request using the given connection. The request is not enqueued in the connection.
+<h2>void marla_dumpRequest(marla_Request* req)</h2>
+Dumps information on the given request to stderr.
 <h2>void marla_Request_destroy(marla_Request* request)</h2>
 Dispatches marla_EVENT_DESTROYING event on the given request's handler and then frees the request.
 <h2>void marla_killRequest(marla_Request* request, const char* reason, ...)</h2>

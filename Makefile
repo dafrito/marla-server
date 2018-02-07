@@ -1,4 +1,4 @@
-PORT=127.0.0.1:4649
+PORT=127.0.0.1:4656
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
@@ -29,7 +29,7 @@ all: src/test-ring.sh src/test-connection.sh
 
 src/test-ring.sh: src/test_ring src/test_small_ring src/test_ring_putback src/test_ring_po2
 
-src/test-connection.sh: src/test_connection src/test_websocket src/test_chunks src/test_backend
+src/test-connection.sh: src/test_duplex src/test_connection src/test_websocket src/test_chunks src/test_backend
 
 create_environment: create_environment.c
 
@@ -39,7 +39,7 @@ servermod/libservermod.so:
 environment_ws/libenvironment_ws.so:
 	cd environment_ws && $(MAKE)
 
-BASE_OBJECTS=src/ring.o src/connection.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o
+BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o
 
 libmarla.so: $(BASE_OBJECTS) src/marla.h
 	$(CC) $(CFLAGS) -o$@ -shared -lpthread $(BASE_OBJECTS)
@@ -94,7 +94,7 @@ tmux:
 	tmux -S marla.tmux att
 .PHONY: tmux
 
-check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend
+check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend src/test_duplex
 	cd src || exit; \
 	for i in seq 3; do \
 	echo Running connecting tests; \
@@ -128,11 +128,14 @@ src/test_chunks: src/test_chunks.c $(BASE_OBJECTS) src/marla.h Makefile
 src/test_backend: src/test_backend.c $(BASE_OBJECTS) src/marla.h Makefile
 	$(CC) $(CFLAGS) -g src/test_backend.c $(BASE_OBJECTS) -o$@
 
+src/test_duplex: src/test_duplex.c $(BASE_OBJECTS) src/marla.h Makefile
+	$(CC) $(CFLAGS) -g src/test_duplex.c $(BASE_OBJECTS) -o$@
+
 clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
 	cd servermod && $(MAKE) clean
 	cd environment_ws && $(MAKE) clean
-	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
+	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend src/test_duplex $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem

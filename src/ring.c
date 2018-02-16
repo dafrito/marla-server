@@ -217,6 +217,11 @@ void marla_Ring_putbackWrite(marla_Ring* ring, size_t count)
     ring->write_index -= count;
 }
 
+void marla_Ring_clear(marla_Ring* ring)
+{
+    ring->read_index = ring->write_index;
+}
+
 void marla_Ring_free(marla_Ring* ring)
 {
     free(ring->buf);

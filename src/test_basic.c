@@ -1,9 +1,19 @@
 #include "marla.h"
-#include <httpd.h>
 #include <string.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
+#include <apr_pools.h>
+#include <dlfcn.h>
+#include <apr_dso.h>
+#include <parsegraph_user.h>
+#include <apr_pools.h>
+#include <dlfcn.h>
+#include <apr_dso.h>
+#include <httpd.h>
+#include <http_config.h>
+#include <http_protocol.h>
+#include <ap_config.h>
+#include <apr_dbd.h>
+#include <mod_dbd.h>
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
@@ -18,15 +28,10 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_end(args);
 }
 
-int main(int argc, char** argv)
+int main()
 {
-    if(argc < 2) {
-        fprintf(stderr, "Usage: test_ring_po2 <CAP>");
+    if(marla_BUFSIZE < 512) {
+        return 1;
     }
-
-    char* endptr;
-    long cap = strtol(argv[1], &endptr, 10);
-    marla_Ring* ring = marla_Ring_new(cap);
-    marla_Ring_free(ring);
     return 0;
 }

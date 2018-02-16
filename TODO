@@ -1,1 +1,14 @@
+[ ] Fully implement WriteEvent and WriteResult to get tests passing
+[ ] Confirm that initial backend support is working
 [ ] Move the WebSocket stuff in ClientRequest to a different struct, and create a mode so that ClientRequest can union it with the HTTP request members.
+[ ] Trailer tests
+[ ] Via request headers
+[ ] compress
+[ ] deflate
+[ ] gzip
+[ ] Content-Encoding
+[ ] 100-continue
+[ ] max-forwards
+[ ] If-match, if-modified-since, if-range
+[ ] accept
+[ ] caching

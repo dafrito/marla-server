@@ -1,6 +1,6 @@
 #include "marla.h"
 
-static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
+static marla_WriteResult makeAboutPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -44,11 +44,14 @@ static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
         );
         break;
     default:
-        return;
+        return marla_WriteResult_CONTINUE;
     }
 
     // Write the generated page.
     int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten == 0) {
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
+    }
     if(nwritten + cpr->index < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -56,12 +59,14 @@ static void makeAboutPage(struct marla_ChunkedPageRequest* cpr)
     }
     else {
         // Move to the next stage.
-        cpr->handleStage = ((int)cpr->handleStage) + 1;
+        ++cpr->handleStage;
         cpr->index = 0;
     }
+
+    return marla_WriteResult_CONTINUE;
 }
 
-static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
+static marla_WriteResult makeContactPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -326,11 +331,14 @@ static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
             "</html>");
         break;
     default:
-        return;
+        return marla_WriteResult_CONTINUE;
     }
 
     // Write the generated page.
     int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten == 0) {
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
+    }
     if(nwritten + cpr->index < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -338,12 +346,14 @@ static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
     }
     else {
         // Move to the next stage.
-        cpr->handleStage = ((int)cpr->handleStage) + 1;
+        ++cpr->handleStage;
         cpr->index = 0;
     }
+
+    return marla_WriteResult_CONTINUE;
 }
 
-static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
+static marla_WriteResult makeCounterPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -369,11 +379,14 @@ static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
         len = snprintf(buf, sizeof buf, "<html><head><meta charset=\"UTF-8\"><script>function run() { WS=new WebSocket(\"%s\"); WS.onopen = function() { console.log('Default handler.'); }; setInterval(function() { WS.send('Hello'); console.log('written'); }, 1000); }</script></head><body onload='run()'>Hello, <b>world.</b><p>This is request %d</body></html>", websocket_url, cpr->req->id);
         break;
     default:
-        return;
+        return marla_WriteResult_CONTINUE;
     }
 
     // Write the generated page.
     int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten == 0) {
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
+    }
     if(nwritten < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -381,9 +394,11 @@ static void makeCounterPage(struct marla_ChunkedPageRequest* cpr)
     }
     else {
         // Move to the next stage.
-        cpr->handleStage = ((int)cpr->handleStage) + 1;
+        ++cpr->handleStage;
         cpr->index = 0;
     }
+
+    return marla_WriteResult_CONTINUE;
 }
 
 void routeHook(struct marla_Request* req, void* hookData)
@@ -493,4 +508,3 @@ void module_servermod_init(struct marla_Server* server, enum marla_ServerModuleE
         break;
     }
 }
-

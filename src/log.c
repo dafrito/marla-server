@@ -73,10 +73,10 @@ void marla_logEntercf(marla_Server* server, const char* category, const char* fm
     va_end(ap);
     if(true_written >= sizeof buf) {
         buf[marla_LOGBUFSIZE - 5] = '.';
+        buf[marla_LOGBUFSIZE - 4] = '.';
         buf[marla_LOGBUFSIZE - 3] = '.';
-        buf[marla_LOGBUFSIZE - 2] = '.';
-        buf[marla_LOGBUFSIZE - 1] = '\n';
-        buf[marla_LOGBUFSIZE - 0] = 0;
+        buf[marla_LOGBUFSIZE - 2] = '\n';
+        buf[marla_LOGBUFSIZE - 1] = 0;
     }
     marla_logEnterc(server, category, buf);
 }
@@ -120,10 +120,10 @@ void marla_logMessagecf(marla_Server* server, const char* category, const char* 
     va_end(ap);
     if(true_written >= sizeof buf) {
         buf[marla_LOGBUFSIZE - 5] = '.';
+        buf[marla_LOGBUFSIZE - 4] = '.';
         buf[marla_LOGBUFSIZE - 3] = '.';
-        buf[marla_LOGBUFSIZE - 2] = '.';
-        buf[marla_LOGBUFSIZE - 1] = '\n';
-        buf[marla_LOGBUFSIZE - 0] = 0;
+        buf[marla_LOGBUFSIZE - 2] = '\n';
+        buf[marla_LOGBUFSIZE - 1] = 0;
     }
     marla_logAction(server, "", category, buf);
 }
@@ -137,10 +137,10 @@ void marla_logLeavef(marla_Server* server, const char* fmt, ...)
     va_end(ap);
     if(true_written >= sizeof buf) {
         buf[marla_LOGBUFSIZE - 5] = '.';
+        buf[marla_LOGBUFSIZE - 4] = '.';
         buf[marla_LOGBUFSIZE - 3] = '.';
-        buf[marla_LOGBUFSIZE - 2] = '.';
-        buf[marla_LOGBUFSIZE - 1] = '\n';
-        buf[marla_LOGBUFSIZE - 0] = 0;
+        buf[marla_LOGBUFSIZE - 2] = '\n';
+        buf[marla_LOGBUFSIZE - 1] = 0;
     }
     marla_logLeave(server, buf);
 }
@@ -154,10 +154,10 @@ void marla_logEnterf(marla_Server* server, const char* fmt, ...)
     va_end(ap);
     if(true_written >= sizeof buf) {
         buf[marla_LOGBUFSIZE - 5] = '.';
+        buf[marla_LOGBUFSIZE - 4] = '.';
         buf[marla_LOGBUFSIZE - 3] = '.';
-        buf[marla_LOGBUFSIZE - 2] = '.';
-        buf[marla_LOGBUFSIZE - 1] = '\n';
-        buf[marla_LOGBUFSIZE - 0] = 0;
+        buf[marla_LOGBUFSIZE - 2] = '\n';
+        buf[marla_LOGBUFSIZE - 1] = 0;
     }
     marla_logEnter(server, buf);
 }
@@ -171,10 +171,10 @@ void marla_logMessagef(marla_Server* server, const char* fmt, ...)
     va_end(ap);
     if(true_written >= sizeof buf) {
         buf[marla_LOGBUFSIZE - 5] = '.';
+        buf[marla_LOGBUFSIZE - 4] = '.';
         buf[marla_LOGBUFSIZE - 3] = '.';
-        buf[marla_LOGBUFSIZE - 2] = '.';
-        buf[marla_LOGBUFSIZE - 1] = '\n';
-        buf[marla_LOGBUFSIZE - 0] = 0;
+        buf[marla_LOGBUFSIZE - 2] = '\n';
+        buf[marla_LOGBUFSIZE - 1] = 0;
     }
     marla_logAction(server, "", "", buf);
 }

@@ -33,6 +33,7 @@ void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen);
 void marla_Ring_simplify(marla_Ring* ring);
 int marla_Ring_isFull(marla_Ring* ring);
 int marla_Ring_isEmpty(marla_Ring* ring);
+void marla_Ring_clear(marla_Ring* ring);
 
 // client.c
 enum marla_RequestReadStage {
@@ -50,29 +51,28 @@ marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE,
 marla_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE,
 marla_CLIENT_REQUEST_READING_REQUEST_BODY,
 marla_CLIENT_REQUEST_WEBSOCKET,
-marla_BACKEND_REQUEST_AWAITING_RESPONSE,
 marla_BACKEND_REQUEST_READING_RESPONSE_BODY,
 marla_CLIENT_REQUEST_READING_CHUNK_SIZE,
 marla_CLIENT_REQUEST_READING_CHUNK_BODY,
 marla_BACKEND_REQUEST_READING_CHUNK_SIZE,
 marla_BACKEND_REQUEST_READING_CHUNK_BODY,
-marla_CLIENT_REQUEST_READING_TRAILER,
-marla_BACKEND_REQUEST_READING_TRAILER,
+marla_BACKEND_REQUEST_AFTER_RESPONSE,
+marla_BACKEND_REQUEST_READING_RESPONSE_TRAILERS,
 marla_CLIENT_REQUEST_DONE_READING,
-marla_BACKEND_REQUEST_DONE_READING,
-marla_BACKEND_REQUEST_AWAITING_ACCEPT
+marla_BACKEND_REQUEST_DONE_READING
 };
 
 enum marla_RequestWriteStage {
 marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT,
 marla_BACKEND_REQUEST_WRITING_REQUEST_LINE,
 marla_BACKEND_REQUEST_WRITING_HEADERS,
-marla_BACKEND_REQUEST_WRITING_REQUEST_BODY,
 marla_CLIENT_REQUEST_WRITING_UPGRADE,
 marla_CLIENT_REQUEST_WRITING_CONTINUE,
+marla_BACKEND_REQUEST_WRITING_REQUEST_BODY,
 marla_CLIENT_REQUEST_WRITING_RESPONSE,
 marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE,
-marla_BACKEND_REQUEST_WRITING_TRAILERS,
+marla_CLIENT_REQUEST_AFTER_RESPONSE,
+marla_CLIENT_REQUEST_WRITING_TRAILERS,
 marla_BACKEND_REQUEST_DONE_WRITING,
 marla_CLIENT_REQUEST_DONE_WRITING
 };
@@ -105,10 +105,22 @@ marla_CHUNK_RESPONSE_DONE = 4
 };
 const char* marla_nameChunkResponseStage(enum marla_ChunkResponseStage stage);
 
+enum marla_WriteResult {
+marla_WriteResult_LOCKED = -4,
+marla_WriteResult_TIMEOUT = -3,
+marla_WriteResult_UPSTREAM_CHOKED = -2,
+marla_WriteResult_DOWNSTREAM_CHOKED = -1,
+marla_WriteResult_CONTINUE = 0,
+marla_WriteResult_KILLED = 1,
+marla_WriteResult_CLOSED = 2
+};
+typedef enum marla_WriteResult marla_WriteResult;
+const char* marla_nameWriteResult(marla_WriteResult wr);
+
 struct marla_Request;
 struct marla_ChunkedPageRequest {
 struct marla_Request* req;
-void(*handler)(struct marla_ChunkedPageRequest*);
+marla_WriteResult(*handler)(struct marla_ChunkedPageRequest*);
 int handleStage;
 int index;
 marla_Ring* input;
@@ -119,7 +131,8 @@ typedef struct marla_ChunkedPageRequest marla_ChunkedPageRequest;
 
 struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t, struct marla_Request*);
 struct marla_Server;
-int marla_writeChunk(struct marla_Server* server, marla_Ring* input, marla_Ring* output);
+marla_WriteResult marla_writeChunk(struct marla_Server* server, marla_Ring* input, marla_Ring* output);
+marla_WriteResult marla_writeChunkTrailer(marla_Ring* output);
 void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed);
 void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr);
 int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr);
@@ -137,6 +150,7 @@ marla_BackendResponderStage_DONE,
 };
 
 struct marla_BackendResponder {
+int id;
 struct marla_Request* req;
 void(*handler)(struct marla_BackendResponder*);
 enum marla_BackendResponderStage handleStage;
@@ -159,7 +173,7 @@ marla_BACKEND_EVENT_NEED_HEADERS,
 marla_BACKEND_EVENT_HEADER,
 marla_BACKEND_EVENT_MUST_READ,
 marla_BACKEND_EVENT_MUST_WRITE,
-marla_BACKEND_EVENT_NEED_TRAILERS,
+marla_BACKEND_EVENT_TRAILER,
 marla_BACKEND_EVENT_CLIENT_PEER_CLOSED,
 marla_BACKEND_EVENT_CLOSING,
 marla_BACKEND_EVENT_ACCEPTING_RESPONSE,
@@ -180,6 +194,16 @@ marla_BACKEND_EVENT_DESTROYING
 void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen);
 void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len);
 void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len);
+
+struct marla_WriteEvent {
+enum marla_WriteResult status;
+int index;
+size_t length;
+void* buf;
+};
+typedef struct marla_WriteEvent marla_WriteEvent;
+
+void marla_WriteEvent_init(marla_WriteEvent* writeEvent, enum marla_WriteResult st);
 
 struct marla_Connection;
 
@@ -204,6 +228,7 @@ enum marla_RequestWriteStage writeStage;
 int is_backend;
 int expect_upgrade;
 int expect_continue;
+int connection_indicates_trailer;
 int expect_trailer;
 int expect_websocket;
 int expect_chunked;
@@ -211,10 +236,13 @@ int close_after_done;
 void(*handler)(struct marla_Request*, enum marla_ClientEvent, void*, int);
 void* handlerData;
 struct marla_Request* backendPeer;
-long int givenContentLen;
+long int requestLen;
+long int responseLen;
+long int remainingResponseLen;
 long int remainingContentLen;
 long int totalContentLen;
 long int chunkSize;
+int lastReadIndex;
 char acceptHeader[MAX_FIELD_VALUE_LENGTH + 1];
 char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1];
 char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1];
@@ -304,6 +332,7 @@ marla_Connection* marla_Connection_new(struct marla_Server* server);
 void marla_Connection_putbackRead(marla_Connection* cxn, size_t amount);
 void marla_Connection_putbackWrite(marla_Connection* cxn, size_t amount);
 int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t requested);
+int marla_Connection_refill(marla_Connection* cxn, size_t* total);
 void marla_Connection_destroy(marla_Connection* cxn);
 int marla_Connection_flush(marla_Connection* cxn, int* outnflushed);
 int marla_Connection_write(marla_Connection* cxn, const void* source, size_t requested);
@@ -323,10 +352,16 @@ int marla_writeDuplex(marla_Connection* cxn, void* source, size_t len);
 
 struct marla_DuplexSource {
 marla_Ring* input;
+int drain_input;
 marla_Ring* output;
+int drain_output;
 };
 typedef struct marla_DuplexSource marla_DuplexSource;
 void marla_Duplex_init(marla_Connection* cxn, size_t input_size, size_t output_size);
+void marla_Duplex_drainInput(marla_Connection* cxn);
+void marla_Duplex_drainOutput(marla_Connection* cxn);
+void marla_Duplex_plugInput(marla_Connection* cxn);
+void marla_Duplex_plugOutput(marla_Connection* cxn);
 
 // ssl.c
 int marla_SSL_init(marla_Connection* cxn, SSL_CTX* ctx, int fd);
@@ -343,14 +378,15 @@ void marla_putbackWebSocketWrite(struct marla_Request* req, int dataLen);
 int marla_writeWebSocketHeader(struct marla_Request* req, unsigned char opcode, uint64_t frameLen);
 void marla_default_websocket_handler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen);
 
-int marla_backendRead(marla_Connection* cxn);
-int marla_backendWrite(marla_Connection* cxn);
+int marla_clientAccept(marla_Connection* cxn);
+
+marla_WriteResult marla_clientRead(marla_Connection* cxn);
+marla_WriteResult marla_clientWrite(marla_Connection* cxn);
+marla_WriteResult marla_backendRead(marla_Connection* cxn);
+marla_WriteResult marla_backendWrite(marla_Connection* cxn);
+
 void marla_Backend_init(marla_Connection* cxn, int fd);
 void marla_Backend_enqueue(struct marla_Server* server, marla_Request* req);
-int marla_clientRead(marla_Connection* cxn);
-int marla_clientAccept(marla_Connection* cxn);
-int marla_clientWrite(marla_Connection* cxn);
-int marla_writeChunkTrailer(marla_Ring* output);
 
 // Server
 
@@ -450,5 +486,8 @@ void marla_logMessagecf(marla_Server* server, const char* category, const char* 
 void marla_logMessagef(marla_Server* server, const char* fmt, ...);
 void marla_logEnterf(marla_Server* server, const char* fmt, ...);
 void marla_die(marla_Server* server, const char* fmt, ...);
+
+// http.o
+const char* marla_getDefaultStatusLine(int statusCode);
 
 #endif // marla_INCLUDED

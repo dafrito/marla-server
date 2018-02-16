@@ -15,6 +15,7 @@ test_connection
 test_backend
 test_chunks
 test_ring_po2
+test_duplex
 run-tests
 vgcore.*
 *.tar.gz

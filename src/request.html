@@ -127,7 +127,9 @@ Backend events:
 <tr><td>void(*handle)(struct marla_Request*, enum marla_ClientEvent, void*, int)<td>Handles request events.
 <tr><td>void* handleData<td>Internal data used for request events.
 <tr><td>struct marla_Request* backendPeer<td>The other request being processed on account of this one.
-<tr><td>long int contentLen<td>
+<tr><td>long int requestLen<td>The length in bytes of the request body. Set to the value given by the Content-Length header.
+<tr><td>long int responseLen<td>The length in bytes of the response body.
+<tr><td>long int remainingResponseLen<td>When writing fixed-length backend responses, this is the bytes remaining to be written.
 <tr><td>long int totalContentLen<td>
 <tr><td>long int chunkSize<td>
 <tr><td>char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1]<td>The Location: header value

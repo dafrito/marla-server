@@ -19,6 +19,7 @@ void marla_killRequest(struct marla_Request* req, const char* reason, ...)
     vsnprintf(req->error, sizeof req->error, reason, ap);
     req->cxn->stage = marla_CLIENT_COMPLETE;
     marla_logMessagef(req->cxn->server, "Killing request: %s", req->error);
+    //fprintf(stderr, "Killing request: %s\n", req->error);
     va_end(ap);
     ++marla_Request_numKilled;
 }
@@ -31,8 +32,6 @@ void marla_dumpRequest(marla_Request* req)
 const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
 {
     switch(stage) {
-    case marla_BACKEND_REQUEST_AWAITING_RESPONSE:
-        return "BACKEND_REQUEST_AWAITING_RESPONSE";
     case marla_CLIENT_REQUEST_READ_FRESH:
         return "CLIENT_REQUEST_READ_FRESH";
     case marla_BACKEND_REQUEST_READING_RESPONSE_LINE:
@@ -69,18 +68,16 @@ const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)
         return "BACKEND_REQUEST_READING_CHUNK_SIZE";
     case marla_BACKEND_REQUEST_READING_CHUNK_BODY:
         return "BACKEND_REQUEST_READING_CHUNK_BODY";
-    case marla_CLIENT_REQUEST_READING_TRAILER:
-        return "CLIENT_REQUEST_READING_TRAILER";
-    case marla_BACKEND_REQUEST_READING_TRAILER:
-        return "BACKEND_REQUEST_READING_TRAILER";
     case marla_CLIENT_REQUEST_WEBSOCKET:
         return "CLIENT_REQUEST_WEBSOCKET";
+    case marla_BACKEND_REQUEST_AFTER_RESPONSE:
+        return "BACKEND_REQUEST_AFTER_RESPONSE";
+    case marla_BACKEND_REQUEST_READING_RESPONSE_TRAILERS:
+        return "BACKEND_REQUEST_READING_RESPONSE_TRAILERS";
     case marla_BACKEND_REQUEST_DONE_READING:
         return "BACKEND_REQUEST_DONE_READING";
     case marla_CLIENT_REQUEST_DONE_READING:
         return "CLIENT_REQUEST_DONE_READING";
-    case marla_BACKEND_REQUEST_AWAITING_ACCEPT:
-        return "BACKEND_REQUEST_AWAITING_ACCEPT";
     }
     return "?";
 }
@@ -96,6 +93,8 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
         return "CLIENT_REQUEST_WRITING_UPGRADE";
     case marla_CLIENT_REQUEST_DONE_WRITING:
         return "CLIENT_REQUEST_DONE_WRITING";
+    case marla_CLIENT_REQUEST_AFTER_RESPONSE:
+        return "CLIENT_REQUEST_AFTER_RESPONSE";
     case marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE:
         return "CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE";
     case marla_CLIENT_REQUEST_WRITING_RESPONSE:
@@ -106,8 +105,8 @@ const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)
         return "BACKEND_REQUEST_WRITING_REQUEST_LINE";
     case marla_BACKEND_REQUEST_WRITING_REQUEST_BODY:
         return "BACKEND_REQUEST_WRITING_REQUEST_BODY";
-    case marla_BACKEND_REQUEST_WRITING_TRAILERS:
-        return "BACKEND_REQUEST_WRITING_TRAILERS";
+    case marla_CLIENT_REQUEST_WRITING_TRAILERS:
+        return "CLIENT_REQUEST_WRITING_TRAILERS";
     case marla_BACKEND_REQUEST_DONE_WRITING:
         return "BACKEND_REQUEST_DONE_WRITING";
     }
@@ -131,10 +130,13 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     req->writeStage = marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT;
 
     // Counters
-    req->givenContentLen = marla_MESSAGE_LENGTH_UNKNOWN;
+    req->requestLen = marla_MESSAGE_LENGTH_UNKNOWN;
+    req->responseLen = marla_MESSAGE_LENGTH_UNKNOWN;
+    req->remainingResponseLen = 0;
     req->remainingContentLen = 0;
     req->totalContentLen = 0;
     req->chunkSize = 0;
+    req->lastReadIndex = 0;
 
     // Content
     memset(req->error, 0, sizeof req->error);
@@ -173,6 +175,7 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     req->websocket_version = 13;
 
     // Flags
+    req->connection_indicates_trailer = 0;
     req->is_backend = 0;
     req->backendPeer = 0;
     req->expect_continue = 0;

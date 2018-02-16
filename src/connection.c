@@ -102,12 +102,12 @@ int marla_Connection_refill(marla_Connection* cxn, size_t* total)
         size_t slotLen;
         marla_Ring_writeSlot(input, &ringBuf, &slotLen);
         if(slotLen == 0) {
-            marla_logMessagef(cxn->server, "Connection %d's input buffer is full.", cxn->id);
+            marla_logMessagecf(cxn->server, "I/O", "Connection %d's input buffer is full.", cxn->id);
             break;
         }
 
         int nread = cxn->readSource(cxn, ringBuf, slotLen);
-        marla_logMessagef(cxn->server, "Read %d bytes from source into input slot of size %d.", nread, slotLen);
+        marla_logMessagecf(cxn->server, "I/O", "Read %d bytes from source into input slot of size %d.", nread, slotLen);
         if(nread <= 0) {
             marla_Ring_putbackWrite(input, slotLen);
             return nread;
@@ -125,7 +125,7 @@ int marla_Connection_refill(marla_Connection* cxn, size_t* total)
 
 int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t requested)
 {
-    marla_Connection_refill(cxn, 0);
+    //marla_Connection_refill(cxn, 0);
     if(cxn->shouldDestroy) {
         return -1;
     }
@@ -133,7 +133,7 @@ int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t req
         return -1;
     }
     marla_Ring* const input = cxn->input;
-    marla_logMessagef(cxn->server, "Requesting %ld bytes of input data. %d/%d bytes in cxn->input.", requested, marla_Ring_size(input),marla_Ring_capacity(input));
+    //marla_logMessagef(cxn->server, "Requesting %ld bytes of input data. %d/%d bytes in cxn->input.", requested, marla_Ring_size(input), marla_Ring_capacity(input));
     if(marla_Ring_isEmpty(input)) {
         return -1;
     }
@@ -143,18 +143,21 @@ int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t req
 
 void marla_Connection_putbackRead(marla_Connection* cxn, size_t amount)
 {
-    //marla_logMessagef(cxn->server, "Putting back %d bytes read", amount);
+    marla_logMessagecf(cxn->server, "I/O", "Putting back %d bytes read", amount);
     return marla_Ring_putbackRead(cxn->input, amount);
 }
 
 void marla_Connection_putbackWrite(marla_Connection* cxn, size_t amount)
 {
-    //marla_logMessagef(cxn->server, "Putting back %d bytes written", amount);
+    marla_logMessagecf(cxn->server, "I/O", "Putting back %d bytes written", amount);
     return marla_Ring_putbackWrite(cxn->output, amount);
 }
 
 int marla_Connection_write(marla_Connection* cxn, const void* source, size_t requested)
 {
+    if(marla_Ring_isFull(cxn->output)) {
+        return -1;
+    }
     return marla_Ring_write(cxn->output, source, requested);
 }
 
@@ -164,23 +167,26 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
     size_t len;
 
     int nflushed = 0;
-    while(1) {
+    for(;;) {
         marla_Ring_readSlot(cxn->output, &buf, &len);
         if(len == 0) {
             break;
         }
-        int nsslwritten = cxn->writeSource(cxn, buf, len);
-        if(nsslwritten <= 0) {
+        int true_flushed = cxn->writeSource(cxn, buf, len);
+        if(true_flushed <= 0) {
             if(outnflushed) {
                 *outnflushed = nflushed;
             }
             cxn->flushed += nflushed;
+            if(nflushed == 0 && true_flushed <= 0) {
+                return true_flushed;
+            }
             return nflushed;
         }
-        nflushed += nsslwritten;
-        //fprintf(stderr, "%s: %d bytes flushed to source.\n", __FUNCTION__, nsslwritten);
-        marla_Ring_putbackRead(cxn->output, len - nsslwritten);
-        if(nsslwritten < len) {
+        nflushed += true_flushed;
+        marla_logMessagecf(cxn->server, "I/O", "%d bytes flushed to source on connection %d.", true_flushed, cxn->id);
+        marla_Ring_putbackRead(cxn->output, len - true_flushed);
+        if(true_flushed < len) {
             // Partial write.
             break;
         }
@@ -196,7 +202,7 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
 void marla_Connection_destroy(marla_Connection* cxn)
 {
     for(marla_Request* req = cxn->current_request; req != 0;) {
-        if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_BODY && (req->close_after_done || req->givenContentLen == marla_MESSAGE_USES_CLOSE)) {
+        if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_BODY && (req->close_after_done || req->requestLen == marla_MESSAGE_USES_CLOSE)) {
             req->readStage = marla_BACKEND_REQUEST_DONE_READING;
         }
         req = req->next_request;

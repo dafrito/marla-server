@@ -1,4 +1,5 @@
-PORT=127.0.0.1:4699
+CC=clang
+PORT=127.0.0.1:4761
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
@@ -11,15 +12,17 @@ UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=14
+PACKAGE_RELEASE=15
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
 build_cpu=x86_64
 
-CFLAGS=-Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -fPIC -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
+CFLAGS=-Og -Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags openssl apr-1 ncurses` -fPIC
+LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 
-all: src/test-ring.sh src/test-connection.sh
+all: src/test_basic src/test-ring.sh src/test-connection.sh
+	cd src && ./test_basic
 	cd src && ./test-ring.sh
 	cd src && ./test-connection.sh $(PORT)
 	cd servermod && $(MAKE)
@@ -39,13 +42,13 @@ servermod/libservermod.so:
 environment_ws/libenvironment_ws.so:
 	cd environment_ws && $(MAKE)
 
-BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o
+BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/http.o src/WriteEvent.o src/websocket.o
 
 libmarla.so: $(BASE_OBJECTS) src/marla.h
 	$(CC) $(CFLAGS) -o$@ -shared -lpthread $(BASE_OBJECTS)
 
 marla: src/main.c libmarla.so src/marla.h Makefile
-	$(CC) src/main.c -o$@ -lpthread  -L. -lmarla $(CFLAGS)
+	$(CC) src/main.c -o$@ -lpthread  -L. -lmarla $(CFLAGS) $(LDLIBS)
 
 certificate.pem key.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out certificate.pem
@@ -94,7 +97,7 @@ tmux:
 	tmux -S marla.tmux att
 .PHONY: tmux
 
-check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend src/test_duplex
+check: certificate.pem src/test_basic src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend src/test_duplex
 	cd src || exit; \
 	for i in seq 3; do \
 	echo Running connecting tests; \
@@ -104,38 +107,41 @@ check: certificate.pem src/test_ring src/test_small_ring src/test_ring_putback s
 	done
 .PHONY: check
 
+src/test_basic: src/test_basic.c src/ring.o
+	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
+
 src/test_ring: src/test_ring.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@
+	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
 
 src/test_ring_po2: src/test_ring_po2.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@
+	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
 
 src/test_small_ring: src/test_small_ring.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@
+	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
 
 src/test_ring_putback: src/test_ring_putback.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@
+	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
 
 src/test_connection: src/test_connection.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_connection.c $(BASE_OBJECTS) -o$@
+	$(CC) $(CFLAGS) -g src/test_connection.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
 
 src/test_websocket: src/test_websocket.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_websocket.c $(BASE_OBJECTS) -o$@
+	$(CC) $(CFLAGS) -g src/test_websocket.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
 
 src/test_chunks: src/test_chunks.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_chunks.c $(BASE_OBJECTS) -o$@
+	$(CC) $(CFLAGS) -g src/test_chunks.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
 
 src/test_backend: src/test_backend.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_backend.c $(BASE_OBJECTS) -o$@
+	$(CC) $(CFLAGS) -g src/test_backend.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
 
 src/test_duplex: src/test_duplex.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_duplex.c $(BASE_OBJECTS) -o$@
+	$(CC) $(CFLAGS) -g src/test_duplex.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
 
 clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
 	cd servermod && $(MAKE) clean
 	cd environment_ws && $(MAKE) clean
-	rm -f src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend src/test_duplex $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
+	rm -f src/test_basic src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend src/test_duplex $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem

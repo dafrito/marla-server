@@ -8,6 +8,7 @@
 #include <ap_config.h>
 #include <apr_dbd.h>
 #include <mod_dbd.h>
+#include <unistd.h>
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
@@ -17,8 +18,8 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_start(args, fmt);
     char exp[512];
     memset(exp, 0, sizeof(exp));
-    vsprintf(exp, fmt, args);
-    dprintf(3, exp);
+    int len = vsprintf(exp, fmt, args);
+    write(3, exp, len);
     va_end(args);
 }
 
@@ -26,6 +27,7 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
 void duplexHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 {
     marla_Server* server = req->cxn->server;
+    marla_WriteEvent* we;
     switch(ev) {
     case marla_EVENT_HEADER:
         return;
@@ -33,6 +35,10 @@ void duplexHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* i
         (*(int*)in) = 1;
         return;
     case marla_EVENT_REQUEST_BODY:
+        we = in;
+        if(we->length == 0) {
+            req->readStage = marla_CLIENT_REQUEST_DONE_READING;
+        }
         return;
     case marla_EVENT_MUST_WRITE:
         marla_Ring_writeStr(req->cxn->output, "HTTP/1.1 200 OK\r\n\r\n");
@@ -48,10 +54,6 @@ done:
     (*(int*)in) = 1;
     marla_logLeave(server, "Done");
     return;
-choked:
-    (*(int*)in) = -1;
-    marla_logLeave(server, "Choked");
-    return;
 }
 
 void duplexHook(struct marla_Request* req, void* hookData)
@@ -66,7 +68,6 @@ void setToDataHandler(struct marla_Request* req, void* hookData)
 
 int test1()
 {
-    fprintf(stderr, "test duplex\n");
     marla_Server server;
     marla_Server_init(&server);
     marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, duplexHook, 0);
@@ -100,6 +101,7 @@ static char headerValue[1024];
 void headerHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len)
 {
     marla_Server* server = req->cxn->server;
+    marla_WriteEvent* we;
     switch(ev) {
     case marla_EVENT_HEADER:
         strcpy(headerKey, in);
@@ -109,6 +111,10 @@ void headerHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* i
         (*(int*)in) = 1;
         return;
     case marla_EVENT_REQUEST_BODY:
+        we = in;
+        if(we->length == 0) {
+            req->readStage = marla_CLIENT_REQUEST_DONE_READING;
+        }
         return;
     case marla_EVENT_MUST_WRITE:
         marla_Ring_writeStr(req->cxn->output, "HTTP/1.1 200 OK\r\n\r\n");
@@ -123,10 +129,6 @@ void headerHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* i
 done:
     (*(int*)in) = 1;
     marla_logLeave(server, "Done");
-    return;
-choked:
-    (*(int*)in) = -1;
-    marla_logLeave(server, "Choked");
     return;
 }
 
@@ -144,6 +146,7 @@ int test2()
     memset(source_str, 0, sizeof(source_str));
     int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET /user HTTP/1.1\r\n");
     if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write request line.\n");
         return 1;
     }
 
@@ -155,15 +158,22 @@ int test2()
 
     nwritten = snprintf(source_str, sizeof(source_str) - 1, "Host: localhost\r\n");
     if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write request header.\n");
         return 1;
     }
     marla_clientRead(client);
     marla_clientWrite(client);
 
+    if(headerKey[0] == 0) {
+        fprintf(stderr, "No header found.\n");
+        return 1;
+    }
     if(strcmp(headerKey, "Host")) {
+        fprintf(stderr, "Header key unexpected: %s\n", headerKey);
         return 1;
     }
     if(strcmp(headerValue, "localhost")) {
+        fprintf(stderr, "Header value unexpected\n");
         return 1;
     }
 
@@ -203,19 +213,65 @@ int test2()
     return 0;
 }
 
+int test_filled_duplex()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, setToDataHandler, headerHandler);
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+
+    char buf[marla_BUFSIZE];
+    int nread = marla_Connection_write(client, buf, sizeof buf);
+    if(nread != marla_BUFSIZE) {
+        fprintf(stderr, "Filled buffer was not really filled\n");
+        return 1;
+    }
+
+    nread = marla_Connection_write(client, buf, sizeof buf);
+    if(nread != -1) {
+        fprintf(stderr, "Filled buffer returns %d on write, not -1.\n", nread);
+        return 1;
+    }
+    return 0;
+}
+
 int main()
 {
     int fails = 0;
+
+    fprintf(stderr, "Testing duplex ...\n");
+
+    fprintf(stderr, "test1: ");
     int rv = test1();
     if(rv != 0) {
-        fprintf(stderr, "test1 failed\n");
+        fprintf(stderr, "FAILED\n");
         ++fails;
+    }
+    else {
+        fprintf(stderr, "PASSED\n");
     }
 
+    fprintf(stderr, "test2: ");
     rv = test2();
     if(rv != 0) {
-        fprintf(stderr, "test2 failed\n");
+        fprintf(stderr, "FAILED\n");
         ++fails;
     }
+    else {
+        fprintf(stderr, "PASSED\n");
+    }
+
+    fprintf(stderr, "test_filled_duplex: ");
+    rv = test_filled_duplex();
+    if(rv != 0) {
+        fprintf(stderr, "FAILED\n");
+        ++fails;
+    }
+    else {
+        fprintf(stderr, "PASSED\n");
+    }
+
     return fails;
 }

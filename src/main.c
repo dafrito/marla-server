@@ -35,8 +35,8 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_start(args, fmt);
     char exp[512];
     memset(exp, 0, sizeof(exp));
-    vsprintf(exp, fmt, args);
-    dprintf(3, exp);
+    int len = vsprintf(exp, fmt, args);
+    write(3, exp, len);
     va_end(args);
 }
 

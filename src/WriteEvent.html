@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>WriteEvent - Marla</title>
+<link rel=stylesheet type=text/css href="style.css">
+</head>
+<body>
+<main class=content>
+<h1>WriteEvent - <a href="index.html">Marla</a></h1>
+<h2>enum marla_WriteResult</h2>
+<table>
+<tr><th>Status<th>Value<th>Description
+<tr><td>marla_WriteResult_CONTINUE<td>0<td>Handler indicated that it can be usefully invoked again.
+<tr><td>marla_WriteResult_DOWNSTREAM_CHOKED<td>-1<td>
+<ul>
+<li>Connection's output buffer is full and needs to be flushed to source.
+<li>Connection's source is full and needs to be flushed.
+<li>Client request is not done being written.
+</ul>
+<tr><td>marla_WriteResult_UPSTREAM_CHOKED<td>-2<td>
+<ul>
+<li>Connection's input buffer is empty and needs to be refilled from source.
+<li>Connection's source has no bytes availble to read.
+<li>Client request is not done being read.
+</ul>
+<tr><td>marla_WriteResult_TIMEOUT<td>-3<td>
+Processing is not done for some other reason that will be resolved by the callee.
+<tr><td>marla_WriteResult_LOCKED<td>-4<td>
+A write was attempted while already writing, or a read was attempted while already reading.
+<tr><td>marla_WriteResult_KILLED<td>1<td>
+Request is in error.
+<tr><td>marla_WriteResult_CLOSED<td>2<td>
+Connection indicated closed.
+</table>
+<h2>struct marla_WriteEvent</h2>
+<table>
+<tr><td>enum marla_WriteResult status<td>Status of processing.
+<tr><td>int index<td>Index read into buf. Indicates partial reads if index &lt; length and length != 0.
+<tr><td>size_t length<td>Length of the data in buf.
+<tr><td>void* buf<td>Current body buffer.
+</table>
+<h2>void marla_WriteEvent_init(marla_WriteEvent* writeEvent, enum marla_WriteResult st)</h2>
+Initialize the given WriteEvent setting to the given result.
+</main>
+<nav class=toc>
+<h3>WriteEvent - <a href="index.html">Marla</a></h3>
+<ul>
+<li>enum <b>marla_WriteResult</b>
+<li>void <b>marla_WriteEvent_init</b>(marla_WriteEvent* writeEvent, enum marla_WriteResult st)
+</ul>
+</nav>
+</body>
+</html>

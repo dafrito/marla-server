@@ -12,8 +12,8 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_start(args, fmt);
     char exp[512];
     memset(exp, 0, sizeof(exp));
-    vsprintf(exp, fmt, args);
-    dprintf(3, exp);
+    int len = vsprintf(exp, fmt, args);
+    write(3, exp, len);
     va_end(args);
 }
 
@@ -32,7 +32,7 @@ static int readSource(struct marla_Connection* cxn, void* sink, size_t len)
         nwritten = slen - src->nread;
     }
     if(nwritten == 0) {
-        return 0;
+        return -1;
     }
     memcpy(sink, src->content + src->nread, nwritten);
     src->nread += nwritten;
@@ -158,6 +158,8 @@ static int test_simple(struct marla_Server* server, const char* port)
 
 int main(int argc, char* argv[])
 {
+    fprintf(stderr, "Testing WebSocket\r\n");
+
     if(argc < 1) {
         printf("Usage: %s <port>\n", argv[0]);
         return -1;

@@ -4,7 +4,6 @@ Version:	@PACKAGE_VERSION@
 Release:	@PACKAGE_RELEASE@%{?dist}
 Summary:	@PACKAGE_SUMMARY@
 
-Group:		Applications/Internet
 License:	Apache license 2.0
 URL:		@PACKAGE_URL@
 Source0:	@PACKAGE_NAME@-@PACKAGE_VERSION@.tar.gz
@@ -36,7 +35,6 @@ mkdir -p %{buildroot}/%{_datadir}/parsegraph
 mkdir -p %{buildroot}/%{_sysconfdir}/parsegraph
 
 %package devel
-Group: Development/Libraries
 Summary: Development libraries for @PACKAGE_NAME@
 
 %description devel
@@ -52,7 +50,6 @@ Development libraries for Marla.
 %{_includedir}/*
 
 %package environment_ws
-Group: Development/Libraries
 Summary: environment_ws module for Parsegraph
 
 %description environment_ws
@@ -62,7 +59,6 @@ Module that provides the /environment/ routes for Parsegraph.
 %{_libdir}/libenvironment_ws.so
 
 %package servermod
-Group: Development/Libraries
 Summary: servermod module for Parsegraph
 
 %description servermod

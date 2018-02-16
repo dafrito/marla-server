@@ -23,8 +23,8 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_start(args, fmt);
     char exp[512];
     memset(exp, 0, sizeof(exp));
-    vsprintf(exp, fmt, args);
-    dprintf(3, exp);
+    int len = vsprintf(exp, fmt, args);
+    write(3, exp, len);
     va_end(args);
 }
 
@@ -88,6 +88,7 @@ static int test_backend(struct marla_Server* server)
     backendRings[0] = marla_Ring_new(marla_BUFSIZE);
     backendRings[1] = marla_Ring_new(marla_BUFSIZE);
     marla_Connection* backend = marla_Connection_new(server);
+    backend->is_backend = 1;
     backend->source = backendRings;
     backend->readSource = readDuplexSource;
     backend->writeSource = writeDuplexSource;
@@ -128,15 +129,20 @@ static int test_backend(struct marla_Server* server)
         marla_dumpRequest(req);
         return 1;
     }
-    marla_Ring_writeStr(backendRings[0], "HTTP/1.1 200 OK\r\n\r\n");
+    marla_Ring_writeStr(backendRings[0], "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
+    marla_clientRead(backend);
+    marla_clientWrite(backend);
     marla_clientWrite(client);
-    if(client->current_request) {
-        fprintf(stderr, "Client should have no request\n");
-        return 1;
-    }
+    marla_clientRead(client);
     if(backend->current_request) {
         fprintf(stderr, "Backend should have no request\n");
         marla_dumpRequest(backend->current_request);
+        marla_dumpRequest(client->current_request);
+        return 1;
+    }
+    if(client->current_request) {
+        fprintf(stderr, "Client should have no request\n");
+        marla_dumpRequest(client->current_request);
         return 1;
     }
 
@@ -239,7 +245,7 @@ static int test_backend_with_large_content(struct marla_Server* server)
         //printf("Streaming backend: index=%d write_index=%d\n", index, write_index);
         int nread = marla_Ring_read(backendRings[0], that_big_buf + index, sizeof(that_big_buf) - index);
         if(nread < 0) {
-            printf("Backend died");
+            //printf("Backend died");
             return 1;
         }
         index += nread;
@@ -491,12 +497,370 @@ static int test_BackendResponder5(struct marla_Server* server)
     return 0;
 }
 
+static void generate_random_bytes(char* dest, size_t len, unsigned int seed)
+{
+    for(int i = 0; i < len - 1; ++i) {
+        dest[i] = 65 + (rand_r(&seed) % (90 - 65));
+    }
+    dest[len - 1] = 0;
+}
+
+static int ensure_equal(char* input_buf, char* output_buf, size_t FILE_SIZE, size_t index, size_t outdex)
+{
+    for(int i = 0; i < FILE_SIZE; ++i) {
+        if(index > i && outdex > i) {
+            if(input_buf[i] != output_buf[i]) {
+                fprintf(stderr, "input doesn't match output at index: %d\n", i);
+                fprintf(stderr, "%s versus %s", input_buf, output_buf);
+                return 1;
+            }
+        }
+        else {
+            break;
+        }
+    }
+    return 0;
+}
+
+static int test_BackendResponder_test_backend_upload()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+
+    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, backendHook, 0);
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+
+    marla_Connection* backend = marla_Connection_new(&server);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    server.backend = backend;
+
+    // Create the test input.
+    char source_str[1024];
+    memset(source_str, 0, sizeof(source_str));
+    int nwritten = snprintf(source_str, sizeof(source_str) - 1, "POST /user HTTP/1.1");
+    if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write first part of request.\n");
+        return 1;
+    }
+
+    marla_clientRead(client);
+    if(!client->current_request) {
+        return 1;
+    }
+
+    size_t FILE_SIZE = 50123;
+    char input_buf[FILE_SIZE + 1];
+    char output_buf[FILE_SIZE + 1];
+
+    generate_random_bytes(input_buf, FILE_SIZE + 1, 23423324);
+
+    memset(output_buf, 0, sizeof output_buf);
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "\r\nHost: localhost:%s\r\nAccept: */*\r\nContent-Length: %ld\r\n\r\n", server.serverport, FILE_SIZE);
+    if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write last part of request.\n");
+        return 1;
+    }
+
+    while(!client->current_request || client->current_request->readStage != marla_CLIENT_REQUEST_READING_REQUEST_BODY) {
+        marla_clientRead(client);
+
+        // Wipe any written request to the backend.
+        marla_Duplex_drainInput(backend);
+        marla_Duplex_plugInput(backend);
+    }
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", FILE_SIZE);
+    if(marla_writeDuplex(backend, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write last part of request.\n");
+        return 1;
+    }
+
+    if(!backend->current_request) {
+        fprintf(stderr, "Backend has no request\n");
+        return 1;
+    }
+
+    marla_clientWrite(client);
+    marla_Duplex_drainOutput(client);
+    marla_Duplex_plugOutput(client);
+
+    int iterations = 0;
+    int request_index = 0;
+    int index = 0;
+    int outdex = 0;
+    while(index < FILE_SIZE || outdex < FILE_SIZE || request_index < FILE_SIZE) {
+        ++iterations;
+        if(iterations > 30) {
+            //fprintf(stderr, "Taking too long\n");
+            return 1;
+        }
+        if(request_index < FILE_SIZE) {
+            int nread = marla_writeDuplex(client, input_buf + request_index, FILE_SIZE - request_index);
+            if(nread < 0) {
+                return 1;
+            }
+            //fprintf(stderr, "Wrote %d from client.\n", nread);
+            request_index += nread;
+        }
+        if(index < FILE_SIZE) {
+            int nread = marla_writeDuplex(backend, input_buf + index, FILE_SIZE - index);
+            if(nread < 0) {
+                return 1;
+            }
+            //fprintf(stderr, "Wrote %d for backend to read.\n", nread);
+            index += nread;
+        }
+
+        marla_clientRead(client);
+        marla_backendRead(backend);
+        marla_clientWrite(client);
+        if(client->current_request) {
+            //marla_dumpRequest(client->current_request);
+        }
+        else {
+            //fprintf(stderr, "No client request\n");
+        }
+        if(backend->current_request) {
+            //marla_dumpRequest(backend->current_request);
+        }
+        else {
+            //fprintf(stderr, "No backend request\n");
+        }
+        //marla_clientRead(client);
+        //marla_backendRead(backend);
+        //marla_backendWrite(backend);
+
+        if(outdex < FILE_SIZE) {
+            int nwritten = marla_readDuplex(client, output_buf + outdex, FILE_SIZE - outdex);
+            //fprintf(stderr, "%d\n", nwritten);
+            if(nwritten < 0) {
+                return 1;
+            }
+            outdex += nwritten;
+        }
+
+        if(ensure_equal(input_buf, output_buf, FILE_SIZE, index, outdex)) {
+            return 1;
+        }
+        int common_index = index;
+        if(common_index > outdex) {
+            common_index = outdex;
+        }
+        //fprintf(stderr, "%d bytes confirmed\n", common_index);
+    }
+
+    if(index != outdex) {
+        //fprintf(stderr, "input != outdex. %d != %d\n", index, outdex);
+        return 1;
+    }
+
+    marla_Connection_destroy(client);
+    marla_Connection_destroy(backend);
+    marla_Server_free(&server);
+    return 0;
+}
+
+static int test_BackendResponder_test_backend_download(struct marla_Server* server)
+{
+    marla_Server_addHook(server, marla_SERVER_HOOK_ROUTE, backendHook, 0);
+
+    marla_Connection* client = marla_Connection_new(server);
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+
+    marla_Connection* backend = marla_Connection_new(server);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    server->backend = backend;
+
+    // Create the test input.
+    char source_str[1024];
+    memset(source_str, 0, sizeof(source_str));
+    int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET /user HTTP/1.1");
+    if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write first part of request.\n");
+        return 1;
+    }
+
+    marla_clientRead(client);
+    if(!client->current_request) {
+        return 1;
+    }
+    if(client->current_request->readStage != marla_CLIENT_REQUEST_READING_VERSION) {
+        fprintf(stderr, "Request is not reading version\n");
+        marla_dumpRequest(client->current_request);
+        return 1;
+    }
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "\r\nHost: localhost:%s\r\nAccept: */*\r\n\r\n", server->serverport);
+    if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write last part of request.\n");
+        return 1;
+    }
+
+    marla_clientRead(client);
+    if(!client->current_request) {
+        return 1;
+    }
+    marla_Request* req = client->current_request;
+    if(req->readStage != marla_CLIENT_REQUEST_DONE_READING) {
+        fprintf(stderr, "Request is not done reading\n");
+        marla_dumpRequest(req);
+        return 1;
+    }
+
+    marla_Connection_destroy(client);
+    marla_Connection_destroy(backend);
+    return 0;
+}
+
+static int test_backend_with_slow_response_handler()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+
+    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, backendHook, 0);
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+
+    marla_Connection* backend = marla_Connection_new(&server);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    server.backend = backend;
+
+    // Create the test input.
+    char source_str[1024];
+    memset(source_str, 0, sizeof(source_str));
+    int nwritten = snprintf(source_str, sizeof(source_str) - 1, "GET /user HTTP/1.1");
+    if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write first part of request.\n");
+        return 1;
+    }
+
+    marla_clientRead(client);
+    if(!client->current_request) {
+        return 1;
+    }
+
+    size_t FILE_SIZE = 50123;
+    char input_buf[FILE_SIZE + 1];
+    char output_buf[FILE_SIZE + 1];
+    generate_random_bytes(input_buf, FILE_SIZE + 1, 23423324);
+
+    memset(output_buf, 0, sizeof output_buf);
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "\r\nHost: localhost:%s\r\nAccept: */*\r\nContent-Length: %ld\r\n\r\n", server.serverport, FILE_SIZE);
+    if(marla_writeDuplex(client, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write last part of request.\n");
+        return 1;
+    }
+
+    while(!client->current_request || client->current_request->readStage != marla_CLIENT_REQUEST_READING_REQUEST_BODY) {
+        marla_clientRead(client);
+
+        // Wipe any written request to the backend.
+        marla_Duplex_drainInput(backend);
+        marla_Duplex_plugInput(backend);
+    }
+
+    nwritten = snprintf(source_str, sizeof(source_str) - 1, "HTTP/1.1 200 OK\r\nContent-Length: %ld\r\n\r\n", FILE_SIZE);
+    if(marla_writeDuplex(backend, source_str, nwritten) != nwritten) {
+        fprintf(stderr, "Failed to write last part of request.\n");
+        return 1;
+    }
+
+    if(!backend->current_request) {
+        fprintf(stderr, "Backend has no request\n");
+        return 1;
+    }
+
+    marla_clientWrite(client);
+    marla_Duplex_drainOutput(client);
+    marla_Duplex_plugOutput(client);
+
+    int iterations = 0;
+    int index = 0;
+    int outdex = 0;
+    while(index < FILE_SIZE || outdex < FILE_SIZE) {
+        ++iterations;
+        if(iterations > 90) {
+            fprintf(stderr, "Taking too long\n");
+            return 1;
+        }
+        if(index < FILE_SIZE) {
+            int nread = marla_writeDuplex(backend, input_buf + index, FILE_SIZE - index);
+            if(nread < 0) {
+                return 1;
+            }
+            //fprintf(stderr, "Wrote %d for backend to read.\n", nread);
+            index += nread;
+        }
+
+        marla_backendRead(backend);
+        marla_clientWrite(client);
+        if(client->current_request) {
+            //marla_dumpRequest(client->current_request);
+        }
+        else {
+            //fprintf(stderr, "No client request\n");
+        }
+        if(backend->current_request) {
+            //marla_dumpRequest(backend->current_request);
+        }
+        else {
+            //fprintf(stderr, "No backend request\n");
+        }
+        //marla_clientRead(client);
+        //marla_backendRead(backend);
+        //marla_backendWrite(backend);
+
+        if(outdex < FILE_SIZE) {
+            int nwritten = marla_readDuplex(client, output_buf + outdex, FILE_SIZE - outdex);
+            //fprintf(stderr, "%d\n", nwritten);
+            if(nwritten < 0) {
+                return 1;
+            }
+            outdex += nwritten;
+        }
+
+        //fprintf(stderr, "index=%d, outdex=%d\n", index, outdex);
+        for(int i = 0; i < FILE_SIZE; ++i) {
+            if(index > i && outdex > i) {
+                if(input_buf[i] != output_buf[i]) {
+                    fprintf(stderr, "input doesn't match output at index: %d\n", i);
+                    fprintf(stderr, "%s versus %s", input_buf, output_buf);
+                    return 1;
+                }
+            }
+            else {
+                break;
+            }
+        }
+    }
+
+    if(index != outdex) {
+        fprintf(stderr, "input != outdex. %d != %d\n", index, outdex);
+        return 1;
+    }
+
+    marla_Connection_destroy(client);
+    marla_Connection_destroy(backend);
+    marla_Server_free(&server);
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
     if(argc < 2) {
         printf("Usage: %s <port>\n", argv[0]);
         return -1;
     }
+
+    printf("Testing backend\n");
 
     struct marla_Server server;
     marla_Server_init(&server);
@@ -558,6 +922,15 @@ int main(int argc, char* argv[])
         ++failed;
     }
 
+    printf("test_BackendResponder_test_backend_download:");
+    if(0 == test_BackendResponder_test_backend_download(&server)) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
     printf("test_backend_with_large_content:");
     if(0 == test_backend_with_large_content(&server)) {
         printf("PASSED\n");
@@ -566,7 +939,26 @@ int main(int argc, char* argv[])
         printf("FAILED\n");
         ++failed;
     }
-
     marla_Server_free(&server);
+
+    printf("test_BackendResponder_test_backend_upload:");
+    if(0 == test_BackendResponder_test_backend_upload()) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
+    printf("test_backend_with_slow_response_handler:");
+    if(0 == test_backend_with_slow_response_handler()) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
+    //fprintf(stderr, "%d failures\n", failed);
     return failed;
 }

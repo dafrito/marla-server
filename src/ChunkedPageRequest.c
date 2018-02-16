@@ -69,16 +69,16 @@ int marla_ChunkedPageRequest_write(marla_ChunkedPageRequest* cpr, unsigned char*
     return marla_Ring_write(cpr->input, in, len);
 }
 
-int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output)
+marla_WriteResult marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output)
 {
     if(marla_Ring_isFull(output)) {
         //marla_logMessage(server, "Output ring is full.");
-        return -1;
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
     }
     int avail = marla_Ring_size(input);
     if(avail == 0) {
         //marla_logMessage(server, "Chunk input buffer was empty.");
-        return 1;
+        return marla_WriteResult_UPSTREAM_CHOKED;
     }
     void* slotData;
     size_t slotLen;
@@ -95,7 +95,7 @@ int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output
         if(slotLen <= 5) {
             marla_logMessagef(server, "Slot provided is of insufficient size (%ld). Size=%ld, rindex=%d, windex=%d\n", slotLen, marla_Ring_size(output), output->read_index, output->write_index);
             marla_Ring_putbackWrite(output, slotLen);
-            return -1;
+            return marla_WriteResult_UPSTREAM_CHOKED;
         }
     }
     unsigned char* slot = slotData;
@@ -132,7 +132,7 @@ int marla_writeChunk(marla_Server* server, marla_Ring* input, marla_Ring* output
     }
     slot[slotLen - 2] = '\r';
     slot[slotLen - 1] = '\n';
-    return 0;
+    return marla_WriteResult_CONTINUE;
 }
 
 void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr)
@@ -141,17 +141,15 @@ void marla_ChunkedPageRequest_free(struct marla_ChunkedPageRequest* cpr)
     free(cpr);
 }
 
-int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
+marla_WriteResult marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
 {
-    if(!cpr) {
-        fprintf(stderr, "No chunked page request.\n");
-        abort();
-    }
+    marla_Request* req = cpr->req;
+    marla_Server* server = req->cxn->server;
 
     if(cpr->stage == marla_CHUNK_RESPONSE_GENERATE) {
         if(!cpr->handler) {
-            marla_killRequest(cpr->req, "No handler available to generate content.\n");
-            return -1;
+            marla_killRequest(cpr->req, "No handler available to generate content.");
+            return marla_WriteResult_KILLED;
         }
         cpr->stage = marla_CHUNK_RESPONSE_HEADER;
     }
@@ -164,36 +162,68 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
             if(nwritten > 0) {
                 marla_Connection_putbackWrite(cpr->req->cxn, nwritten);
             }
-            //fprintf(stderr, "Failed to write complete response header.\n");
-            return -1;
+            marla_logMessage(server, "Failed to write complete response header.");
+            return marla_WriteResult_DOWNSTREAM_CHOKED;
         }
         cpr->stage = marla_CHUNK_RESPONSE_RESPOND;
     }
 
     while(cpr->stage == marla_CHUNK_RESPONSE_RESPOND) {
+        int done_indicated = 0;
         if(!cpr->handler) {
-            marla_killRequest(cpr->req, "No handler available to generate content.\n");
-            return -1;
+            marla_killRequest(cpr->req, "No handler available to generate content.");
+            return marla_WriteResult_KILLED;
         }
         //marla_Connection_flush(cpr->req->cxn, 0);
-        cpr->handler(cpr);
-        int rv = marla_writeChunk(cpr->req->cxn->server, cpr->input, cpr->req->cxn->output);
-        if(rv == 1) {
-            switch(marla_writeChunkTrailer(cpr->req->cxn->output)) {
-            case 1:
-                cpr->stage = marla_CHUNK_RESPONSE_TRAILER;
-                continue;
-            case -1:
-                //fprintf(stderr, "writeChunk choked on ending trailer.\n");
-                return -1;
-            }
+        marla_WriteResult wr = cpr->handler(cpr);
+        switch(wr) {
+        case marla_WriteResult_CONTINUE:
+            done_indicated = marla_Ring_isEmpty(cpr->input);
+            break;
+        case marla_WriteResult_DOWNSTREAM_CHOKED:
+            break;
+        case marla_WriteResult_UPSTREAM_CHOKED:
+        case marla_WriteResult_TIMEOUT:
+        case marla_WriteResult_LOCKED:
+        case marla_WriteResult_KILLED:
+        case marla_WriteResult_CLOSED:
+            return wr;
         }
-        if(rv != -1) {
-            int nflushed = 0;
-            if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
-                //fprintf(stderr, "writeChunk choked.\n");
-                return -1;
+        int nflushed = 0;
+        switch(marla_writeChunk(cpr->req->cxn->server, cpr->input, cpr->req->cxn->output)) {
+        case marla_WriteResult_UPSTREAM_CHOKED:
+            if(!marla_Ring_isEmpty(cpr->input)) {
+                marla_die(server, "writeChunk indicated upstream choked, but upstream has data.");
             }
+            if(done_indicated) {
+                wr = marla_writeChunkTrailer(cpr->req->cxn->output);
+                switch(wr) {
+                case marla_WriteResult_CONTINUE:
+                    ++cpr->stage;
+                    continue;
+                case marla_WriteResult_DOWNSTREAM_CHOKED:
+                    if(marla_Ring_isEmpty(cpr->req->cxn->output)) {
+                        return wr;
+                    }
+                    if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
+                        //fprintf(stderr, "writeChunk choked.\n");
+                        return wr;
+                    }
+                    continue;
+                default:
+                    return wr;
+                }
+            }
+            continue;
+        case marla_WriteResult_CONTINUE:
+            continue;
+        case marla_WriteResult_DOWNSTREAM_CHOKED:
+            if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
+                return marla_WriteResult_DOWNSTREAM_CHOKED;
+            }
+            continue;
+        default:
+            marla_die(server, "Unreachable");
         }
     }
 
@@ -209,21 +239,22 @@ int marla_ChunkedPageRequest_process(struct marla_ChunkedPageRequest* cpr)
     return 0;
 }
 
-int marla_writeChunkTrailer(marla_Ring* output)
+marla_WriteResult marla_writeChunkTrailer(marla_Ring* output)
 {
     int nwritten = marla_Ring_writeStr(output, "0\r\n\r\n");
     if(nwritten < 5) {
         if(nwritten > 0) {
             marla_Ring_putbackWrite(output, nwritten);
         }
-        return -1;
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
     }
-    return 1;
+    return marla_WriteResult_CONTINUE;
 }
 
 void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen)
 {
     struct marla_ChunkedPageRequest* cpr;
+    struct marla_WriteEvent* we;
     switch(ev) {
     case marla_EVENT_ACCEPTING_REQUEST:
         // Indicate accepted.
@@ -235,6 +266,12 @@ void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEve
         if(rv != 0) {
             // Indicate choked.
             *((int*)data) = 1;
+        }
+        break;
+    case marla_EVENT_REQUEST_BODY:
+        we = data;
+        if(we->length == 0) {
+            req->readStage = marla_CLIENT_REQUEST_DONE_READING;
         }
         break;
     case marla_EVENT_DESTROYING:

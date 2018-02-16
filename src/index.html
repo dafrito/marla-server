@@ -14,6 +14,13 @@ border: 1px solid grey;
 td.done {
 
 }
+
+table.enums img {
+width: 80%;
+}
+table.enums td {
+vertical-align: top;
+}
 </style>
 <title>Marla</title>
 </head>
@@ -25,9 +32,27 @@ Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</
 <li><a href="server.html">Server</a>
 <li><a href="connection.html">Connection</a>
 <li><a href="request.html">Request</a>
+<li><a href="WriteEvent.html">WriteEvent</a>
 <li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
 <li><a href="backend.html">Backend</a>
 <li><a href="ring.html">Ring</a>
+<li><a href="http.html">HTTP</a>
 </ol>
+<table class=enums>
+<tr>
+<td>
+<h2>Client read</h2>
+<img src="../client-read.png"></img>
+<td>
+<h2>Backend write</h2>
+<img src="../backend-write.png"></img>
+<tr>
+<td>
+<h2>Client write</h2>
+<img src="../client-write.png"></img>
+<td>
+<h2>Backend read</h2>
+<img src="../backend-read.png"></img>
+</table>
 </body>
 </html>

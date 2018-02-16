@@ -15,7 +15,7 @@
 #include <apr_dbd.h>
 #include <mod_dbd.h>
 
-static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
+static marla_WriteResult makeContactPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len;
@@ -280,11 +280,14 @@ static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
             "</html>");
         break;
     default:
-        return;
+        return marla_WriteResult_CONTINUE;
     }
 
     // Write the generated page.
     int nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten == 0) {
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
+    }
     if(cpr->index + nwritten < len) {
         if(nwritten > 0) {
             cpr->index += nwritten;
@@ -295,12 +298,17 @@ static void makeContactPage(struct marla_ChunkedPageRequest* cpr)
         cpr->handleStage = ((int)cpr->handleStage) + 1;
         cpr->index = 0;
     }
+
+    return marla_WriteResult_CONTINUE;
 }
 
-static void makeShortPage(struct marla_ChunkedPageRequest* cpr)
+static marla_WriteResult makeShortPage(struct marla_ChunkedPageRequest* cpr)
 {
     char buf[1024];
     int len = 1024;
+    if(len == cpr->index) {
+        return marla_WriteResult_CONTINUE;
+    }
 
     const char* letters = "Chicken Toenails";
     for(int i = 0; i < len; i += 16) {
@@ -309,7 +317,11 @@ static void makeShortPage(struct marla_ChunkedPageRequest* cpr)
 
     // Write the generated page.
     size_t nwritten = marla_Ring_write(cpr->input, buf + cpr->index, len - cpr->index);
+    if(nwritten == 0) {
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
+    }
     cpr->index += nwritten;
+    return marla_WriteResult_CONTINUE;
 }
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
@@ -320,8 +332,8 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_start(args, fmt);
     char exp[512];
     memset(exp, 0, sizeof(exp));
-    vsprintf(exp, fmt, args);
-    dprintf(3, exp);
+    int len = vsprintf(exp, fmt, args);
+    write(3, exp, len);
     va_end(args);
 }
 

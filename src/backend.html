@@ -41,7 +41,6 @@ Backend server connections.
 <tr><td>int index<td>
 <tr><td>marla_Ring* backendRequestBody<td>
 <tr><td>marla_Ring* backendResponse<td>
-<tr><td>marla_Ring* clientResponse<td>
 <tr><td>void* handleData<td>
 </table>
 <h2>int marla_Backend_connect(marla_Server* server)</h2>
@@ -50,13 +49,6 @@ Connects the server's backend if not already connected.
 Constructs a new backend responder, using a output buffer of the given size, for the given request.
 <h2>void marla_BackendResponder_free(marla_BackendResponder* resp)</h2>
 <h2>int marla_BackendResponder_writeRequestBody(marla_BackendResponder* resp, unsigned char* in, size_t len)</h2>
-<h2>int marla_BackendResponder_flushClientResponse(marla_BackendResponder* resp, size_t* nflushed)</h2>
-Takes data from the responder's output buffer and writes it to underlying request's connection.
-<p>
-Returns:
-<ul>
-<li>
-</ul>
 <h2>void marla_Backend_init(marla_Connection* cxn, int fd)</h2>
 Initialize a backend connection using the given file descriptor.
 <h2>void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)</h2>

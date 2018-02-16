@@ -59,11 +59,39 @@ static int describeDuplexSource(marla_Connection* cxn, char* sink, size_t len)
     return 0;
 }
 
+void marla_Duplex_drainInput(marla_Connection* cxn)
+{
+    marla_DuplexSource* source = cxn->source;
+    source->drain_input = 1;
+    marla_Ring_clear(source->input);
+}
+
+void marla_Duplex_drainOutput(marla_Connection* cxn)
+{
+    marla_DuplexSource* source = cxn->source;
+    source->drain_output = 1;
+    marla_Ring_clear(source->output);
+}
+
+void marla_Duplex_plugInput(marla_Connection* cxn)
+{
+    marla_DuplexSource* source = cxn->source;
+    source->drain_input = 0;
+}
+
+void marla_Duplex_plugOutput(marla_Connection* cxn)
+{
+    marla_DuplexSource* source = cxn->source;
+    source->drain_output = 0;
+}
+
 void marla_Duplex_init(marla_Connection* cxn, size_t input_size, size_t output_size)
 {
     marla_DuplexSource* source = malloc(sizeof(marla_DuplexSource));
     source->input = marla_Ring_new(input_size);
     source->output = marla_Ring_new(output_size);
+    source->drain_input = 0;
+    source->drain_output = 0;
     cxn->source = source;
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;

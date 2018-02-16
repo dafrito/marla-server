@@ -14,6 +14,7 @@
 #include <ap_config.h>
 #include <apr_dbd.h>
 #include <mod_dbd.h>
+#include <unistd.h>
 
 AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
                                 int level, apr_status_t status, apr_pool_t *p,
@@ -23,8 +24,8 @@ AP_DECLARE(void) ap_log_perror_(const char *file, int line, int module_index,
     va_start(args, fmt);
     char exp[512];
     memset(exp, 0, sizeof(exp));
-    vsprintf(exp, fmt, args);
-    dprintf(3, exp);
+    int len = vsprintf(exp, fmt, args);
+    write(3, exp, len);
     va_end(args);
 }
 
@@ -833,12 +834,68 @@ static int test_stages_reading_target(struct marla_Server* server)
     return 0;
 }
 
+void trailerHook(marla_Request* req, void* hookData)
+{
+    req->handler = marla_backendClientHandler;
+}
+
+int test_trailer()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+    strcpy(server.serverport, "80");
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Connection* backend = marla_Connection_new(&server);
+
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    backend->is_backend = 1;
+    server.backend = backend;
+
+    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+
+    char buf[1024];
+    int len = snprintf(buf, sizeof buf, "GET / HTTP/1.1\r\nHost: localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport);
+    marla_writeDuplex(client, buf, len);
+
+    marla_WriteResult wr = marla_clientRead(client);
+    if(wr != marla_WriteResult_DOWNSTREAM_CHOKED) {
+        fprintf(stderr, "Wanted DOWNSTREAM_CHOKED, got %s\n", marla_nameWriteResult(wr));
+        if(wr == marla_WriteResult_KILLED) {
+            fprintf(stderr, "Error was %s\n", client->current_request->error);
+        }
+        return 1;
+    }
+
+    if(!client->current_request) {
+        fprintf(stderr, "Client must have an active request\n");
+        return 1;
+    }
+
+    marla_Request* req = client->current_request;
+    if(req->readStage != marla_CLIENT_REQUEST_DONE_READING) {
+        fprintf(stderr, "Expecting done reading, but got %s", marla_nameRequestReadStage(req->readStage));
+        return 1;
+    }
+
+    return 0;
+}
+
+int test_userinfo_is_treated_as_error()
+{
+    return 0;
+}
+
 int main(int argc, char* argv[])
 {
     if(argc < 2) {
         printf("Usage: %s <port>\n", argv[0]);
         return -1;
     }
+
+    printf("Testing client connection ...\n");
 
     struct marla_Server server;
     marla_Server_init(&server);
@@ -963,6 +1020,24 @@ int main(int argc, char* argv[])
 
     printf("test_chunks:");
     if(0 == test_chunks(&server)) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
+    printf("test_trailer:");
+    if(0 == test_trailer()) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
+    printf("test_userinfo_is_treated_as_error:");
+    if(0 == test_userinfo_is_treated_as_error()) {
         printf("PASSED\n");
     }
     else {

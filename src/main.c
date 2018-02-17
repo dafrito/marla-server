@@ -558,12 +558,72 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                     if(events[i].events & EPOLLIN) {
                         cxn->wantsRead = 0;
                         // Available for read.
-                        marla_clientRead(cxn);
+                        for(int loop = 1; loop && cxn->stage != marla_CLIENT_COMPLETE;) {
+                            marla_WriteResult wr = marla_clientRead(cxn);
+                            size_t refilled = 0;
+                            switch(wr) {
+                            case marla_WriteResult_CONTINUE:
+                                continue;
+                            case marla_WriteResult_UPSTREAM_CHOKED:
+                                marla_Connection_refill(cxn, &refilled);
+                                if(refilled <= 0) {
+                                    loop = 0;
+                                }
+                                continue;
+                            case marla_WriteResult_DOWNSTREAM_CHOKED:
+                                if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                                    int nflushed;
+                                    int rv = marla_Connection_flush(cxn, &nflushed);
+                                    if(rv <= 0) {
+                                        fprintf(stderr, "Responder choked.\n");
+                                        loop = 0;
+                                    }
+                                }
+                                else {
+                                    loop = 0;
+                                }
+                                continue;
+                            default:
+                                fprintf(stderr, "Connection %d's read returned %s\n", cxn->id, marla_nameWriteResult(wr));
+                                loop = 0;
+                                continue;
+                            }
+                        }
                     }
                     if(events[i].events & EPOLLOUT) {
                         // Available for write.
                         cxn->wantsWrite = 0;
-                        marla_clientWrite(cxn);
+                        for(int loop = 1; loop && cxn->stage != marla_CLIENT_COMPLETE;) {
+                            marla_WriteResult wr = marla_clientWrite(cxn);
+                            size_t refilled = 0;
+                            switch(wr) {
+                            case marla_WriteResult_CONTINUE:
+                                continue;
+                            case marla_WriteResult_UPSTREAM_CHOKED:
+                                marla_Connection_refill(cxn, &refilled);
+                                if(refilled <= 0) {
+                                    loop = 0;
+                                }
+                                continue;
+                            case marla_WriteResult_DOWNSTREAM_CHOKED:
+                                if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                                    int nflushed;
+                                    int rv = marla_Connection_flush(cxn, &nflushed);
+                                    if(rv <= 0) {
+                                        fprintf(stderr, "Responder choked.\n");
+                                        loop = 0;
+                                    }
+                                }
+                                else {
+                                    loop = 0;
+                                }
+                                continue;
+                            default:
+                                fprintf(stderr, "Connection %d's write returned %s\n", cxn->id, marla_nameWriteResult(wr));
+                                loop = 0;
+                                continue;
+                            }
+                        }
                     }
 
                     if(cxn->stage == marla_CLIENT_COMPLETE) {

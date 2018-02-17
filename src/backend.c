@@ -1729,11 +1729,65 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
     return marla_WriteResult_KILLED;
 }
 
+static void marla_backendClientHandlerAcceptRequest(struct marla_Request* req)
+{
+    marla_Request* backendReq = marla_Request_new(req->cxn->server->backend);
+    strcpy(backendReq->uri, req->uri);
+    strcpy(backendReq->method, req->method);
+    backendReq->handler = marla_backendHandler;
+    backendReq->handlerData = marla_BackendResponder_new(marla_BUFSIZE, backendReq);
+
+    // Set backend peers.
+    backendReq->backendPeer = req;
+    req->backendPeer = backendReq;
+
+    // Enqueue the backend request.
+    marla_Backend_enqueue(req->cxn->server, backendReq);
+}
+
+static void marla_backendClientHandlerRequestBody(struct marla_Request* req, marla_WriteEvent* we)
+{
+    marla_BackendResponder* resp = req->backendPeer->handlerData;
+    if(we->length == 0) {
+        req->readStage = marla_CLIENT_REQUEST_DONE_READING;
+        return;
+    }
+    if(!req->backendPeer) {
+        marla_die(req->cxn->server, "Backend request missing.");
+    }
+    if(we->length < we->index) {
+        marla_die(req->cxn->server, "Backend request index, %zu, is greater than length, %zu.", we->index, we->length);
+    }
+    for(; we->length - we->index > 0;) {
+        //fprintf(stderr, "Writing %d/%zu bytes for backend request.\n", we->index, we->length);
+        int true_written = marla_BackendResponder_writeRequestBody(resp, we->buf + we->index, we->length - we->index);
+        if(true_written < we->length - we->index) {
+            we->index += true_written;
+        }
+        else {
+            we->index = we->length;
+        }
+
+        switch(marla_backendWrite(req->backendPeer->cxn)) {
+        case marla_WriteResult_UPSTREAM_CHOKED:
+            if(true_written == 0) {
+                we->status = marla_WriteResult_UPSTREAM_CHOKED;
+                break;
+            }
+            // Some bytes were written, so assume a different upstream is choking.
+            continue;
+        case marla_WriteResult_CONTINUE:
+            continue;
+        default:
+            break;
+        }
+    }
+}
+
 void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int given_len)
 {
     marla_Server* server = req->cxn->server;
     marla_logEntercf(server, "Handling", "Handling backend event on client: %s\n", marla_nameClientEvent(ev));
-    marla_BackendResponder* resp = 0;
     marla_WriteEvent* we;
     switch(ev) {
     case marla_EVENT_HEADER:
@@ -1741,61 +1795,12 @@ void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEven
         return;
     case marla_EVENT_ACCEPTING_REQUEST:
         // Accept the request.
+        marla_backendClientHandlerAcceptRequest(req);
         (*(int*)in) = 1;
-
-        marla_Request* backendReq = marla_Request_new(req->cxn->server->backend);
-        strcpy(backendReq->uri, req->uri);
-        strcpy(backendReq->method, req->method);
-        backendReq->handler = marla_backendHandler;
-        backendReq->handlerData = marla_BackendResponder_new(marla_BUFSIZE, backendReq);
-
-        // Set backend peers.
-        backendReq->backendPeer = req;
-        req->backendPeer = backendReq;
-
-        // Enqueue the backend request.
-        marla_logMessagef(server, "ENQUEUED backend request %d!!!\n", req->id);
-        marla_Backend_enqueue(server, backendReq);
         marla_logLeave(server, 0);
         return;
     case marla_EVENT_REQUEST_BODY:
-        we = in;
-        resp = req->backendPeer->handlerData;
-        if(we->length == 0) {
-            req->readStage = marla_CLIENT_REQUEST_DONE_READING;
-            marla_logLeave(server, 0);
-            return;
-        }
-        if(!req->backendPeer) {
-            marla_die(req->cxn->server, "Backend request missing.");
-        }
-        if(we->length < we->index) {
-            marla_die(req->cxn->server, "Backend request index, %zu, is greater than length, %zu.", we->index, we->length);
-        }
-        for(; we->length - we->index > 0;) {
-            //fprintf(stderr, "Writing %d/%zu bytes for backend request.\n", we->index, we->length);
-            int true_written = marla_BackendResponder_writeRequestBody(resp, we->buf + we->index, we->length - we->index);
-            if(true_written < we->length - we->index) {
-                we->index += true_written;
-            }
-            else {
-                we->index = we->length;
-            }
-
-            switch(marla_backendWrite(req->backendPeer->cxn)) {
-            case marla_WriteResult_UPSTREAM_CHOKED:
-                if(true_written == 0) {
-                    we->status = marla_WriteResult_UPSTREAM_CHOKED;
-                    break;
-                }
-                // Some bytes were written, so assume a different upstream is choking.
-                continue;
-            case marla_WriteResult_CONTINUE:
-                continue;
-            default:
-                break;
-            }
-        }
+        marla_backendClientHandlerRequestBody(req, in);
         marla_logLeave(server, 0);
         return;
     case marla_EVENT_MUST_WRITE:

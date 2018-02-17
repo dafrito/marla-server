@@ -12,21 +12,20 @@ UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=15
+PACKAGE_RELEASE=20
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
 build_cpu=x86_64
 
 CFLAGS=-Og -Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags openssl apr-1 ncurses` -fPIC
-LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
+core_LDLIBS=`pkg-config --libs openssl ncurses` -ldl
+main_LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 
 all: src/test_basic src/test-ring.sh src/test-connection.sh
 	cd src && ./test_basic
 	cd src && ./test-ring.sh
 	cd src && ./test-connection.sh $(PORT)
-	cd servermod && $(MAKE)
-	cd environment_ws && $(MAKE)
 	$(MAKE) marla
 .PHONY: all
 
@@ -36,11 +35,11 @@ src/test-connection.sh: src/test_duplex src/test_connection src/test_websocket s
 
 create_environment: create_environment.c
 
-servermod/libservermod.so:
-	cd servermod && $(MAKE)
+libservermod.so:
+	cd ../servermod && ./deploy.sh
 
-environment_ws/libenvironment_ws.so:
-	cd environment_ws && $(MAKE)
+libenvironment_ws.so:
+	cd ../environment_ws && ./deploy.sh
 
 BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/http.o src/WriteEvent.o src/websocket.o
 
@@ -48,7 +47,7 @@ libmarla.so: $(BASE_OBJECTS) src/marla.h
 	$(CC) $(CFLAGS) -o$@ -shared -lpthread $(BASE_OBJECTS)
 
 marla: src/main.c libmarla.so src/marla.h Makefile
-	$(CC) src/main.c -o$@ -lpthread  -L. -lmarla $(CFLAGS) $(LDLIBS)
+	$(CC) src/main.c -o$@ -lpthread  -L. -lmarla $(CFLAGS) $(main_LDLIBS)
 
 certificate.pem key.pem:
 	openssl req -newkey rsa:2048 -nodes -keyout key.pem -x509 -days 365 -out certificate.pem
@@ -57,40 +56,40 @@ kill: marla.tmux
 	tmux -S marla.tmux kill-server
 .PHONY: kill
 
-run: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+run: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: run
 
-debug: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init'
+debug: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init'
 .PHONY: debug
 
-valgrind: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+valgrind: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: valgrind
 
-4400: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+4400: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4400
 
-4401: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+4401: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4401
 
-4402: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+4402: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4402
 
-4403: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+4403: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4403
 
-4404: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+4404: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4404
 
-4405: marla certificate.pem key.pem servermod/libservermod.so environment_ws/libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) servermod/libservermod.so?module_servermod_init environment_ws/libenvironment_ws.so?module_environment_ws_init
+4405: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4405
 
 tmux:
@@ -108,39 +107,37 @@ check: certificate.pem src/test_basic src/test_ring src/test_small_ring src/test
 .PHONY: check
 
 src/test_basic: src/test_basic.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)
 
 src/test_ring: src/test_ring.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)
 
 src/test_ring_po2: src/test_ring_po2.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)
 
 src/test_small_ring: src/test_small_ring.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)
 
 src/test_ring_putback: src/test_ring_putback.c src/ring.o
-	$(CC) $(CFLAGS) -g $^ -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)
 
 src/test_connection: src/test_connection.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_connection.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g src/test_connection.c $(BASE_OBJECTS) -o$@ $(core_LDLIBS)
 
 src/test_websocket: src/test_websocket.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_websocket.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g src/test_websocket.c $(BASE_OBJECTS) -o$@ $(core_LDLIBS)
 
 src/test_chunks: src/test_chunks.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_chunks.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g src/test_chunks.c $(BASE_OBJECTS) -o$@ $(core_LDLIBS)
 
 src/test_backend: src/test_backend.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_backend.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g src/test_backend.c $(BASE_OBJECTS) -o$@ $(core_LDLIBS)
 
 src/test_duplex: src/test_duplex.c $(BASE_OBJECTS) src/marla.h Makefile
-	$(CC) $(CFLAGS) -g src/test_duplex.c $(BASE_OBJECTS) -o$@ $(LDLIBS)
+	$(CC) $(CFLAGS) -g src/test_duplex.c $(BASE_OBJECTS) -o$@ $(core_LDLIBS)
 
 clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
-	cd servermod && $(MAKE) clean
-	cd environment_ws && $(MAKE) clean
 	rm -f src/test_basic src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend src/test_duplex $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
 .PHONY: clean
 
@@ -183,4 +180,3 @@ dist-gzip: $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz $(PACKAGE_NAME).spec
 rpm: rpm.sh $(PACKAGE_NAME).spec dist-gzip
 	bash $<
 .PHONY: rpm
-

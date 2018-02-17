@@ -3,7 +3,6 @@
 
 #include <sys/epoll.h>
 #include <openssl/ssl.h>
-#include <apr_pools.h>
 
 #define marla_BUFSIZE 2048
 #define marla_LOGBUFSIZE 32*1024

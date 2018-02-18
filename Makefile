@@ -12,7 +12,7 @@ UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=20
+PACKAGE_RELEASE=25
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
@@ -57,39 +57,39 @@ kill: marla.tmux
 .PHONY: kill
 
 run: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: run
 
 debug: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init'
+	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init'
 .PHONY: debug
 
 valgrind: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: valgrind
 
 4400: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4400
 
 4401: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4401
 
 4402: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4402
 
 4403: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4403
 
 4404: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4404
 
 4405: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) libservermod.so?module_servermod_init libenvironment_ws.so?module_environment_ws_init
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: 4405
 
 tmux:
@@ -171,7 +171,7 @@ $(PACKAGE_NAME).spec: rpm.spec.in
 	mv $@-wip $@
 	chmod +x $@
 
-$(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz: src/*.c src/*.h servermod/*.c servermod/Makefile environment_ws/prepare.h environment_ws/environment_ws.c environment_ws/Makefile Makefile src/*.sh src/*.html src/*.hreq src/*.hrep logviewer.jar
+$(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz: src/*.c src/*.h Makefile src/*.sh src/*.html src/*.hreq src/*.hrep logviewer.jar
 	tar --transform="s'^'$(PACKAGE_NAME)-$(PACKAGE_VERSION)/'g" -cz -f $@ $^
 
 dist-gzip: $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz $(PACKAGE_NAME).spec

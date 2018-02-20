@@ -575,7 +575,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                                     int nflushed;
                                     int rv = marla_Connection_flush(cxn, &nflushed);
                                     if(rv <= 0) {
-                                        fprintf(stderr, "Responder choked.\n");
+                                        //fprintf(stderr, "Responder choked.\n");
                                         loop = 0;
                                     }
                                 }
@@ -584,7 +584,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                                 }
                                 continue;
                             default:
-                                fprintf(stderr, "Connection %d's read returned %s\n", cxn->id, marla_nameWriteResult(wr));
+                                //fprintf(stderr, "Connection %d's read returned %s\n", cxn->id, marla_nameWriteResult(wr));
                                 loop = 0;
                                 continue;
                             }
@@ -610,7 +610,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                                     int nflushed;
                                     int rv = marla_Connection_flush(cxn, &nflushed);
                                     if(rv <= 0) {
-                                        fprintf(stderr, "Responder choked.\n");
+                                        //fprintf(stderr, "Responder choked.\n");
                                         loop = 0;
                                     }
                                 }
@@ -619,7 +619,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                                 }
                                 continue;
                             default:
-                                fprintf(stderr, "Connection %d's write returned %s\n", cxn->id, marla_nameWriteResult(wr));
+                                //fprintf(stderr, "Connection %d's write returned %s\n", cxn->id, marla_nameWriteResult(wr));
                                 loop = 0;
                                 continue;
                             }

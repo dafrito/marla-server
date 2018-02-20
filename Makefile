@@ -12,7 +12,7 @@ UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=32
+PACKAGE_RELEASE=33
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
@@ -139,6 +139,8 @@ src/test_duplex: src/test_duplex.c $(BASE_OBJECTS) src/marla.h Makefile
 clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
 	rm -f src/test_basic src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend src/test_duplex $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
+	cd ../servermod && $(MAKE) clean
+	cd ../environment_ws && $(MAKE) clean
 .PHONY: clean
 
 clean-certificate: | certificate.pem key.pem
@@ -179,4 +181,6 @@ dist-gzip: $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz $(PACKAGE_NAME).spec
 
 rpm: rpm.sh $(PACKAGE_NAME).spec dist-gzip
 	bash $<
+	cd ../servermod && $(MAKE) rpm
+	cd ../environment_ws && $(MAKE) rpm
 .PHONY: rpm

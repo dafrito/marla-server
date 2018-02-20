@@ -1728,10 +1728,10 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
 
             nread = marla_Ring_read(resp->backendResponse, in, len);
             if(nread > 0) {
-                unsigned char c = ((unsigned char*)in)[nread];
-                ((unsigned char*)in)[nread] = 0;
+                //unsigned char c = ((unsigned char*)in)[nread];
+                //((unsigned char*)in)[nread] = 0;
                 //printf("Wrote %d bytes to output: %s\n", nread, in);
-                ((unsigned char*)in)[nread] = c;
+                //((unsigned char*)in)[nread] = c;
             }
 
 
@@ -1748,7 +1748,7 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
 
                 nread = marla_Ring_read(req->cxn->output, tmp, sizeof tmp - 1);
                 if(nread > 0) {
-                    tmp[nread] = 0;
+                    //tmp[nread] = 0;
                     //printf("Client response: %s\n", tmp);
                     marla_Ring_putbackRead(req->cxn->output, nread);
                 }

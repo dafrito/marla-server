@@ -110,20 +110,20 @@ void marla_Ring_writeSlot(marla_Ring* ring, void** slot, size_t* slotLen)
 
     int rindex = ring->read_index & capmask;
     if(index > rindex) {
-        printf("windex(%ld) > rindex(%d)\n", index, rindex);
+        //printf("windex(%ld) > rindex(%d)\n", index, rindex);
         *slotLen = ring->capacity - index;
     }
     else if(index == rindex) {
-        printf("windex(%ld) == rindex(%d)\n", index, rindex);
+        //printf("windex(%ld) == rindex(%d)\n", index, rindex);
         *slotLen = marla_Ring_capacity(ring) - index;
     }
     else {
         // index < rindex
-        printf("windex(%ld) < rindex(%d)\n", index, rindex);
+        //printf("windex(%ld) < rindex(%d)\n", index, rindex);
         *slotLen = rindex - index;
     }
     ring->write_index += *slotLen;
-    printf("windex(%d) %zu\n", ring->write_index & capmask, *slotLen);
+    //printf("windex(%d) %zu\n", ring->write_index & capmask, *slotLen);
 }
 
 void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen)
@@ -151,7 +151,7 @@ void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen)
     }
     else if(ring->write_index > ring->read_index) {
         *slotLen = ring->capacity - rindex;
-        printf("SPECIAL THIRD CASE: write_index=%d read_index=%d %d\n", ring->write_index, ring->read_index, *slotLen);
+        //printf("SPECIAL THIRD CASE: write_index=%d read_index=%d %d\n", ring->write_index, ring->read_index, *slotLen);
     }
     else {
         *slotLen = 0;

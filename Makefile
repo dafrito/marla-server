@@ -1,5 +1,5 @@
 CC=clang
-PORT=127.0.0.1:4777
+PORT=127.0.0.1:4778
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
@@ -12,7 +12,7 @@ UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=33
+PACKAGE_RELEASE=35
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com

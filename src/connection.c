@@ -144,12 +144,14 @@ int marla_Connection_read(marla_Connection* cxn, unsigned char* sink, size_t req
 void marla_Connection_putbackRead(marla_Connection* cxn, size_t amount)
 {
     marla_logMessagecf(cxn->server, "I/O", "Putting back %d bytes read", amount);
+    printf("Putting back %d bytes read\n", amount);
     return marla_Ring_putbackRead(cxn->input, amount);
 }
 
 void marla_Connection_putbackWrite(marla_Connection* cxn, size_t amount)
 {
     marla_logMessagecf(cxn->server, "I/O", "Putting back %d bytes written", amount);
+    printf("Putting back %d bytes written\n", amount);
     return marla_Ring_putbackWrite(cxn->output, amount);
 }
 
@@ -178,6 +180,8 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
                 *outnflushed = nflushed;
             }
             cxn->flushed += nflushed;
+            printf("PUTTING BACK %d\n", len);
+            marla_Ring_putbackRead(cxn->output, len);
             if(nflushed == 0 && true_flushed <= 0) {
                 return true_flushed;
             }
@@ -185,9 +189,12 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
         }
         nflushed += true_flushed;
         marla_logMessagecf(cxn->server, "I/O", "%d bytes flushed to source on connection %d.", true_flushed, cxn->id);
-        marla_Ring_putbackRead(cxn->output, len - true_flushed);
+        printf("%d bytes flushed to source on connection %d. Size=%d\n", true_flushed, cxn->id, marla_Ring_size(cxn->output));
         if(true_flushed < len) {
             // Partial write.
+            printf("PUTTING BACK %d\n", len - true_flushed);
+            marla_Ring_putbackRead(cxn->output, len - true_flushed);
+            marla_Ring_dump(cxn->output, "cxn->output");
             break;
         }
     }
@@ -221,7 +228,7 @@ void marla_Connection_destroy(marla_Connection* cxn)
 
     for(marla_Request* req = cxn->current_request; req != 0;) {
         marla_Request* nextReq = req->next_request;
-        marla_Request_destroy(req);
+        marla_Request_unref(req);
         req = nextReq;
     }
 

@@ -1,4 +1,5 @@
 #include "marla.h"
+#include <string.h>
 
 static int readDuplexSource(struct marla_Connection* cxn, void* sink, size_t len)
 {
@@ -49,6 +50,12 @@ int marla_readDuplex(marla_Connection* cxn, void* sink, size_t len)
 {
     marla_DuplexSource* source = cxn->source;
     return marla_Ring_read(source->output, sink, len);
+}
+
+void marla_putbackDuplexRead(marla_Connection* cxn, int count)
+{
+    marla_DuplexSource* source = cxn->source;
+    marla_Ring_putbackRead(source->output, count);
 }
 
 static int describeDuplexSource(marla_Connection* cxn, char* sink, size_t len)

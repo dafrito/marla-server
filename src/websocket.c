@@ -1,4 +1,5 @@
 #include "marla.h"
+#include <string.h>
 
 /*
  *  %x0 denotes a continuation frame

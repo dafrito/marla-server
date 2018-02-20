@@ -4,7 +4,7 @@
 #include <sys/epoll.h>
 #include <openssl/ssl.h>
 
-#define marla_BUFSIZE 2048
+#define marla_BUFSIZE 1024
 #define marla_LOGBUFSIZE 32*1024
 
 // ring.c
@@ -33,6 +33,7 @@ void marla_Ring_simplify(marla_Ring* ring);
 int marla_Ring_isFull(marla_Ring* ring);
 int marla_Ring_isEmpty(marla_Ring* ring);
 void marla_Ring_clear(marla_Ring* ring);
+void marla_Ring_dump(marla_Ring* ring, const char* name);
 
 // client.c
 enum marla_RequestReadStage {
@@ -156,7 +157,6 @@ enum marla_BackendResponderStage handleStage;
 int index;
 marla_Ring* backendRequestBody;
 marla_Ring* backendResponse;
-marla_Ring* clientResponse;
 void* handleData;
 };
 
@@ -164,7 +164,6 @@ typedef struct marla_BackendResponder marla_BackendResponder;
 int marla_Backend_connect(struct marla_Server* server);
 struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, struct marla_Request* req);
 void marla_BackendResponder_free(marla_BackendResponder* resp);
-int marla_BackendResponder_flushClientResponse(marla_BackendResponder* resp, size_t* nflushed);
 int marla_BackendResponder_writeRequestBody(marla_BackendResponder* resp, unsigned char* in, size_t len);
 
 enum marla_ClientEvent {
@@ -215,6 +214,7 @@ struct marla_Request {
 struct marla_Request* next_request;
 int id;
 int statusCode;
+int refs;
 char statusLine[MAX_FIELD_VALUE_LENGTH + 1];
 struct marla_Connection* cxn;
 char method[MAX_METHOD_LENGTH + 1];
@@ -275,7 +275,8 @@ struct marla_Connection;
 struct marla_Server;
 
 marla_Request* marla_Request_new(struct marla_Connection* cxn);
-void marla_Request_destroy(marla_Request*);
+void marla_Request_ref(marla_Request*);
+void marla_Request_unref(marla_Request*);
 void marla_killRequest(struct marla_Request* req, const char* reason, ...);
 void marla_dumpRequest(marla_Request* req);
 
@@ -348,6 +349,7 @@ int fd;
 int marla_cleartext_init(marla_Connection* cxn, int fd);
 int marla_readDuplex(marla_Connection* cxn, void* sink, size_t len);
 int marla_writeDuplex(marla_Connection* cxn, void* source, size_t len);
+void marla_putbackDuplexRead(marla_Connection* cxn, int count);
 
 struct marla_DuplexSource {
 marla_Ring* input;

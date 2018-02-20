@@ -1,5 +1,8 @@
 #include "marla.h"
 #include <unistd.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/socket.h>
 
 static int describeSource(marla_Connection* cxn, char* sink, size_t len)
 {

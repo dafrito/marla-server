@@ -179,10 +179,12 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
         marla_logMessagecf(cxn->server, "Processing", "Called to write to backend, but already writing to this backend.");
         return marla_WriteResult_LOCKED;
     }
+
     cxn->in_write = 1;
     marla_logEntercf(cxn->server, "Processing", "Writing to backend with stage %s", marla_nameRequestWriteStage(req->writeStage));
     char out[marla_BUFSIZE];
     while(req) {
+        marla_Request_ref(req);
         if(!req->is_backend) {
             marla_die(server, "Client request found its way into the backend's queue.");
         }
@@ -190,16 +192,19 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
         if(req->writeStage == marla_BACKEND_REQUEST_WRITING_REQUEST_LINE) {
             if(req->method[0] == 0) {
                 marla_killRequest(req, "Method must be provided");
+                marla_Request_unref(req);
                 goto exit_killed;
             }
             if(req->uri[0] == 0) {
                 marla_killRequest(req, "URI must be provided");
+                marla_Request_unref(req);
                 goto exit_killed;
             }
             int nwrit = snprintf(out, sizeof(out), "%s %s HTTP/1.1\r\n", req->method, req->uri);
             int nw = marla_Connection_write(cxn, out, nwrit);
             if(nw < nwrit) {
                 marla_Connection_putbackWrite(cxn, nw);
+                marla_Request_unref(req);
                 goto exit_downstream_choked;
             }
             int nflushed;
@@ -213,9 +218,11 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
             int result = 0;
             req->handler(req, marla_BACKEND_EVENT_NEED_HEADERS, &result, 0);
             if(req->cxn->stage == marla_CLIENT_COMPLETE) {
+                marla_Request_unref(req);
                 goto exit_closed;
             }
             if(result == -1) {
+                marla_Request_unref(req);
                 goto exit_downstream_choked;
             }
             if(result == 1 || req->writeStage > marla_BACKEND_REQUEST_WRITING_HEADERS) {
@@ -237,6 +244,7 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                     int rv = marla_Connection_flush(cxn, &nflushed);
                     if(rv <= 0) {
                         marla_logLeavef(server, "Backend connection %d's output source choked.", cxn->id);
+                        marla_Request_unref(req);
                         cxn->in_write = 0;
                         return rv;
                     }
@@ -260,6 +268,7 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                     if(rv <= 0) {
                         marla_logLeavef(server, "Backend connection %d's output source choked.", cxn->id);
                         cxn->in_write = 0;
+                        marla_Request_unref(req);
                         return marla_WriteResult_UPSTREAM_CHOKED;
                     }
                 }
@@ -280,9 +289,11 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                 if(rv <= 0) {
                     marla_logLeavef(server, "Backend connection %d's output source choked.", cxn->id);
                     cxn->in_write = 0;
+                    marla_Request_unref(req);
                     return marla_WriteResult_DOWNSTREAM_CHOKED;
                 }
             }
+            marla_Request_unref(req);
             req = req->next_request;
         }
     }
@@ -908,7 +919,7 @@ read_chunk_size:
     return marla_WriteResult_CONTINUE;
 }
 
-static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
+marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
 {
     if(req->readStage > marla_BACKEND_REQUEST_READING_RESPONSE_BODY) {
         return marla_WriteResult_CONTINUE;
@@ -934,6 +945,7 @@ static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
             requestedLen = sizeof(buf);
         }
         int nread = marla_Connection_read(cxn, (unsigned char*)buf, requestedLen);
+        printf("Read %d bytes of backend response body: %s.\n", nread, buf);
         if(nread == 0) {
             // Zero-length read indicates end of stream.
             if(req->remainingContentLen > 0) {
@@ -943,11 +955,6 @@ static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
             break;
         }
         if(nread < 0) {
-            return marla_WriteResult_UPSTREAM_CHOKED;
-        }
-        if(nread < 4 && req->remainingContentLen > 4) {
-            // A read too small.
-            marla_Connection_putbackRead(cxn, nread);
             return marla_WriteResult_UPSTREAM_CHOKED;
         }
 
@@ -965,18 +972,21 @@ static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
         result.buf = &buf;
         result.length = nread;
         req->handler(req, marla_BACKEND_EVENT_RESPONSE_BODY, &result, -1);
+        //fprintf(stderr, "RESPONSE_BODY gave %s\n", marla_nameWriteResult(result.status));
         result.buf = 0;
-        req->lastReadIndex = result.index;
 
         switch(result.status) {
         case marla_WriteResult_CONTINUE:
             if(result.index < result.length) {
+                marla_killRequest(req, "Partial read with continue.");
                 req->totalContentLen -= nread - result.index;
                 req->remainingContentLen += nread - result.index;
                 marla_Connection_putbackRead(cxn, nread - result.index);
                 result.index = 0;
+                req->lastReadIndex = result.index;
                 continue;
             }
+            printf("Continuing to read after continue.\n");
             result.index = 0;
             req->lastReadIndex = 0;
             marla_Connection_refill(req->cxn, 0);
@@ -984,16 +994,18 @@ static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
         case marla_WriteResult_DOWNSTREAM_CHOKED:
             // This request body was being streamed to some other downstream source, which could not process
             // all of this chunk's input.
+            printf("Stopping after downstream choked.\n");
             marla_Connection_putbackRead(cxn, nread);
             req->totalContentLen -= nread;
             req->remainingContentLen += nread;
+            req->lastReadIndex = result.index;
             return marla_WriteResult_DOWNSTREAM_CHOKED;
         case marla_WriteResult_UPSTREAM_CHOKED:
             if(result.length > 0 && result.index < result.length) {
                 marla_killRequest(req, "Backend response handler indicated upstream choked despite partial read.");
                 return 1;
             }
-            // Continue to read the next chunk.
+            printf("Continuing to read after upstream choked. %d/%d\n", result.index, result.length);
             req->lastReadIndex = 0;
             result.index = 0;
             marla_Connection_refill(req->cxn, 0);
@@ -1003,6 +1015,7 @@ static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
             req->totalContentLen -= nread;
             req->remainingContentLen += nread;
             marla_Connection_putbackRead(cxn, nread);
+            req->lastReadIndex = result.index;
             return marla_WriteResult_TIMEOUT;
         case marla_WriteResult_CLOSED:
             marla_logMessage(server, "Backend response handler indicated closed.");
@@ -1012,7 +1025,20 @@ static marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
             return marla_WriteResult_KILLED;
         case marla_WriteResult_LOCKED:
             marla_logMessage(server, "Backend response handler is locked.");
-            return marla_WriteResult_LOCKED;
+            printf("Resetting once locked\n");
+            if(result.index < result.length) {
+                req->totalContentLen -= nread;
+                req->remainingContentLen += nread;
+                marla_Connection_putbackRead(cxn, nread);
+                req->lastReadIndex = result.index;
+                return marla_WriteResult_LOCKED;
+            }
+            else {
+                req->lastReadIndex = 0;
+                result.index = 0;
+                marla_Connection_refill(req->cxn, 0);
+                continue;
+            }
         }
     }
 
@@ -1164,10 +1190,12 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
     memset(out, 0, sizeof out);
 
     while(req) {
+        marla_Request_ref(req);
         marla_WriteResult wr;
 
         wr = marla_processBackendResponseLine(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1175,6 +1203,7 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_processBackendResponseFields(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1182,6 +1211,7 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_readBackendResponseBody(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1189,6 +1219,7 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_readBackendResponseChunks(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1205,6 +1236,7 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_processBackendTrailer(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1234,8 +1266,10 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
                     // Peer still needs this request.
                     if(req->close_after_done) {
                         marla_logMessage(server, "Closing after request completed.");
+                        marla_Request_unref(req);
                         goto shutdown;
                     }
+                    marla_Request_unref(req);
                     req = cxn->current_request;
                     marla_logMessage(server, "Peer still needs this request; it will not be destroyed.");
                     continue;
@@ -1243,9 +1277,13 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
             }
             if(req->close_after_done) {
                 marla_logMessage(server, "Closing after request completed.");
+                marla_Request_unref(req);
                 goto shutdown;
             }
-            marla_Request_destroy(req);
+
+            // Unref once for the connection and again for this function.
+            marla_Request_unref(req);
+            marla_Request_unref(req);
             req = cxn->current_request;
             if(cxn->stage == marla_CLIENT_COMPLETE) {
                 goto shutdown;
@@ -1253,6 +1291,7 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
         }
         else {
             marla_killRequest(req, "Unexpected request stage.");
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return marla_WriteResult_KILLED;
@@ -1343,17 +1382,21 @@ void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, 
             marla_die(req->cxn->server, "Backend peer must have responder handlerData\n");
         }
         len = we->length - we->index;
-        in = we->buf - we->index;
+        in = we->buf + we->index;
         marla_logMessagef(server, "Forwarding %d bytes from backend's response to client request %d.", len, req->backendPeer->id);
+        printf("Forwarding %d (%d/%d) bytes from backend's response to client request %d.\n", len, we->index, we->length, req->backendPeer->id);
         int true_read = marla_Ring_write(resp->backendResponse, in, len);
         if(true_read < len) {
+            printf("Could only forward %d\n", true_read);
             we->index += true_read;
         }
         else {
+            printf("Forwarded all %d.\n", true_read);
             we->index += len;
         }
         for(int loop = 1; loop;) {
             we->status = marla_clientWrite(req->backendPeer->cxn);
+            printf("client write gave %s.\n", marla_nameWriteResult(we->status));
             switch(we->status) {
             case marla_WriteResult_CONTINUE:
                 continue;
@@ -1617,13 +1660,14 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
         //marla_logMessagef(req->cxn->server, "Writing backend response to client");
         if(!marla_Ring_isEmpty(req->cxn->output)) {
             int nflushed;
-            if(marla_Connection_flush(req->cxn, &nflushed) == -1) {
+            if(marla_Connection_flush(req->cxn, &nflushed) <= 0) {
                 //fprintf(stderr, "Choked while flushing client response\n");
                 return marla_WriteResult_DOWNSTREAM_CHOKED;
             }
         }
 
         if(req->backendPeer) {
+            //fprintf(stderr, "Invoking backend\n");
             switch(marla_backendRead(req->backendPeer->cxn)) {
             case marla_WriteResult_CONTINUE:
                 continue;
@@ -1665,17 +1709,35 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
             }
         }
         else {
-            //fprintf(stderr, "Writing fixed-length response\n");
+            printf("Writing fixed-length response\n");
             void* in;
             size_t len;
             marla_Ring_writeSlot(req->cxn->output, &in, &len);
             if(len == 0) {
-                //fprintf(stderr, "Unable to write any more!\n");
+                printf("Unable to write any more!\n");
                 continue;
             }
-            size_t nread = marla_Ring_read(resp->backendResponse, in, len);
+
+                unsigned char tmp[marla_BUFSIZE + 1];
+                int nread = marla_Ring_read(resp->backendResponse, tmp, sizeof tmp - 1);
+                if(nread > 0) {
+                    tmp[nread] = 0;
+                    printf("BAckedn response: %s\n", tmp);
+                    marla_Ring_putbackRead(resp->backendResponse, nread);
+                }
+
+            nread = marla_Ring_read(resp->backendResponse, in, len);
+            if(nread > 0) {
+                unsigned char c = ((unsigned char*)in)[nread];
+                ((unsigned char*)in)[nread] = 0;
+                printf("Wrote %d bytes to output: %s\n", nread, in);
+                ((unsigned char*)in)[nread] = c;
+            }
+
+
             if(nread < len) {
                 marla_Ring_putbackWrite(req->cxn->output, len - nread);
+                printf("Putting back %d bytes\n", len - nread);
                 if(marla_Ring_isEmpty(resp->backendResponse) && (
                     !req->backendPeer || req->backendPeer->readStage == marla_BACKEND_REQUEST_DONE_READING)
                 ) {
@@ -1683,13 +1745,28 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
                     resp->handleStage = marla_BackendResponderStage_FLUSHING;
                     break;
                 }
+
+                nread = marla_Ring_read(req->cxn->output, tmp, sizeof tmp - 1);
+                if(nread > 0) {
+                    tmp[nread] = 0;
+                    printf("Client response: %s\n", tmp);
+                    marla_Ring_putbackRead(req->cxn->output, nread);
+                }
+
                 //marla_dumpRequest(req->backendPeer);
                 marla_logMessagef(server, "Choked after writing %ld\n", nread);
-                //fprintf(stderr, "Choked after partial read of %zu/%zu\n", nread, len);
+                printf("Choked after writing %zu response bytes into %zu-byte output buffer slot. Size=%d\n", nread, len, marla_Ring_size(req->cxn->output));
                 return marla_WriteResult_UPSTREAM_CHOKED;
             }
             else {
-                //fprintf(stderr, "Wrote %ld\n", nread);
+                printf("Wrote %ld bytes.\n", nread);
+            }
+            for(int i = 0; i < len; ++i) {
+                unsigned char c = ((unsigned char*)in)[i];
+                if(c == 0) {
+                    marla_killRequest(req, "Wrote a null!");
+                    return marla_WriteResult_KILLED;
+                }
             }
             if(req->responseLen != marla_MESSAGE_USES_CLOSE) {
                 req->remainingResponseLen -= nread;
@@ -1758,7 +1835,7 @@ static void marla_backendClientHandlerRequestBody(struct marla_Request* req, mar
     if(we->length < we->index) {
         marla_die(req->cxn->server, "Backend request index, %zu, is greater than length, %zu.", we->index, we->length);
     }
-    for(; we->length - we->index > 0;) {
+    for(int loop = 1; loop && we->length - we->index > 0;) {
         //fprintf(stderr, "Writing %d/%zu bytes for backend request.\n", we->index, we->length);
         int true_written = marla_BackendResponder_writeRequestBody(resp, we->buf + we->index, we->length - we->index);
         if(true_written < we->length - we->index) {
@@ -1768,18 +1845,20 @@ static void marla_backendClientHandlerRequestBody(struct marla_Request* req, mar
             we->index = we->length;
         }
 
-        switch(marla_backendWrite(req->backendPeer->cxn)) {
+        we->status = marla_backendWrite(req->backendPeer->cxn);
+        switch(we->status) {
         case marla_WriteResult_UPSTREAM_CHOKED:
-            if(true_written == 0) {
-                we->status = marla_WriteResult_UPSTREAM_CHOKED;
-                break;
+            if(true_written > 0) {
+                we->status = marla_WriteResult_CONTINUE;
+                continue;
             }
-            // Some bytes were written, so assume a different upstream is choking.
+            loop = 0;
             continue;
         case marla_WriteResult_CONTINUE:
             continue;
         default:
-            break;
+            loop = 0;
+            continue;
         }
     }
 }

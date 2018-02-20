@@ -1,4 +1,5 @@
 #include "marla.h"
+#include <string.h>
 
 void marla_measureChunk(size_t slotLen, int avail, size_t* prefix_len, size_t* availUsed)
 {
@@ -95,7 +96,7 @@ marla_WriteResult marla_writeChunk(marla_Server* server, marla_Ring* input, marl
         if(slotLen <= 5) {
             marla_logMessagef(server, "Slot provided is of insufficient size (%ld). Size=%ld, rindex=%d, windex=%d\n", slotLen, marla_Ring_size(output), output->read_index, output->write_index);
             marla_Ring_putbackWrite(output, slotLen);
-            return marla_WriteResult_UPSTREAM_CHOKED;
+            return marla_WriteResult_DOWNSTREAM_CHOKED;
         }
     }
     unsigned char* slot = slotData;

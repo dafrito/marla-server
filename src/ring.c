@@ -1,4 +1,6 @@
 #include "marla.h"
+#include <string.h>
+#include <unistd.h>
 
 static int ensure_po2(size_t given)
 {
@@ -108,20 +110,20 @@ void marla_Ring_writeSlot(marla_Ring* ring, void** slot, size_t* slotLen)
 
     int rindex = ring->read_index & capmask;
     if(index > rindex) {
-        //fprintf(stderr, "windex(%ld) > rindex(%d)\n", index, rindex);
+        printf("windex(%ld) > rindex(%d)\n", index, rindex);
         *slotLen = ring->capacity - index;
     }
     else if(index == rindex) {
-        //fprintf(stderr, "windex(%ld) == rindex(%d)\n", index, rindex);
+        printf("windex(%ld) == rindex(%d)\n", index, rindex);
         *slotLen = marla_Ring_capacity(ring) - index;
     }
     else {
         // index < rindex
-        //fprintf(stderr, "windex(%ld) < rindex(%d)\n", index, rindex);
+        printf("windex(%ld) < rindex(%d)\n", index, rindex);
         *slotLen = rindex - index;
     }
     ring->write_index += *slotLen;
-    //fprintf(stderr, "windex(%d)\n", ring->write_index & capmask);
+    printf("windex(%d) %zu\n", ring->write_index & capmask, *slotLen);
 }
 
 void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen)
@@ -149,6 +151,7 @@ void marla_Ring_readSlot(marla_Ring* ring, void** slot, size_t* slotLen)
     }
     else if(ring->write_index > ring->read_index) {
         *slotLen = ring->capacity - rindex;
+        printf("SPECIAL THIRD CASE: write_index=%d read_index=%d %d\n", ring->write_index, ring->read_index, *slotLen);
     }
     else {
         *slotLen = 0;
@@ -220,6 +223,17 @@ void marla_Ring_putbackWrite(marla_Ring* ring, size_t count)
 void marla_Ring_clear(marla_Ring* ring)
 {
     ring->read_index = ring->write_index;
+}
+
+void marla_Ring_dump(marla_Ring* ring, const char* name)
+{
+    int len = marla_Ring_size(ring);
+    unsigned char* tmp = malloc(len + 1);
+    marla_Ring_read(ring, tmp, len);
+    tmp[len] = 0;
+    printf("%s(%d): %s\n", name, len, tmp);
+    free(tmp);
+    marla_Ring_putbackRead(ring, len);
 }
 
 void marla_Ring_free(marla_Ring* ring)

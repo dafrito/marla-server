@@ -1,8 +1,9 @@
 #include "marla.h"
 #include <ctype.h>
 #include <endian.h>
+#include <string.h>
 
-static marla_WriteResult marla_processClientFields(marla_Request* req)
+marla_WriteResult marla_processClientFields(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
     marla_Server* server = cxn->server;
@@ -271,8 +272,7 @@ static marla_WriteResult marla_processClientFields(marla_Request* req)
                     }
                     *schemeSep = 0;
                     if(!strcmp("http", req->uri)) {
-                        marla_killRequest(req, "HTTP scheme unsupported, so no valid request.");
-                        return marla_WriteResult_KILLED;
+                        *schemeSep = ':';
                     }
                     else if(!strcmp("https", req->uri)) {
                         *schemeSep = ':';
@@ -288,7 +288,6 @@ static marla_WriteResult marla_processClientFields(marla_Request* req)
                     marla_killRequest(req, "Host too long.");
                     return marla_WriteResult_KILLED;
                 }
-
                 if(hostSep == 0) {
                     // GET https://localhost
                     strncpy(req->host, hostPart, MAX_FIELD_VALUE_LENGTH);
@@ -305,6 +304,11 @@ static marla_WriteResult marla_processClientFields(marla_Request* req)
 
                     // Transform an absolute URI into a origin form
                     memmove(req->uri, hostSep, strlen(hostSep));
+                }
+
+                if(index(req->host, '@')) {
+                    marla_killRequest(req, "Request must not provide userinfo.");
+                    return marla_WriteResult_KILLED;
                 }
             }
             else {
@@ -567,7 +571,6 @@ read_chunk_size:
             result.length = nread;
             req->handler(req, marla_EVENT_REQUEST_BODY, &result, -1);
             result.buf = 0;
-            req->lastReadIndex = result.index;
 
             switch(result.status) {
             case marla_WriteResult_CONTINUE:
@@ -576,6 +579,7 @@ read_chunk_size:
                     marla_killRequest(req, "Client request handler indicated continue, but chunk not completely read.");
                     return marla_WriteResult_KILLED;
                 }
+                // Continue to read.
                 result.index = 0;
                 req->lastReadIndex = 0;
                 marla_Connection_refill(req->cxn, 0);
@@ -595,6 +599,7 @@ read_chunk_size:
                 // Continue to read the next chunk.
                 req->lastReadIndex = 0;
                 result.index = 0;
+                req->lastReadIndex = result.index;
                 marla_Connection_refill(req->cxn, 0);
                 break;
             case marla_WriteResult_LOCKED:
@@ -713,7 +718,6 @@ static marla_WriteResult marla_readRequestBody(marla_Request* req)
         result.length = nread;
         req->handler(req, marla_EVENT_REQUEST_BODY, &result, -1);
         result.buf = 0;
-        req->lastReadIndex = result.index;
 
         //fprintf(stderr, "REQUEST_BODY handler returned %s.\n", marla_nameWriteResult(result.status));
 
@@ -1100,6 +1104,8 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
         req = cxn->latest_request;
     }
 
+    marla_Request_ref(req);
+
     if(req->is_backend) {
         marla_die(cxn->server, "Backend request found its way in client connection processing.");
     }
@@ -1109,6 +1115,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
     marla_WriteResult wr;
     wr = marla_processStatusLine(req);
     if(wr != marla_WriteResult_CONTINUE) {
+        marla_Request_unref(req);
         marla_logLeave(server, 0);
         cxn->in_read = 0;
         return wr;
@@ -1116,6 +1123,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
 
     wr = marla_processClientFields(req);
     if(wr != marla_WriteResult_CONTINUE) {
+        marla_Request_unref(req);
         marla_logLeave(server, 0);
         cxn->in_read = 0;
         return wr;
@@ -1126,9 +1134,11 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
         wr = marla_clientWrite(req->cxn);
         switch(wr) {
         case marla_WriteResult_LOCKED:
+            marla_Request_unref(req);
             goto exit_downstream_choked;
         case marla_WriteResult_UPSTREAM_CHOKED:
             marla_killRequest(req, "Failed to write HTTP continue or upgrade response because upstream choked, but there is nothing to choke on.");
+            marla_Request_unref(req);
             goto exit_killed;
         case marla_WriteResult_CONTINUE:
             continue;
@@ -1136,6 +1146,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
         case marla_WriteResult_KILLED:
         case marla_WriteResult_DOWNSTREAM_CHOKED:
         case marla_WriteResult_TIMEOUT:
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1145,6 +1156,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
     while(req->readStage < marla_CLIENT_REQUEST_DONE_READING) {
         wr = marla_inputWebSocket(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1152,6 +1164,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
 
         wr = marla_readRequestBody(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
@@ -1159,26 +1172,30 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
 
         wr = marla_readRequestChunks(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
         }
 
         if(req->backendPeer) {
-            for(; req->backendPeer && req->backendPeer->cxn->stage != marla_CLIENT_COMPLETE && req->backendPeer->writeStage != marla_BACKEND_REQUEST_DONE_WRITING; ) {
+            for(int loop = 1; loop && req->backendPeer && req->backendPeer->cxn->stage != marla_CLIENT_COMPLETE && req->backendPeer->writeStage != marla_BACKEND_REQUEST_DONE_WRITING; ) {
                 wr = marla_backendWrite(req->backendPeer->cxn);
                 switch(wr) {
                 case marla_WriteResult_CONTINUE:
                     continue;
                 case marla_WriteResult_KILLED:
                 case marla_WriteResult_CLOSED:
+                    loop = 0;
                     break;
                 case marla_WriteResult_LOCKED:
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
+                    marla_Request_unref(req);
                     goto exit_downstream_choked;
                 case marla_WriteResult_UPSTREAM_CHOKED:
                     break;
                 case marla_WriteResult_TIMEOUT:
+                    marla_Request_unref(req);
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
                     return wr;
@@ -1186,7 +1203,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
             }
         }
         else {
-            for(; req->cxn->stage != marla_CLIENT_COMPLETE && req->writeStage != marla_CLIENT_REQUEST_DONE_WRITING;) {
+            for(; cxn->requests_in_process > 0 && req->cxn->stage != marla_CLIENT_COMPLETE && req->writeStage != marla_CLIENT_REQUEST_DONE_WRITING;) {
                 wr = marla_clientWrite(req->cxn);
                 switch(wr) {
                 case marla_WriteResult_CONTINUE:
@@ -1198,6 +1215,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
                 case marla_WriteResult_KILLED:
                 case marla_WriteResult_CLOSED:
                 case marla_WriteResult_LOCKED:
+                    marla_Request_unref(req);
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
                     return wr;
@@ -1208,10 +1226,11 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
 
     if(req->readStage != marla_CLIENT_REQUEST_DONE_READING) {
         marla_killRequest(req, "Unexpected request stage: %d", req->readStage);
+        marla_Request_unref(req);
         goto exit_killed;
     }
 
-    for(;;) {
+    for(; cxn->requests_in_process > 0;) {
         wr = marla_clientWrite(req->cxn);
         switch(wr) {
         case marla_WriteResult_CONTINUE:
@@ -1219,19 +1238,32 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
         case marla_WriteResult_UPSTREAM_CHOKED:
             // It's possible a different upstream choked, but this one has no more data and so cannot be the source of the choke.
             marla_logMessage(server, "Different upstream must have choked.");
+            marla_Request_unref(req);
             goto exit_downstream_choked;
         case marla_WriteResult_KILLED:
         case marla_WriteResult_CLOSED:
+            marla_Request_unref(req);
             goto exit_continue;
         case marla_WriteResult_DOWNSTREAM_CHOKED:
         case marla_WriteResult_TIMEOUT:
         case marla_WriteResult_LOCKED:
+            marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return wr;
         }
     }
-    goto exit_continue;
+
+    marla_Request_unref(req);
+
+    if(cxn->requests_in_process > 0) {
+        for(marla_Request* req = cxn->current_request; req; req = req->next_request) {
+            if(req->readStage != marla_CLIENT_REQUEST_DONE_READING) {
+                goto exit_continue;
+            }
+        }
+    }
+    goto exit_upstream_choked;
 exit_upstream_choked:
     marla_logLeave(server, 0);
     cxn->in_read = 0;
@@ -1293,26 +1325,32 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         cxn->in_write = 0;
         return marla_WriteResult_UPSTREAM_CHOKED;
     }
+    marla_Request_ref(req);
+
     marla_logEntercf(cxn->server, "Processing", "Writing to client with current request's write state: %s", marla_nameRequestWriteStage(req->writeStage));
     if(req->writeStage == marla_CLIENT_REQUEST_WRITING_CONTINUE) {
         if(req->readStage != marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE) {
             marla_killRequest(req, "Unexpected read stage %s.", marla_nameRequestReadStage(req->readStage));
+            marla_Request_unref(req);
             goto exit_killed;
         }
-        const char* statusLine = "HTTP/1.1 100 Continue\r\n";
+        const char* statusLine = "HTTP/1.1 100 Continue\r\n\r\n";
         size_t len = strlen(statusLine);
         int nwritten = marla_Connection_write(cxn, statusLine, len);
         if(nwritten == 0) {
             marla_killRequest(req, "Premature connection close.");
+            marla_Request_unref(req);
             goto exit_killed;
         }
         if(nwritten < 0) {
             marla_killRequest(req, "Error %d while writing connection.", nwritten);
+            marla_Request_unref(req);
             goto exit_killed;
         }
         if(nwritten <= len) {
             // Only allow writes of the whole thing.
             marla_Connection_putbackWrite(cxn, nwritten);
+            marla_Request_unref(req);
             goto exit_downstream_choked;
         }
 
@@ -1336,15 +1374,18 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         int nwritten = marla_Connection_write(cxn, out, nwrit);
         if(nwritten == 0) {
             marla_killRequest(req, "Premature connection close.");
+            marla_Request_unref(req);
             goto exit_killed;
         }
         if(nwritten < 0) {
             marla_killRequest(req, "Error while writing connection.");
+            marla_Request_unref(req);
             goto exit_killed;
         }
         if(nwritten < nwrit) {
             // Only allow writes of the whole thing.
             marla_Connection_putbackWrite(cxn, nwritten);
+            marla_Request_unref(req);
             goto exit_downstream_choked;
         }
 
@@ -1366,8 +1407,10 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
                 loop = 0;
                 continue;
             case marla_WriteResult_CLOSED:
+                marla_Request_unref(req);
                 goto exit_closed;
             case marla_WriteResult_KILLED:
+                marla_Request_unref(req);
                 goto exit_killed;
             }
         }
@@ -1375,6 +1418,7 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
 
     marla_WriteResult wr = marla_outputWebSocket(req);
     if(wr != marla_WriteResult_CONTINUE) {
+        marla_Request_unref(req);
         marla_logLeave(server, 0);
         cxn->in_write = 0;
         return wr;
@@ -1386,6 +1430,7 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
     for(; req->cxn->stage != marla_CLIENT_COMPLETE && req->writeStage == marla_CLIENT_REQUEST_WRITING_RESPONSE; ) {
         switch(result.status) {
         case marla_WriteResult_UPSTREAM_CHOKED:
+            marla_Request_unref(req);
             goto exit_upstream_choked;
         case marla_WriteResult_DOWNSTREAM_CHOKED:
             // Write current output.
@@ -1394,13 +1439,16 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
                 int rv = marla_Connection_flush(cxn, &nflushed);
                 if(rv < 0) {
                     marla_logMessage(server, "Downstream truly choked.");
+                    marla_Request_unref(req);
                     goto exit_downstream_choked;
                 }
                 if(rv == 0) {
+                    marla_Request_unref(req);
                     goto exit_closed;
                 }
             }
             else {
+                marla_Request_unref(req);
                 goto exit_downstream_choked;
             }
             // Fall through regardless.
@@ -1413,12 +1461,16 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
             req->writeStage = marla_CLIENT_REQUEST_AFTER_RESPONSE;
             continue;
         case marla_WriteResult_TIMEOUT:
+            marla_Request_unref(req);
             goto exit_timeout;
         case marla_WriteResult_LOCKED:
+            marla_Request_unref(req);
             goto exit_locked;
         case marla_WriteResult_KILLED:
+            marla_Request_unref(req);
             goto exit_killed;
         case marla_WriteResult_CLOSED:
+            marla_Request_unref(req);
             goto exit_closed;
         }
     }
@@ -1444,9 +1496,11 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
             int nflushed;
             int rv = marla_Connection_flush(cxn, &nflushed);
             if(rv < 0) {
+                marla_Request_unref(req);
                 goto exit_downstream_choked;
             }
             if(rv == 0) {
+                marla_Request_unref(req);
                 goto exit_closed;
             }
         }
@@ -1462,12 +1516,13 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         else {
             cxn->current_request = req->next_request;
         }
+        marla_Request_unref(req);
+        --cxn->requests_in_process;
         if(req->close_after_done) {
             marla_logMessagef(server, "Closing connection %d now that client request %d is done writing.", cxn->id, req->id);
+            marla_Request_unref(req);
             goto shutdown;
         }
-        marla_Request_destroy(req);
-        --cxn->requests_in_process;
         if(backend) {
             for(int loop = 1; loop;) {
                 switch(marla_backendRead(backend)) {
@@ -1503,7 +1558,7 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
             }
         }
     }
-    goto exit_continue;
+    goto exit_upstream_choked;
 
 exit_continue:
     marla_logLeave(server, 0);

@@ -122,6 +122,8 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     req->statusCode = 0;
     memset(req->statusLine, 0, sizeof req->statusLine);
 
+    req->refs = 1;
+
     req->id = marla_Request_NEXT_ID++;
 
     req->handler = 0;
@@ -189,8 +191,23 @@ marla_Request* marla_Request_new(marla_Connection* cxn)
     return req;
 }
 
-void marla_Request_destroy(marla_Request* req)
+void marla_Request_ref(marla_Request* req)
 {
+    ++req->refs;
+}
+
+void marla_Request_unref(marla_Request* req)
+{
+    --req->refs;
+    if(req->refs > 0) {
+        return;
+    }
+    if(req->refs < 0) {
+        fprintf(stderr, "Already destroyed\n");
+        abort();
+    }
+
+    // Destroy.
     if(req->handler) {
         req->handler(req, marla_EVENT_DESTROYING, 0, 0);
     }

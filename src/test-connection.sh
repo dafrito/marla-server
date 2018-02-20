@@ -1,6 +1,7 @@
 #!/bin/bash
-./test_duplex $* || exit 1
-./test_connection $* || exit 1
-./test_chunks $* || exit 1
-./test_websocket $* || exit 1
-./test_backend $* || exit 1
+
+
+for tester in test_duplex test_connection test_chunks test_websocket test_backend; do
+    #./$tester $* || exit 1
+    ./$tester $* >$HOME/tmp/test.log 2>&1 || (cat $HOME/tmp/test.log; exit 1)
+done

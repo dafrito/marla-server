@@ -1179,7 +1179,7 @@ int test_large_download()
         //wr = marla_backendRead(backend);
         wr = marla_clientWrite(client);
         int nwritten = marla_readDuplex(client, outbuf + outdex, RESPONSE_SIZE - outdex);
-        fprintf(stderr, "outdex=%d. %d writ\n", outdex, nwritten);
+        //fprintf(stderr, "outdex=%d. %d writ\n", outdex, nwritten);
         if(nwritten > 0) {
             outdex += nwritten;
             //fprintf(stderr, "%s\n", outbuf);
@@ -1191,7 +1191,7 @@ int test_large_download()
                     continue;
                 }
                 for(; RESPONSE_SIZE - index > 0;) {
-                    fprintf(stderr, "%d/%d\n", index, RESPONSE_SIZE);
+                    //fprintf(stderr, "%d/%d\n", index, RESPONSE_SIZE);
                     int nresponded = marla_writeDuplex(backend, inbuf + index, RESPONSE_SIZE - index);
                     if(nresponded > 0) {
                         index += nresponded;
@@ -1205,7 +1205,7 @@ int test_large_download()
                 }
             }
             else {
-                fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+                //fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
             }
         }
     }
@@ -1219,7 +1219,7 @@ int test_large_download()
         fprintf(stderr, "INDEX is zero\n");
         return 1;
     }
-    fprintf(stderr, "index=%d outdex=%d\n", index, outdex);
+    //fprintf(stderr, "index=%d outdex=%d\n", index, outdex);
 
     return 0;
 }

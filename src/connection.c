@@ -194,7 +194,7 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
             // Partial write.
             //printf("PUTTING BACK %d\n", len - true_flushed);
             marla_Ring_putbackRead(cxn->output, len - true_flushed);
-            marla_Ring_dump(cxn->output, "cxn->output");
+            //marla_Ring_dump(cxn->output, "cxn->output");
             break;
         }
     }

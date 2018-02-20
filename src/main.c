@@ -156,8 +156,13 @@ void on_sigint()
     server.server_status = marla_SERVER_DESTROYING;
 }
 
+static void handle_exit()
+{
+}
+
 int main(int argc, const char**argv)
 {
+    atexit(handle_exit);
     int s;
     struct epoll_event *events = 0;
 

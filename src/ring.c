@@ -15,7 +15,7 @@ marla_Ring* marla_Ring_new(size_t capacity)
 {
     if(!ensure_po2(capacity)) {
         fprintf(stderr, "Rings must not be created with non power-of-two sizes, but %ld was given.\n", capacity);
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     marla_Ring* rv = malloc(sizeof(marla_Ring));
     rv->capacity = capacity;

@@ -49,7 +49,7 @@ int test1()
 {
     marla_Server server;
     marla_Server_init(&server);
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, duplexHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, duplexHook, 0);
 
     marla_Connection* client = marla_Connection_new(&server);
     marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
@@ -115,7 +115,7 @@ int test2()
 {
     marla_Server server;
     marla_Server_init(&server);
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, setToDataHandler, headerHandler);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, setToDataHandler, headerHandler);
 
     marla_Connection* client = marla_Connection_new(&server);
     marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
@@ -196,7 +196,7 @@ int test_filled_duplex()
 {
     marla_Server server;
     marla_Server_init(&server);
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, setToDataHandler, headerHandler);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, setToDataHandler, headerHandler);
 
     marla_Connection* client = marla_Connection_new(&server);
     marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);

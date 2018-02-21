@@ -829,7 +829,7 @@ int test_trailer()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET / HTTP/1.1\r\nHost: localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport);
@@ -873,7 +873,7 @@ int test_userinfo_is_treated_as_error()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET http://foo:bar@localhost:%s/ HTTP/1.1\r\nHost: foo:bar@localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport, server.serverport);
@@ -908,7 +908,7 @@ int test_userinfo_is_treated_as_error_2()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET http://foo:bar@localhost:%s/ HTTP/1.1\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport);
@@ -943,7 +943,7 @@ int test_query()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET http://localhost:%s/login?user=foo&pw=bar HTTP/1.1\r\nHost: localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport, server.serverport);
@@ -976,7 +976,7 @@ int test_long_url()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     char long_url[512];
@@ -1013,7 +1013,7 @@ int test_choke_on_first_field()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\n");
@@ -1046,7 +1046,7 @@ int test_choke_on_header_crlf_terminator()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r", server.serverport);
@@ -1112,7 +1112,7 @@ int test_large_download()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_SERVER_HOOK_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server.serverport);

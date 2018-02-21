@@ -52,7 +52,7 @@ void marla_Server_init(struct marla_Server* server)
     server->first_connection = 0;
     server->last_connection = 0;
 
-    for(int i = 0; i < marla_SERVER_HOOK_MAX; ++i) {
+    for(int i = 0; i < marla_ServerHook_MAX; ++i) {
         struct marla_HookList* hookList = server->hooks + i;
         hookList->firstHook = 0;
         hookList->lastHook = 0;
@@ -88,7 +88,7 @@ void marla_Server_free(struct marla_Server* server)
         marla_Connection_destroy(server->first_connection);
     }
 
-    for(enum marla_ServerHook serverHook = 0; serverHook < marla_SERVER_HOOK_MAX; ++serverHook) {
+    for(enum marla_ServerHook serverHook = 0; serverHook < marla_ServerHook_MAX; ++serverHook) {
         struct marla_HookList* hookList = server->hooks + serverHook;
         struct marla_HookEntry* hook = hookList->firstHook;
         while(hook) {

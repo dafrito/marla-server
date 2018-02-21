@@ -189,6 +189,8 @@ marla_EVENT_WEBSOCKET_CLOSE_REASON,
 marla_EVENT_DESTROYING,
 marla_BACKEND_EVENT_DESTROYING
 };
+typedef enum marla_ClientEvent marla_ClientEvent;
+
 void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* data, int datalen);
 void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len);
 void marla_backendClientHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int len);
@@ -409,10 +411,11 @@ struct marla_HookEntry* lastHook;
 };
 
 enum marla_ServerHook {
-marla_SERVER_HOOK_ROUTE = 0,
-marla_SERVER_HOOK_WEBSOCKET = 1,
-marla_SERVER_HOOK_MAX = 2
+marla_ServerHook_ROUTE = 0,
+marla_ServerHook_WEBSOCKET = 1,
+marla_ServerHook_MAX = 2
 };
+typedef enum marla_ServerHook marla_ServerHook;
 
 struct marla_ServerModule;
 
@@ -452,7 +455,7 @@ pthread_t terminal_thread;
 volatile int has_terminal;
 struct marla_ServerModule* first_module;
 struct marla_ServerModule* last_module;
-struct marla_HookList hooks[marla_SERVER_HOOK_MAX];
+struct marla_HookList hooks[marla_ServerHook_MAX];
 };
 
 typedef struct marla_Server marla_Server;

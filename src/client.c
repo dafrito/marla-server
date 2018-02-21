@@ -1034,7 +1034,7 @@ static marla_WriteResult marla_processStatusLine(marla_Request* req)
             return marla_WriteResult_KILLED;
         }
 
-        marla_Server_invokeHook(cxn->server, marla_SERVER_HOOK_ROUTE, req);
+        marla_Server_invokeHook(cxn->server, marla_ServerHook_ROUTE, req);
 
         req->readStage = marla_CLIENT_REQUEST_READING_FIELD;
     }
@@ -1390,7 +1390,7 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         }
 
         // Allow the handler to change when WebSocket is going to be used.
-        marla_Server_invokeHook(cxn->server, marla_SERVER_HOOK_WEBSOCKET, req);
+        marla_Server_invokeHook(cxn->server, marla_ServerHook_WEBSOCKET, req);
 
         req->readStage = marla_CLIENT_REQUEST_WEBSOCKET;
         req->writeStage = marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE;

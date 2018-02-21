@@ -1,18 +1,18 @@
 CC=clang
-PORT=127.0.0.1:4778
+PORT=127.0.0.1:4792
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
 BINDIR=$(PREFIX)/bin
 LIBDIR=$(PREFIX)/lib
 INCLUDEDIR=$(PREFIX)/include
-MARLAFLAGS=-nossl
+MARLAFLAGS=-nossl -nocurses
 USER=$(shell whoami)
 UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=39
+PACKAGE_RELEASE=40
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
@@ -22,11 +22,13 @@ CFLAGS=-Og -Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1
 core_LDLIBS=`pkg-config --libs openssl ncurses` -ldl
 main_LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 
-all: src/test_basic src/test-ring.sh src/test-connection.sh
+all: src/test_basic src/test-ring.sh src/test-connection.sh src/test_many_requests
 	cd src && ./test_basic
 	cd src && ./test-ring.sh
 	cd src && ./test-connection.sh $(PORT)
 	$(MAKE) marla
+	cd ../servermod && $(MAKE)
+	cd ../environment_ws && $(MAKE)
 .PHONY: all
 
 src/test-ring.sh: src/test_ring src/test_small_ring src/test_ring_putback src/test_ring_po2
@@ -96,7 +98,7 @@ tmux:
 	tmux -S marla.tmux att
 .PHONY: tmux
 
-check: certificate.pem src/test_basic src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend src/test_duplex
+check: certificate.pem src/test_basic src/test_ring src/test_small_ring src/test_ring_putback src/test_connection src/test_websocket src/test_chunks src/test_backend src/test_duplex src/test_many_requests
 	cd src || exit; \
 	for i in seq 3; do \
 	echo Running connecting tests; \
@@ -108,6 +110,9 @@ check: certificate.pem src/test_basic src/test_ring src/test_small_ring src/test
 
 src/test_basic: src/test_basic.c src/ring.o
 	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)
+
+src/test_many_requests: src/test_many_requests.c $(BASE_OBJECTS) src/marla.h Makefile
+	$(CC) $(CFLAGS) -g $@.c $(BASE_OBJECTS) -o$@ $(core_LDLIBS)
 
 src/test_ring: src/test_ring.c src/ring.o
 	$(CC) $(CFLAGS) -g $^ -o$@ $(core_LDLIBS)

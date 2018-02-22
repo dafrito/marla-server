@@ -1,12 +1,24 @@
 #!/bin/bash
 
-if test $# -lt 1; then
-    echo "The serverport must be provided" >&2
-    exit 1
+port=`sed -nre '/^PORT=/s/PORT=//p' Makefile`
+
+if echo $port | grep -v -q ':'; then
+    port=localhost:$port
 fi
 
-for t in `seq 1 10000`; do
-    echo $t
-    curl localhost:$*/contact
+path=$*
+
+if test $# -lt 1; then
+    path=/contact
+fi
+
+if echo $path | grep -v -q '^/'; then
+    path=/$path
+fi
+
+
+for t in `seq 1 99999`; do
+    echo $t $port$path
+    curl $port$path || exit
     sleep 0.05
 done

@@ -1,24 +1,5 @@
 #include "marla.h"
 
-// SSL source
-    // int marla_Source_New(SSL_CTX* ctx, int fd)
-    // void marla_Source_Destroy()
-    // int marla_Source_Init(SSL*)
-    // int marla_Source_Read(void* sink, size_t len)
-    // int marla_Source_Write(void* source, size_t len)
-
-// Loopback source
-    // int marla_Source_New(int bufsize)
-    // void marla_Source_Destroy()
-    // int marla_Source_Init()
-    // int marla_Source_Read(void* sink, size_t len)
-    // int marla_Source_Write(void* source, size_t len)
-    // int marla_Source_Feed(void* source, size_t len) <-- loopback
-    // int marla_Source_Consume(void* sink, size_t len) <-- loopback
-
-// marla_Connection {
-//     void* source;
-
 const char* marla_nameConnectionStage(enum marla_ConnectionStage stage)
 {
     switch(stage) {

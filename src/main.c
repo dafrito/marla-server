@@ -160,6 +160,178 @@ static void handle_exit()
 {
 }
 
+static void process_connection(struct epoll_event ep)
+{
+    //marla_logMessagef(&server, "%d", ep.events);
+    if((ep.events & EPOLLERR) || (ep.events & EPOLLHUP) || (ep.events & EPOLLRDHUP) || (!(ep.events & EPOLLIN) && !(ep.events & EPOLLOUT))) {
+        marla_Connection* cxn = (marla_Connection*)ep.data.ptr;
+        // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
+        if(ep.events & EPOLLRDHUP) {
+            if(cxn == server.backend) {
+                marla_logMessagef(&server, "Backend connection done sending data.");
+                marla_Connection_destroy(cxn);
+            }
+            marla_logMessagef(&server, "Connection done sending data.");
+            fprintf(stderr, "Connection done sending data.\n");
+            return;
+        }
+        if(ep.events & EPOLLHUP) {
+            marla_Connection_destroy(cxn);
+            if(cxn == server.backend) {
+                marla_logMessagef(&server, "Backend connection done accepting connections.");
+            }
+            return;
+        }
+        marla_Connection_destroy(cxn);
+        //fprintf(stderr, "epoll error: %d\n", ep.events);
+        marla_logMessagef(&server, "Epoll error %d (EPOLLERR=%d, EPOLLHUP=%d)", ep.events, ep.events&EPOLLERR, ep.events&EPOLLHUP);
+        return;
+    }
+    marla_Connection* cxn = (marla_Connection*)ep.data.ptr;
+    {
+        char buf[marla_BUFSIZE];
+        memset(buf, 0, sizeof buf);
+        cxn->describeSource(cxn, buf, sizeof buf);
+
+        if(ep.events & EPOLLOUT && ep.events & EPOLLIN) {
+            marla_logEntercf(&server, "Client processing", "Received client EPOLLIN and EPOLLOUT socket event on %s.", buf);
+        }
+        else if(ep.events & EPOLLIN) {
+            marla_logEntercf(&server, "Client processing", "Received client EPOLLIN socket event on %s.", buf);
+        }
+        else if(ep.events & EPOLLOUT) {
+            marla_logEntercf(&server, "Client processing", "Received client EPOLLOUT socket event on %s.", buf);
+        }
+        else {
+            marla_die(&server, "Unexpected epoll event");
+        }
+    }
+    /* Connection is ready */
+    if(ep.events & EPOLLIN) {
+        cxn->wantsRead = 0;
+    }
+    if(ep.events & EPOLLOUT) {
+        cxn->wantsWrite = 0;
+    }
+    if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
+        //fprintf(stderr, "Attempting shutdown for connection\n");
+        // Client needs shutdown.
+        if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
+            cxn->shouldDestroy = 1;
+        }
+        if(cxn->shouldDestroy) {
+            //fprintf(stderr, "Connection should be destroyed\n");
+        }
+    }
+    else if(marla_clientAccept(cxn) == 0) {
+        if(ep.events & EPOLLIN) {
+            cxn->wantsRead = 0;
+            // Available for read.
+            for(int loop = 1; loop && cxn->stage != marla_CLIENT_COMPLETE;) {
+                marla_WriteResult wr = marla_clientRead(cxn);
+                size_t refilled = 0;
+                switch(wr) {
+                case marla_WriteResult_CONTINUE:
+                    continue;
+                case marla_WriteResult_UPSTREAM_CHOKED:
+                    marla_Connection_refill(cxn, &refilled);
+                    if(refilled <= 0) {
+                        loop = 0;
+                    }
+                    continue;
+                case marla_WriteResult_DOWNSTREAM_CHOKED:
+                    if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                        int nflushed;
+                        int rv = marla_Connection_flush(cxn, &nflushed);
+                        if(rv <= 0) {
+                            //fprintf(stderr, "Responder choked.\n");
+                            loop = 0;
+                        }
+                    }
+                    else {
+                        loop = 0;
+                    }
+                    continue;
+                default:
+                    //fprintf(stderr, "Connection %d's read returned %s\n", cxn->id, marla_nameWriteResult(wr));
+                    loop = 0;
+                    continue;
+                }
+            }
+        }
+        if(ep.events & EPOLLOUT) {
+            // Available for write.
+            cxn->wantsWrite = 0;
+            for(int loop = 1; loop && cxn->stage != marla_CLIENT_COMPLETE;) {
+                marla_WriteResult wr = marla_clientWrite(cxn);
+                size_t refilled = 0;
+                switch(wr) {
+                case marla_WriteResult_CONTINUE:
+                    continue;
+                case marla_WriteResult_UPSTREAM_CHOKED:
+                    marla_Connection_refill(cxn, &refilled);
+                    if(refilled <= 0) {
+                        loop = 0;
+                    }
+                    continue;
+                case marla_WriteResult_DOWNSTREAM_CHOKED:
+                    if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                        int nflushed;
+                        int rv = marla_Connection_flush(cxn, &nflushed);
+                        if(rv <= 0) {
+                            //fprintf(stderr, "Responder choked.\n");
+                            loop = 0;
+                        }
+                    }
+                    else {
+                        loop = 0;
+                    }
+                    continue;
+                default:
+                    //fprintf(stderr, "Connection %d's write returned %s\n", cxn->id, marla_nameWriteResult(wr));
+                    loop = 0;
+                    continue;
+                }
+            }
+        }
+
+        if(cxn->stage == marla_CLIENT_COMPLETE) {
+            marla_logMessage(&server, "Connection will be destroyed.");
+        }
+
+        if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+            int nflushed;
+            int rv = marla_Connection_flush(cxn, &nflushed);
+            if(rv <= 0) {
+                //fprintf(stderr, "Responder choked.\n");
+                return;
+            }
+        }
+    }
+
+    // Double-check if the shutdown needs to be run.
+    if(cxn->stage == marla_CLIENT_COMPLETE) {
+        marla_logMessage(cxn->server, "Attempting shutdown for connection");
+        // Client needs shutdown.
+        if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
+            cxn->shouldDestroy = 1;
+        }
+        if(cxn->shouldDestroy) {
+            marla_logMessage(cxn->server, "Connection should be destroyed");
+        }
+    }
+    if(cxn->shouldDestroy) {
+        marla_Connection_destroy(cxn);
+        marla_logLeave(&server, "Destroying connection.");
+    }
+    else {
+        char buf[marla_BUFSIZE];
+        memset(buf, 0, sizeof buf);
+        cxn->describeSource(cxn, buf, sizeof buf);
+        marla_logLeavef(&server, "Waiting for %s to become available.", buf);
+    }
+}
+
 int main(int argc, const char**argv)
 {
     atexit(handle_exit);
@@ -499,173 +671,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 continue;
             }
             else {
-                //marla_logMessagef(&server, "%d", events[i].events);
-                if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (events[i].events & EPOLLRDHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
-                    marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
-                    // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
-                    if(events[i].events & EPOLLRDHUP) {
-                        if(cxn == server.backend) {
-                            marla_logMessagef(&server, "Backend connection done sending data.");
-                            marla_Connection_destroy(cxn);
-                        }
-                        marla_logMessagef(&server, "Connection done sending data.");
-                        continue;
-                    }
-                    if(events[i].events & EPOLLHUP) {
-                        marla_Connection_destroy(cxn);
-                        if(cxn == server.backend) {
-                            marla_logMessagef(&server, "Backend connection done accepting connections.");
-                        }
-                        continue;
-                    }
-                    marla_Connection_destroy(cxn);
-                    //fprintf(stderr, "epoll error: %d\n", events[i].events);
-                    marla_logMessagef(&server, "Epoll error %d (EPOLLERR=%d, EPOLLHUP=%d)", events[i].events, events[i].events&EPOLLERR, events[i].events&EPOLLHUP);
-                    continue;
-                }
-                marla_Connection* cxn = (marla_Connection*)events[i].data.ptr;
-                {
-                    char buf[marla_BUFSIZE];
-                    memset(buf, 0, sizeof buf);
-                    cxn->describeSource(cxn, buf, sizeof buf);
-
-                    if(events[i].events & EPOLLOUT && events[i].events & EPOLLIN) {
-                        marla_logEntercf(&server, "Client processing", "Received client EPOLLIN and EPOLLOUT socket event on %s.", buf);
-                    }
-                    else if(events[i].events & EPOLLIN) {
-                        marla_logEntercf(&server, "Client processing", "Received client EPOLLIN socket event on %s.", buf);
-                    }
-                    else if(events[i].events & EPOLLOUT) {
-                        marla_logEntercf(&server, "Client processing", "Received client EPOLLOUT socket event on %s.", buf);
-                    }
-                    else {
-                        marla_die(&server, "Unexpected epoll event");
-                    }
-                }
-                /* Connection is ready */
-                if(events[i].events & EPOLLIN) {
-                    cxn->wantsRead = 0;
-                }
-                if(events[i].events & EPOLLOUT) {
-                    cxn->wantsWrite = 0;
-                }
-                if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
-                    //fprintf(stderr, "Attempting shutdown for connection\n");
-                    // Client needs shutdown.
-                    if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
-                        cxn->shouldDestroy = 1;
-                    }
-                    if(cxn->shouldDestroy) {
-                        //fprintf(stderr, "Connection should be destroyed\n");
-                    }
-                }
-                else if(marla_clientAccept(cxn) == 0) {
-                    if(events[i].events & EPOLLIN) {
-                        cxn->wantsRead = 0;
-                        // Available for read.
-                        for(int loop = 1; loop && cxn->stage != marla_CLIENT_COMPLETE;) {
-                            marla_WriteResult wr = marla_clientRead(cxn);
-                            size_t refilled = 0;
-                            switch(wr) {
-                            case marla_WriteResult_CONTINUE:
-                                continue;
-                            case marla_WriteResult_UPSTREAM_CHOKED:
-                                marla_Connection_refill(cxn, &refilled);
-                                if(refilled <= 0) {
-                                    loop = 0;
-                                }
-                                continue;
-                            case marla_WriteResult_DOWNSTREAM_CHOKED:
-                                if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
-                                    int nflushed;
-                                    int rv = marla_Connection_flush(cxn, &nflushed);
-                                    if(rv <= 0) {
-                                        //fprintf(stderr, "Responder choked.\n");
-                                        loop = 0;
-                                    }
-                                }
-                                else {
-                                    loop = 0;
-                                }
-                                continue;
-                            default:
-                                //fprintf(stderr, "Connection %d's read returned %s\n", cxn->id, marla_nameWriteResult(wr));
-                                loop = 0;
-                                continue;
-                            }
-                        }
-                    }
-                    if(events[i].events & EPOLLOUT) {
-                        // Available for write.
-                        cxn->wantsWrite = 0;
-                        for(int loop = 1; loop && cxn->stage != marla_CLIENT_COMPLETE;) {
-                            marla_WriteResult wr = marla_clientWrite(cxn);
-                            size_t refilled = 0;
-                            switch(wr) {
-                            case marla_WriteResult_CONTINUE:
-                                continue;
-                            case marla_WriteResult_UPSTREAM_CHOKED:
-                                marla_Connection_refill(cxn, &refilled);
-                                if(refilled <= 0) {
-                                    loop = 0;
-                                }
-                                continue;
-                            case marla_WriteResult_DOWNSTREAM_CHOKED:
-                                if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
-                                    int nflushed;
-                                    int rv = marla_Connection_flush(cxn, &nflushed);
-                                    if(rv <= 0) {
-                                        //fprintf(stderr, "Responder choked.\n");
-                                        loop = 0;
-                                    }
-                                }
-                                else {
-                                    loop = 0;
-                                }
-                                continue;
-                            default:
-                                //fprintf(stderr, "Connection %d's write returned %s\n", cxn->id, marla_nameWriteResult(wr));
-                                loop = 0;
-                                continue;
-                            }
-                        }
-                    }
-
-                    if(cxn->stage == marla_CLIENT_COMPLETE) {
-                        marla_logMessage(&server, "Connection will be destroyed.");
-                    }
-
-                    if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
-                        int nflushed;
-                        int rv = marla_Connection_flush(cxn, &nflushed);
-                        if(rv <= 0) {
-                            //fprintf(stderr, "Responder choked.\n");
-                            return rv;
-                        }
-                    }
-                }
-
-                // Double-check if the shutdown needs to be run.
-                if(cxn->stage == marla_CLIENT_COMPLETE) {
-                    marla_logMessage(cxn->server, "Attempting shutdown for connection");
-                    // Client needs shutdown.
-                    if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
-                        cxn->shouldDestroy = 1;
-                    }
-                    if(cxn->shouldDestroy) {
-                        marla_logMessage(cxn->server, "Connection should be destroyed");
-                    }
-                }
-                if(cxn->shouldDestroy) {
-                    marla_Connection_destroy(cxn);
-                    marla_logLeave(&server, "Destroying connection.");
-                }
-                else {
-                    char buf[marla_BUFSIZE];
-                    memset(buf, 0, sizeof buf);
-                    cxn->describeSource(cxn, buf, sizeof buf);
-                    marla_logLeavef(&server, "Waiting for %s to become available.", buf);
-                }
+                process_connection(events[i]);
             }
         }
     }

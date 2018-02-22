@@ -994,7 +994,7 @@ static int test_readBackendResponseBody()
                         max_read = max_output_throttle;
                     }
                     int nwritten = marla_readDuplex(client, output_buf + outdex, max_read);
-                    printf("%d output (size=%d: %s\n", nwritten, marla_Ring_size(((marla_DuplexSource*)client->source)->output), output_buf + outdex);
+                    printf("%d output (size=%zu: %s\n", nwritten, marla_Ring_size(((marla_DuplexSource*)client->source)->output), output_buf + outdex);
                     if(nwritten < 0) {
                         return 1;
                     }
@@ -1149,7 +1149,7 @@ static int test_readBackendResponseBody2()
                         max_read = max_output_throttle;
                     }
                     int nwritten = marla_readDuplex(client, output_buf + outdex, max_read);
-                    printf("%d output (size=%d: %s\n", nwritten, marla_Ring_size(((marla_DuplexSource*)client->source)->output), output_buf + outdex);
+                    printf("%d output (size=%zu: %s\n", nwritten, marla_Ring_size(((marla_DuplexSource*)client->source)->output), output_buf + outdex);
                     if(nwritten < 0) {
                         return 1;
                     }
@@ -1304,7 +1304,7 @@ static int test_readBackendResponseBody3()
                         max_read = max_output_throttle;
                     }
                     int nwritten = marla_readDuplex(client, output_buf + outdex, max_read);
-                    printf("%d output (size=%d: %s\n", nwritten, marla_Ring_size(((marla_DuplexSource*)client->source)->output), output_buf + outdex);
+                    printf("%d output (size=%zu: %s\n", nwritten, marla_Ring_size(((marla_DuplexSource*)client->source)->output), output_buf + outdex);
                     if(nwritten < 0) {
                         return 1;
                     }

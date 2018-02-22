@@ -1,18 +1,18 @@
 CC=clang
-PORT=127.0.0.1:4792
+PORT=127.0.0.1:4787
 BACKEND_PORT=8081
 LOGPORT=28122
 PREFIX=/home/$(shell whoami)
 BINDIR=$(PREFIX)/bin
 LIBDIR=$(PREFIX)/lib
 INCLUDEDIR=$(PREFIX)/include
-MARLAFLAGS=-nossl -nocurses
+MARLAFLAGS=-nossl
 USER=$(shell whoami)
 UID=$(shell id -u `whoami`)
 GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=40
+PACKAGE_RELEASE=41
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
@@ -148,6 +148,9 @@ clean:
 	cd ../environment_ws && $(MAKE) clean
 .PHONY: clean
 
+clena: clean
+.PHONY: clena
+
 clean-certificate: | certificate.pem key.pem
 	rm certificate.pem key.pem
 .PHONY: clean-certificate
@@ -178,7 +181,7 @@ $(PACKAGE_NAME).spec: rpm.spec.in
 	mv $@-wip $@
 	chmod +x $@
 
-$(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz: src/*.c src/*.h Makefile src/*.sh src/*.html src/*.hreq src/*.hrep logviewer.jar
+$(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz: src/*.c src/*.h Makefile src/*.sh src/*.html src/*.hreq src/*.hrep logviewer.jar spam.sh
 	tar --transform="s'^'$(PACKAGE_NAME)-$(PACKAGE_VERSION)/'g" -cz -f $@ $^
 
 dist-gzip: $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz $(PACKAGE_NAME).spec

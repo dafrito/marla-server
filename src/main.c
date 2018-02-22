@@ -147,6 +147,7 @@ void on_sigusr1()
 
 static int exit_value = EXIT_SUCCESS;
 extern void* terminal_operator(void* data);
+extern void* idle_operator(void* data);
 
 struct marla_Server server;
 
@@ -160,6 +161,11 @@ static void handle_exit()
 {
 }
 
+void marla_processConnection(marla_Connection* cxn)
+{
+
+}
+
 static void process_connection(struct epoll_event ep)
 {
     //marla_logMessagef(&server, "%d", ep.events);
@@ -171,8 +177,11 @@ static void process_connection(struct epoll_event ep)
                 marla_logMessagef(&server, "Backend connection done sending data.");
                 marla_Connection_destroy(cxn);
             }
+            else if(cxn->requests_in_process == 0) {
+                marla_Connection_destroy(cxn);
+            }
             marla_logMessagef(&server, "Connection done sending data.");
-            fprintf(stderr, "Connection done sending data.\n");
+            //fprintf(stderr, "Connection done sending data.\n");
             return;
         }
         if(ep.events & EPOLLHUP) {
@@ -547,7 +556,13 @@ int main(int argc, const char**argv)
     }
     marla_logLeave(&server, "Entering event loop.");
 
-    while(1) {
+    if(0 != pthread_create(&server.idle_thread, 0, idle_operator, &server)) {
+        fprintf(stderr, "Failed to create idle thread");
+        marla_logLeave(&server, "Failed to create idle thread");
+        exit(EXIT_FAILURE);
+    }
+
+    for(;;) {
         int n, i;
 
         if(server.server_status == marla_SERVER_DESTROYING) {
@@ -606,7 +621,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                 }
 
                 // Accept socket connections.
-                while(1) {
+                for(;;) {
                     struct sockaddr in_addr;
                     socklen_t in_len;
                     int infd;
@@ -667,6 +682,9 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                         close(infd);
                         continue;
                     }
+
+                    event.events = EPOLLIN | EPOLLOUT | EPOLLET;
+                    process_connection(event);
                 }
                 continue;
             }
@@ -702,6 +720,10 @@ destroy_without_unlock:
         void* retval;
         pthread_join(server.terminal_thread, &retval);
         server.has_terminal = 0;
+    }
+    {
+        void* retval;
+        pthread_join(server.idle_thread, &retval);
     }
     marla_Server_free(&server);
     apr_pool_terminate();

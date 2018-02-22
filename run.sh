@@ -28,3 +28,4 @@ fi
 }
 
 run_server
+make tmux

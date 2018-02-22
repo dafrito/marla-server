@@ -1,22 +1,22 @@
 CC=clang
-PORT=127.0.0.1:4787
+PORT=127.0.0.1:4816
 BACKEND_PORT=8081
 LOGPORT=28122
-PREFIX=/home/$(shell whoami)
-BINDIR=$(PREFIX)/bin
-LIBDIR=$(PREFIX)/lib
-INCLUDEDIR=$(PREFIX)/include
 MARLAFLAGS=-nossl
-USER=$(shell whoami)
-UID=$(shell id -u `whoami`)
-GID=$(shell id -g `whoami`)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=41
+PACKAGE_RELEASE=45
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
 build_cpu=x86_64
+USER=$(shell whoami)
+UID=$(shell id -u `whoami`)
+GID=$(shell id -g `whoami`)
+PREFIX=/home/$(shell whoami)
+BINDIR=$(PREFIX)/bin
+LIBDIR=$(PREFIX)/lib
+INCLUDEDIR=$(PREFIX)/include
 
 CFLAGS=-Og -Wall -g -I $(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags openssl apr-1 ncurses` -fPIC
 core_LDLIBS=`pkg-config --libs openssl ncurses` -ldl
@@ -27,13 +27,16 @@ all: src/test_basic src/test-ring.sh src/test-connection.sh src/test_many_reques
 	cd src && ./test-ring.sh
 	cd src && ./test-connection.sh $(PORT)
 	$(MAKE) marla
-	cd ../servermod && $(MAKE)
-	cd ../environment_ws && $(MAKE)
+	test ! -d ../servermod || (cd ../servermod && $(MAKE))
+	test ! -d ../environment_ws || (cd ../environment_ws && $(MAKE));
 .PHONY: all
 
 src/test-ring.sh: src/test_ring src/test_small_ring src/test_ring_putback src/test_ring_po2
 
 src/test-connection.sh: src/test_duplex src/test_connection src/test_websocket src/test_chunks src/test_backend
+
+isntall: install
+.PHONY: isntall
 
 create_environment: create_environment.c
 
@@ -43,7 +46,7 @@ libservermod.so:
 libenvironment_ws.so:
 	cd ../environment_ws && ./deploy.sh
 
-BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/http.o src/WriteEvent.o src/websocket.o
+BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/idler.o src/http.o src/WriteEvent.o src/websocket.o
 
 libmarla.so: $(BASE_OBJECTS) src/marla.h
 	$(CC) $(CFLAGS) -o$@ -shared -lpthread $(BASE_OBJECTS)
@@ -188,7 +191,7 @@ dist-gzip: $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz $(PACKAGE_NAME).spec
 .PHONY: dist-gzip
 
 rpm: rpm.sh $(PACKAGE_NAME).spec dist-gzip
-	bash $<
-	cd ../servermod && $(MAKE) rpm
-	cd ../environment_ws && $(MAKE) rpm
+	bash $< || exit 1
+	test ! -d ../servermod || (cd ../servermod && $(MAKE) rpm)
+	test ! -d ../environment_ws || (cd ../environment_ws && $(MAKE) rpm)
 .PHONY: rpm

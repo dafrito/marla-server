@@ -33,6 +33,8 @@ marla_Connection* marla_Connection_new(struct marla_Server* server)
     cxn->server = server;
     cxn->prev_connection = 0;
     cxn->next_connection = 0;
+    cxn->lastProcessTime.tv_sec = 0;
+    cxn->lastProcessTime.tv_nsec = 0;
 
     // Initialize flags.
     cxn->shouldDestroy = 0;

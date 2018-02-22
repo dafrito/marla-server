@@ -21,21 +21,19 @@ extern int marla_Request_numKilled;
 static char status_line[255];
 
 static const char* help_lines[] = {
-    "F1 Main Menu",
+    "F1 Statistics",
     "F2 Connections",
-    "F3 Pages",
-    "F4 Statistics",
-    "F5 Log",
-    "F8 Exit",
+    "F4 Exit",
 };
 
 enum TerminalPageMode {
-TerminalPageMode_Menu,
-TerminalPageMode_Connections,
-TerminalPageMode_Pages,
 TerminalPageMode_Statistics,
-TerminalPageMode_Log
+TerminalPageMode_Connections
 };
+
+static enum TerminalPageMode firstPage = TerminalPageMode_Statistics;
+static enum TerminalPageMode lastPage = TerminalPageMode_Connections;
+static enum TerminalPageMode defaultPage = TerminalPageMode_Statistics;
 
 static void display_connections(marla_Server* server, int y)
 {
@@ -104,13 +102,15 @@ void* terminal_operator(void* data)
     char buf[1024];
     int count = 0;
 
-    enum TerminalPageMode mode = TerminalPageMode_Menu;
+    enum TerminalPageMode mode = defaultPage;
+    memset(status_line, 0, sizeof(status_line));
+    strcpy(status_line, "F1 Statistics");
     nodelay(stdscr, TRUE);
     for(;;) {
         for(int c = getch(); c != ERR; c = getch()) {
             // Process a character of input.
             switch(c) {
-            case KEY_F(8):
+            case KEY_F(4):
                 keypad(stdscr, FALSE);
                 intrflush(stdscr, TRUE);
                 nl();
@@ -121,38 +121,24 @@ void* terminal_operator(void* data)
                 kill(0, SIGUSR1);
                 return 0;
             case KEY_LEFT:
-                if(mode > 0) {
+                if(mode > firstPage) {
                     --mode;
                 }
                 break;
             case KEY_RIGHT:
-                if(mode < 4) {
+                if(mode < lastPage) {
                     ++mode;
                 }
                 break;
             case KEY_F(1):
                 memset(status_line, 0, sizeof(status_line));
-                mode = TerminalPageMode_Menu;
+                strcpy(status_line, "F1 Statistics");
+                mode = TerminalPageMode_Statistics;
                 break;
             case KEY_F(2):
                 memset(status_line, 0, sizeof(status_line));
                 strcpy(status_line, "F2 Connections");
                 mode = TerminalPageMode_Connections;
-                break;
-            case KEY_F(3):
-                memset(status_line, 0, sizeof(status_line));
-                strcpy(status_line, "F3 Pages");
-                mode = TerminalPageMode_Pages;
-                break;
-            case KEY_F(4):
-                memset(status_line, 0, sizeof(status_line));
-                strcpy(status_line, "F4 Statistics");
-                mode = TerminalPageMode_Statistics;
-                break;
-            case KEY_F(5):
-                memset(status_line, 0, sizeof(status_line));
-                strcpy(status_line, "F5 Log");
-                mode = TerminalPageMode_Log;
                 break;
             }
             ++count;
@@ -187,7 +173,7 @@ void* terminal_operator(void* data)
 
             // Print status line
             move(++y, 0);
-            for(int i = 0; i < 6; ++i) {
+            for(int i = 0; i < 3; ++i) {
                 if(mode == i) {
                     attron(A_REVERSE);
                 }

@@ -303,6 +303,8 @@ int in_read;
 int in_write;
 int is_backend;
 
+struct timespec lastProcessTime;
+
 int id;
 struct marla_Server* server;
 struct marla_Connection* prev_connection;
@@ -432,6 +434,8 @@ const char* marla_nameServerStatus(enum marla_ServerStatus);
 
 struct marla_Server {
 
+int idleTimeouts;
+
 struct marla_Connection* first_connection;
 struct marla_Connection* last_connection;
 
@@ -452,6 +456,7 @@ volatile int sfd;
 int backendfd;
 marla_Connection* backend;
 pthread_t terminal_thread;
+pthread_t idle_thread;
 volatile int has_terminal;
 struct marla_ServerModule* first_module;
 struct marla_ServerModule* last_module;

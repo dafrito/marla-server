@@ -576,7 +576,7 @@ int main(int argc, const char**argv)
         }
         server.server_status = marla_SERVER_WAITING_FOR_INPUT;
         if(0 != pthread_mutex_unlock(&server.server_mutex)) {
-            fprintf(stderr, "Failed to release server mutex");
+            fprintf(stderr, "Failed to release server mutex\n");
             exit_value = EXIT_FAILURE;
             goto destroy_without_unlock;
         }
@@ -591,7 +591,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
 
         // Acquire the server's lock for processing.
         if(0 != pthread_mutex_lock(&server.server_mutex)) {
-            fprintf(stderr, "Failed to acquire server mutex");
+            fprintf(stderr, "Failed to acquire server mutex\n");
             exit_value = EXIT_FAILURE;
             goto destroy_without_unlock;
         }

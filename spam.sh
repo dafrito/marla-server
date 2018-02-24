@@ -16,9 +16,8 @@ if echo $path | grep -v -q '^/'; then
     path=/$path
 fi
 
-
 for t in `seq 1 99999`; do
     echo $t $port$path
-    curl $port$path || exit
-    sleep 0.05
+    curl -k $port$path || exit
+    sleep 0.025
 done

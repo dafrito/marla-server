@@ -98,7 +98,7 @@ static void idle_tick(marla_Server* server)
             }
         }
 
-        if(cxn->shouldDestroy) {
+        if(cxn->shouldDestroy && cxn->requests_in_process == 0) {
             marla_Connection* next = cxn->next_connection;
             marla_logLeave(server, "Destroying connection.");
             marla_Connection_destroy(cxn);
@@ -135,10 +135,10 @@ void* idle_operator(void* data)
         case ETIMEDOUT:
             ++server->idleTimeouts;
             if(server->idleTimeouts > 30) {
-                server->server_status = marla_SERVER_DESTROYING;
+                marla_die(server, "Server timed out.");
                 break;
             }
-            continue;
+            break;
         default:
             server->idleTimeouts = 0;
             server->server_status = marla_SERVER_DESTROYING;

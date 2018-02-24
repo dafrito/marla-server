@@ -175,7 +175,9 @@ static void process_connection(struct epoll_event ep)
         if(ep.events & EPOLLRDHUP) {
             if(cxn == server.backend) {
                 marla_logMessagef(&server, "Backend connection done sending data.");
-                marla_Connection_destroy(cxn);
+                if(cxn->requests_in_process == 0) {
+                    marla_Connection_destroy(cxn);
+                }
             }
             else if(cxn->requests_in_process == 0) {
                 marla_Connection_destroy(cxn);
@@ -185,13 +187,17 @@ static void process_connection(struct epoll_event ep)
             return;
         }
         if(ep.events & EPOLLHUP) {
-            marla_Connection_destroy(cxn);
+            if(cxn->requests_in_process == 0) {
+                marla_Connection_destroy(cxn);
+            }
             if(cxn == server.backend) {
                 marla_logMessagef(&server, "Backend connection done accepting connections.");
             }
             return;
         }
-        marla_Connection_destroy(cxn);
+        if(cxn->requests_in_process == 0) {
+            marla_Connection_destroy(cxn);
+        }
         //fprintf(stderr, "epoll error: %d\n", ep.events);
         marla_logMessagef(&server, "Epoll error %d (EPOLLERR=%d, EPOLLHUP=%d)", ep.events, ep.events&EPOLLERR, ep.events&EPOLLHUP);
         return;
@@ -329,7 +335,7 @@ static void process_connection(struct epoll_event ep)
             marla_logMessage(cxn->server, "Connection should be destroyed");
         }
     }
-    if(cxn->shouldDestroy) {
+    if(cxn->shouldDestroy && cxn->requests_in_process == 0) {
         marla_Connection_destroy(cxn);
         marla_logLeave(&server, "Destroying connection.");
     }

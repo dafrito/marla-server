@@ -65,6 +65,10 @@ run: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
 	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
 .PHONY: run
 
+strace: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
+	strace ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+.PHONY: run
+
 debug: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
 	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init'
 .PHONY: debug

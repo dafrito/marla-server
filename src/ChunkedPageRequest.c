@@ -49,6 +49,7 @@ const char* marla_nameChunkResponseStage(enum marla_ChunkResponseStage stage)
     }
     return "";
 }
+
 struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, marla_Request* req)
 {
     if(!req) {
@@ -60,7 +61,7 @@ struct marla_ChunkedPageRequest* marla_ChunkedPageRequest_new(size_t bufSize, ma
     cpr->input = marla_Ring_new(bufSize);
     cpr->stage = marla_CHUNK_RESPONSE_GENERATE;
     cpr->index = 0;
-    cpr->handleData = 0;
+    cpr->handlerData = 0;
     cpr->handleStage = 0;
     return cpr;
 }
@@ -283,4 +284,3 @@ void marla_chunkedRequestHandler(struct marla_Request* req, enum marla_ClientEve
         break;
     }
 }
-

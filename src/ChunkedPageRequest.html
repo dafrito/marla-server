@@ -21,7 +21,7 @@ Chunked transfer encoding.
 <h2>struct marla_ChunkedPageRequest</h2>
 <table>
 <tr><td>void(*handler)(struct marla_ClientRequest*, struct marla_ChunkedPageRequest*)<td>Handler that is used to fill the resp internal input ring.
-<tr><td>void* handleData<td>Space for opaque handler data.
+<tr><td>void* handlerData<td>Space for opaque handler data.
 <tr><td>int handleStage<td>The internal generation stage.
 <tr><td>int index<td>The internal index of the generated input.
 <tr><td>marla_Ring* resp<td>The internal buffer that will be written as chunks.

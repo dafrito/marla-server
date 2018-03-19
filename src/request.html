@@ -76,9 +76,8 @@ Core events:
 <tr><th>Constant<th>Description<th>Meaning of data<th>Meaning of datalen
 <tr><td>marla_EVENT_HEADER<td>HTTP header available to read. Name terminated by null.<td>HTTP header name and value.<td>Offset into HTTP header for reading header value.
 <tr><td>marla_EVENT_ACCEPTING_REQUEST<td>Request headers read. Handler must accept request<td>Pointer to integer. If integer is set to nonzero, request is accepted.<td>None
-<tr><td>marla_EVENT_REQUEST_BODY<td>HTTP request body ready.<td>Pointer to data buffer. This is set to zero if no more data is incoming.<td>Length of data. This is set to zero if no more data is incoming.
-<tr><td>marla_EVENT_FORM_FIELD<td><td><td>
-<tr><td>marla_EVENT_MUST_WRITE<td>Client request is expecting a response.Set request's writeStage to marla_CLIENT_REQUEST_DONE_WRITING when done writing.<td>Pointer to integer. Set to nonzero if choked<td>None
+<tr><td>marla_EVENT_REQUEST_BODY<td>HTTP request body ready.<td>Pointer to marla_WriteEvent. Set the given WriteEvent's status to report the result of handler processing, or leave the status at CONTINUE and advance the readStage to marla_CLIENT_REQUEST_DONE_READING to end. The WriteEvent's length will be set to zero when there is no more request body to be given. The status must be set or the request's read stage advanced, or the handler will be invoked endlessly.<td>unused.
+<tr><td>marla_EVENT_MUST_WRITE<td>Client request is expecting a response. Set request's writeStage to marla_CLIENT_REQUEST_AFTER_RESPONSE when done writing.<td>Pointer to marla_WriteEvent. Set the WriteEvent's status to indicate the handler's returned result. The handler's status must be set, or the request's write stage advanced to marla_CLIENT_REQUEST_AFTER_RESPONSE, or the handler will be invoked endlessly.<td>unused.
 <tr><td>marla_EVENT_DESTROYING<td>The request is about to be freed<td>None<td>None
 </table>
 <p>
@@ -125,7 +124,7 @@ Backend events:
 <tr><td>int expect_websocket<td>Indicates this request expected an upgrade to WebSocket.
 <tr><td>int close_after_done<td>Indicates the connection will close once this request is complete.
 <tr><td>void(*handle)(struct marla_Request*, enum marla_ClientEvent, void*, int)<td>Handles request events.
-<tr><td>void* handleData<td>Internal data used for request events.
+<tr><td>void* handlerData<td>Internal data used for request events.
 <tr><td>struct marla_Request* backendPeer<td>The other request being processed on account of this one.
 <tr><td>long int requestLen<td>The length in bytes of the request body. Set to the value given by the Content-Length header.
 <tr><td>long int responseLen<td>The length in bytes of the response body.

@@ -125,7 +125,7 @@ int handleStage;
 int index;
 marla_Ring* input;
 enum marla_ChunkResponseStage stage;
-void* handleData;
+void* handlerData;
 };
 typedef struct marla_ChunkedPageRequest marla_ChunkedPageRequest;
 
@@ -157,7 +157,7 @@ enum marla_BackendResponderStage handleStage;
 int index;
 marla_Ring* backendRequestBody;
 marla_Ring* backendResponse;
-void* handleData;
+void* handlerData;
 };
 
 typedef struct marla_BackendResponder marla_BackendResponder;
@@ -461,6 +461,8 @@ volatile int has_terminal;
 struct marla_ServerModule* first_module;
 struct marla_ServerModule* last_module;
 struct marla_HookList hooks[marla_ServerHook_MAX];
+void(*undertaker)(marla_Request*);
+void* undertakerData;
 };
 
 typedef struct marla_Server marla_Server;

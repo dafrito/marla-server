@@ -46,6 +46,8 @@ void marla_Server_init(struct marla_Server* server)
     server->first_module = 0;
     server->last_module = 0;
     server->log = marla_Ring_new(marla_LOGBUFSIZE);
+    server->undertaker = 0;
+    server->undertakerData = 0;
     memset(server->serverport, 0, sizeof server->serverport);
     memset(server->backendport, 0, sizeof server->backendport);
     memset(server->db_path, 0, sizeof server->db_path);

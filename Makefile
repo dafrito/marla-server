@@ -1,11 +1,11 @@
 CC=clang
-PORT=127.0.0.1:4821
+PORT=127.0.0.1:5093
 BACKEND_PORT=8081
 LOGPORT=28122
 MARLAFLAGS=-nossl
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.0
-PACKAGE_RELEASE=52
+PACKAGE_RELEASE=53
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
@@ -23,11 +23,12 @@ core_LDLIBS=`pkg-config --libs openssl ncurses` -ldl
 main_LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -L$(HOME)/lib -lparsegraph_user -lparsegraph_List -lparsegraph_environment
 
 all: src/test_basic src/test-ring.sh src/test-connection.sh src/test_many_requests
+	test ! -d $(INCLUDEDIR) || cp src/marla.h $(INCLUDEDIR)
 	cd src && ./test_basic
 	cd src && ./test-ring.sh
 	cd src && ./test-connection.sh $(PORT)
 	$(MAKE) marla
-	test ! -d ../servermod || (cd ../servermod && $(MAKE))
+	test ! -d ../mod_rainback || (cd ../mod_rainback && $(MAKE))
 	test ! -d ../environment_ws || (cd ../environment_ws && $(MAKE));
 .PHONY: all
 
@@ -40,11 +41,11 @@ isntall: install
 
 create_environment: create_environment.c
 
-libservermod.so:
-	cd ../servermod && ./deploy.sh
+mod_rainback.so:
+	cd ../mod_rainback && ./deploy.sh
 
-libenvironment_ws.so:
-	cd ../environment_ws && ./deploy.sh
+mod_environment_ws.so:
+	cd ../mod_environment_ws && ./deploy.sh
 
 BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/idler.o src/http.o src/WriteEvent.o src/websocket.o
 
@@ -61,44 +62,44 @@ kill: marla.tmux
 	tmux -S marla.tmux kill-server
 .PHONY: kill
 
-run: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+run: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: run
 
-strace: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	strace ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+strace: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	strace ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: run
 
-debug: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init'
+debug: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init'
 .PHONY: debug
 
-valgrind: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+valgrind: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: valgrind
 
-4400: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+4400: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: 4400
 
-4401: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+4401: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: 4401
 
-4402: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+4402: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: 4402
 
-4403: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+4403: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: 4403
 
-4404: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+4404: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: 4404
 
-4405: marla certificate.pem key.pem libservermod.so libenvironment_ws.so
-	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./libservermod.so?module_servermod_init ./libenvironment_ws.so?module_environment_ws_init
+4405: marla certificate.pem key.pem mod_rainback.so mod_environment_ws.so
+	tmux -S marla.tmux new-s -d ./marla $@ $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) ./mod_rainback.so?mod_rainback_init ./mod_environment_ws.so?module_environment_ws_init
 .PHONY: 4405
 
 tmux:
@@ -151,8 +152,8 @@ src/test_duplex: src/test_duplex.c $(BASE_OBJECTS) src/marla.h Makefile
 clean:
 	rm -f libmarla.so marla *.o src/*.o marla.a
 	rm -f src/test_basic src/test_connection src/test_websocket src/test_ring src/test_ring_putback src/test_small_ring test-client src/test_backend src/test_duplex $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz create_environment $(PACKAGE_NAME).spec rpm.sh
-	cd ../servermod && $(MAKE) clean
-	cd ../environment_ws && $(MAKE) clean
+	cd ../mod_rainback && $(MAKE) clean
+	cd ../mod_environment_ws && $(MAKE) clean
 .PHONY: clean
 
 clena: clean
@@ -196,6 +197,6 @@ dist-gzip: $(PACKAGE_NAME)-$(PACKAGE_VERSION).tar.gz $(PACKAGE_NAME).spec
 
 rpm: rpm.sh $(PACKAGE_NAME).spec dist-gzip
 	bash $< || exit 1
-	test ! -d ../servermod || (cd ../servermod && $(MAKE) rpm)
-	test ! -d ../environment_ws || (cd ../environment_ws && $(MAKE) rpm)
+	test ! -d ../mod_rainback || (cd ../mod_rainback && $(MAKE) rpm)
+	test ! -d ../mod_environment_ws || (cd ../mod_environment_ws && $(MAKE) rpm)
 .PHONY: rpm

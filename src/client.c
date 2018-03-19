@@ -413,6 +413,44 @@ marla_WriteResult marla_processClientFields(marla_Request* req)
     return marla_WriteResult_CONTINUE;
 }
 
+static marla_WriteResult marla_consumeTrailingEol(marla_Request* req)
+{
+    marla_Connection* cxn = req->cxn;
+    // Consume trailing EOL
+    char buf[2];
+    int nread = marla_Connection_read(cxn, (unsigned char*)buf, sizeof(buf));
+    if(nread == 0) {
+        // Zero-length read indicates end of stream.
+        marla_killRequest(req, "Premature end of request chunk body.");
+        return marla_WriteResult_KILLED;
+    }
+    if(nread < 0) {
+        return marla_WriteResult_DOWNSTREAM_CHOKED;
+    }
+    if(nread >= 1 && buf[0] == '\n') {
+        // Non-standard LF separator
+        if(nread > 1) {
+            marla_Connection_putbackRead(cxn, nread - 1);
+        }
+    }
+    else if(nread >= 2 && buf[0] == '\r' && buf[1] == '\n') {
+        // CRLF separator
+        if(nread > 2) {
+            marla_Connection_putbackRead(cxn, nread - 2);
+        }
+    }
+    else if(nread == 1 && buf[0] == '\r') {
+        // Partial read.
+        marla_Connection_putbackRead(cxn, nread);
+        return marla_WriteResult_UPSTREAM_CHOKED;
+    }
+    else {
+        marla_killRequest(req, "Error while receiving request chunk body.");
+        return marla_WriteResult_KILLED;
+    }
+    return marla_WriteResult_CONTINUE;
+}
+
 static marla_WriteResult marla_readRequestChunks(marla_Request* req)
 {
     marla_Connection* cxn = req->cxn;
@@ -506,10 +544,19 @@ read_chunk_size:
             if(req->handler) {
                 marla_WriteEvent result;
                 marla_WriteEvent_init(&result, marla_WriteResult_CONTINUE);
-                for(;;) {
+                for(; cxn->stage != marla_CLIENT_COMPLETE && req->readStage == marla_CLIENT_REQUEST_READING_CHUNK_BODY;) {
                     req->handler(req, marla_EVENT_REQUEST_BODY, &result, -1);
+                    marla_WriteResult wr;
                     switch(result.status) {
                     case marla_WriteResult_CONTINUE:
+                        if(req->readStage == marla_CLIENT_REQUEST_AFTER_RESPONSE) {
+                            wr = marla_consumeTrailingEol(req);
+                            if(wr != marla_WriteResult_CONTINUE) {
+                                req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_SIZE;
+                                marla_Connection_putbackRead(cxn, nread);
+                                return wr;
+                            }
+                        }
                         continue;
                     case marla_WriteResult_UPSTREAM_CHOKED:
                         // Some non-us upstream choked; treat it as downstream.
@@ -623,37 +670,9 @@ read_chunk_size:
             }
         }
 
-        // Consume trailing EOL
-        char buf[2];
-        int nread = marla_Connection_read(cxn, (unsigned char*)buf, sizeof(buf));
-        if(nread == 0) {
-            // Zero-length read indicates end of stream.
-            marla_killRequest(req, "Premature end of request chunk body.");
-            return marla_WriteResult_KILLED;
-        }
-        if(nread < 0) {
-            return marla_WriteResult_DOWNSTREAM_CHOKED;
-        }
-        if(nread >= 1 && buf[0] == '\n') {
-            // Non-standard LF separator
-            if(nread > 1) {
-                marla_Connection_putbackRead(cxn, nread - 1);
-            }
-        }
-        else if(nread >= 2 && buf[0] == '\r' && buf[1] == '\n') {
-            // CRLF separator
-            if(nread > 2) {
-                marla_Connection_putbackRead(cxn, nread - 2);
-            }
-        }
-        else if(nread == 1 && buf[0] == '\r') {
-            // Partial read.
-            marla_Connection_putbackRead(cxn, nread);
-            return marla_WriteResult_UPSTREAM_CHOKED;
-        }
-        else {
-            marla_killRequest(req, "Error while receiving request chunk body.");
-            return marla_WriteResult_KILLED;
+        marla_WriteResult wr = marla_consumeTrailingEol(req);
+        if(wr != marla_WriteResult_CONTINUE) {
+            return wr;
         }
         req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_SIZE;
         goto read_chunk_size;
@@ -1241,6 +1260,8 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
             marla_Request_unref(req);
             goto exit_downstream_choked;
         case marla_WriteResult_KILLED:
+            marla_Request_unref(req);
+            goto exit_killed;
         case marla_WriteResult_CLOSED:
             marla_Request_unref(req);
             goto exit_continue;

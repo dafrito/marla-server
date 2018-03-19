@@ -168,6 +168,9 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
             if(nflushed == 0 && true_flushed <= 0) {
                 return true_flushed;
             }
+            if(cxn->shouldDestroy) {
+                return 0;
+            }
             return nflushed;
         }
         nflushed += true_flushed;
@@ -186,6 +189,9 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
         *outnflushed = nflushed;
     }
     cxn->flushed += nflushed;
+    if(cxn->shouldDestroy) {
+        return 0;
+    }
     return nflushed;
 }
 

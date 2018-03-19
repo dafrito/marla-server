@@ -37,8 +37,8 @@ static int writeSource(marla_Connection* cxn, void* source, size_t len)
     //marla_Server_log(cxn->server, logbuf, len > 1024 ? 1024 : len);
     int nwritten = write(cxnSource->fd, source, len);
     if(nwritten <= 0) {
-        if(errno == EAGAIN || errno == EWOULDBLOCK) {
-            cxn->wantsRead = 1;
+        if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EPIPE) {
+            cxn->wantsWrite = 1;
         }
         else {
             cxn->shouldDestroy = 1;

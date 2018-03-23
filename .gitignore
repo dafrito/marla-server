@@ -22,3 +22,5 @@ run-tests
 vgcore.*
 *.tar.gz
 create_environment
+*-tmp
+*.pc

@@ -1,0 +1,6 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+
+Name: @PACKAGE_NAME@
+Version: @PACKAGE_VERSION@
+Description: @PACKAGE_DESCRIPTION@

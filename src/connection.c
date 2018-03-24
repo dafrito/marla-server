@@ -165,11 +165,11 @@ int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
             cxn->flushed += nflushed;
             //printf("PUTTING BACK %d\n", len);
             marla_Ring_putbackRead(cxn->output, len);
-            if(nflushed == 0 && true_flushed <= 0) {
-                return true_flushed;
-            }
             if(cxn->shouldDestroy) {
                 return 0;
+            }
+            if(nflushed == 0 && true_flushed <= 0) {
+                return true_flushed;
             }
             return nflushed;
         }

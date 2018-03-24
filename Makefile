@@ -76,7 +76,7 @@ strace: marla certificate.pem key.pem mod_rainback.so
 .PHONY: run
 
 debug: marla certificate.pem key.pem mod_rainback.so
-	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init
+	tmux -S marla.tmux new-s -d gdb ./marla -ex 'r $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init'
 .PHONY: debug
 
 valgrind: marla certificate.pem key.pem mod_rainback.so

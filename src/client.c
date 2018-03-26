@@ -1264,7 +1264,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
             goto exit_killed;
         case marla_WriteResult_CLOSED:
             marla_Request_unref(req);
-            goto exit_continue;
+            goto exit_closed;
         case marla_WriteResult_DOWNSTREAM_CHOKED:
         case marla_WriteResult_TIMEOUT:
         case marla_WriteResult_LOCKED:

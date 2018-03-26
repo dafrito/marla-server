@@ -186,7 +186,30 @@ void marla_Backend_enqueue(marla_Server* server, marla_Request* req)
 
 void marla_Backend_recover(marla_Server* server)
 {
+    marla_Connection* oldCxn = server->backend;
+    server->backend = 0;
+    if(0 != marla_Backend_connect(server)) {
+        marla_die(server, "Failed to reconnect to backend");
+    }
 
+    for(;;) {
+        marla_Request* req = oldCxn->current_request;
+        if(!req) {
+            break;
+        }
+        marla_Request* nextReq = req->next_request;
+        if(req->readStage < marla_BACKEND_REQUEST_DONE_READING) {
+            // Incomplete request, so re-enqueue request.
+            if(!req->backendPeer->cxn->shouldDestroy) {
+                marla_Backend_enqueue(server, req);
+            }
+        }
+        else if(!req->backendPeer) {
+            marla_die(server, "Discovered orphaned request");
+        }
+        oldCxn->current_request = nextReq;
+    }
+    oldCxn->shouldDestroy = 1;
 }
 
 marla_WriteResult marla_backendWrite(marla_Connection* cxn)
@@ -235,7 +258,6 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                 marla_Connection_putbackWrite(cxn, nw);
                 marla_Request_unref(req);
                 marla_logMessagef(server, "Backend connection has closed while sending request line.");
-                marla_Backend_recover(server);
                 goto exit_closed;
             case marla_WriteResult_UPSTREAM_CHOKED:
                 marla_logMessagef(server, "Wrote backend request line.");
@@ -284,7 +306,6 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                     case marla_WriteResult_CLOSED:
                         marla_Request_unref(req);
                         marla_logMessagef(server, "Backend connection has closed while sending request line.");
-                        marla_Backend_recover(server);
                         goto exit_closed;
                     case marla_WriteResult_UPSTREAM_CHOKED:
                         result.status = marla_WriteResult_CONTINUE;
@@ -316,7 +337,6 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                     case marla_WriteResult_CLOSED:
                         marla_Request_unref(req);
                         marla_logMessagef(server, "Backend connection has closed.");
-                        marla_Backend_recover(server);
                         goto exit_closed;
                     case marla_WriteResult_UPSTREAM_CHOKED:
                         req->writeStage = marla_BACKEND_REQUEST_DONE_WRITING;
@@ -347,7 +367,6 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
                 case marla_WriteResult_CLOSED:
                     marla_Request_unref(req);
                     marla_logMessagef(server, "Backend connection has closed.");
-                    marla_Backend_recover(server);
                     goto exit_closed;
                 case marla_WriteResult_UPSTREAM_CHOKED:
                     nextReq = req->next_request;
@@ -380,6 +399,7 @@ exit_killed:
 exit_closed:
     marla_logLeave(server, 0);
     cxn->in_write = 0;
+    cxn->shouldDestroy = 1;
     return marla_WriteResult_CLOSED;
 exit_downstream_choked:
     marla_logLeave(server, 0);
@@ -1290,6 +1310,9 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_processBackendResponseLine(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            if(wr == marla_WriteResult_CLOSED) {
+                goto exit_closed;
+            }
             marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
@@ -1298,6 +1321,9 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_processBackendResponseFields(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            if(wr == marla_WriteResult_CLOSED) {
+                goto exit_closed;
+            }
             marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
@@ -1306,6 +1332,9 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_readBackendResponseBody(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            if(wr == marla_WriteResult_CLOSED) {
+                goto exit_closed;
+            }
             marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
@@ -1314,6 +1343,9 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_readBackendResponseChunks(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            if(wr == marla_WriteResult_CLOSED) {
+                goto exit_closed;
+            }
             marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
@@ -1331,6 +1363,9 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
 
         wr = marla_processBackendTrailer(req);
         if(wr != marla_WriteResult_CONTINUE) {
+            if(wr == marla_WriteResult_CLOSED) {
+                goto exit_closed;
+            }
             marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
@@ -1353,8 +1388,23 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
             }
 
             if(req->backendPeer) {
-                marla_clientWrite(req->backendPeer->cxn);
-                if(cxn->stage == marla_CLIENT_COMPLETE) {
+                for(int loop = 1; loop;) {
+                    marla_WriteResult wr = marla_clientWrite(req->backendPeer->cxn);
+                    switch(wr) {
+                    case marla_WriteResult_CONTINUE:
+                        continue;
+                    case marla_WriteResult_CLOSED:
+                        // Client just SIGPIPE'd on the backend.
+                        goto exit_closed;
+                    case marla_WriteResult_LOCKED:
+                    case marla_WriteResult_DOWNSTREAM_CHOKED:
+                    default:
+                        loop = 0;
+                        continue;
+                    }
+                }
+                if(cxn->stage == marla_CLIENT_COMPLETE || cxn->shouldDestroy) {
+                    marla_Request_unref(req);
                     goto shutdown;
                 }
                 if(req->backendPeer && req->backendPeer->writeStage < marla_CLIENT_REQUEST_DONE_WRITING) {
@@ -1376,7 +1426,6 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
                 goto shutdown;
             }
 
-            // Unref once for the connection and again for this function.
             marla_Request_unref(req);
             req = cxn->current_request;
             if(cxn->stage == marla_CLIENT_COMPLETE) {
@@ -1415,6 +1464,11 @@ shutdown:
     }
     marla_logLeave(server, 0);
     cxn->in_read = 0;
+    return marla_WriteResult_CLOSED;
+exit_closed:
+    marla_logLeave(server, 0);
+    cxn->in_read = 0;
+    cxn->shouldDestroy = 1;
     return marla_WriteResult_CLOSED;
 }
 

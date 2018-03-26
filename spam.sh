@@ -9,7 +9,7 @@ fi
 path=$*
 
 if test $# -lt 1; then
-    path=/contact
+    path=/
 fi
 
 if echo $path | grep -v -q '^/'; then

@@ -347,6 +347,9 @@ static void process_connection(struct epoll_event ep)
         }
     }
     if(cxn->shouldDestroy) {
+        if(cxn->server->backend == cxn) {
+            marla_Backend_recover(cxn->server);
+        }
         marla_Connection_destroy(cxn);
         marla_logLeave(&server, "Destroying connection.");
     }

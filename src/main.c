@@ -13,9 +13,6 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <locale.h>
-#include <parsegraph_user.h>
-#include <parsegraph_environment.h>
-#include <parsegraph_List.h>
 #include <apr_pools.h>
 #include <dlfcn.h>
 #include <apr_dso.h>

@@ -4,7 +4,6 @@
 #include <apr_pools.h>
 #include <dlfcn.h>
 #include <apr_dso.h>
-#include <parsegraph_user.h>
 #include <apr_pools.h>
 #include <dlfcn.h>
 #include <apr_dso.h>

@@ -227,6 +227,9 @@ void marla_Request_unref(marla_Request* req)
     }
     if(req->backendPeer) {
         req->backendPeer->backendPeer = 0;
+        if(!req->cxn->is_backend && req->backendPeer) {
+            marla_Request_unref(req->backendPeer);
+        }
     }
     free(req);
 }

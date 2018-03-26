@@ -399,7 +399,9 @@ static int test_chunk_math(struct marla_Server* server)
             break;
         }
 
-        if(0 > marla_Connection_flush(cxn, 0)) {
+        int nflushed = 0;
+        marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+        if(nflushed < 0) {
             fprintf(stderr, "Flush returned negative value.\n");
             marla_Connection_destroy(cxn);
             marla_ChunkedPageRequest_free(cpr);
@@ -446,16 +448,11 @@ static int test_chunk_math(struct marla_Server* server)
                 break;
             }
             int nflushed;
-            if(0 > marla_Connection_flush(cxn, &nflushed)) {
-                fprintf(stderr, "Flush returned negative value.\n");
-                marla_Connection_destroy(cxn);
-                marla_ChunkedPageRequest_free(cpr);
-                return 1;
-            }
+            marla_Connection_flush(cxn, &nflushed);
             marla_ChunkedPageRequest_process(cpr);
-
-            if(0 > marla_Connection_flush(cxn, &nflushed)) {
-                fprintf(stderr, "Flush returned negative value.\n");
+            marla_Connection_flush(cxn, &nflushed);
+            if(nflushed <= 0) {
+                fprintf(stderr, "Flush returned negative value after process.\n");
                 marla_Connection_destroy(cxn);
                 marla_ChunkedPageRequest_free(cpr);
                 return 1;
@@ -517,7 +514,9 @@ static int test_chunks(struct marla_Server* server)
             break;
         }
 
-        if(0 > marla_Connection_flush(cxn, 0)) {
+        int nflushed;
+        marla_Connection_flush(cxn, &nflushed);
+        if(nflushed <= 0) {
             fprintf(stderr, "Flush returned negative value.\n");
             marla_Connection_destroy(cxn);
             marla_ChunkedPageRequest_free(cpr);
@@ -558,7 +557,8 @@ static int test_chunks(struct marla_Server* server)
         marla_ChunkedPageRequest_process(cpr);
 
         int nflushed;
-        if(0 > marla_Connection_flush(cxn, &nflushed)) {
+        marla_Connection_flush(cxn, &nflushed);
+        if(nflushed <= 0) {
             fprintf(stderr, "Flush returned negative value.\n");
             marla_Connection_destroy(cxn);
             marla_ChunkedPageRequest_free(cpr);
@@ -621,7 +621,8 @@ static int test_chunked_response(struct marla_Server* server)
         }
 
         int nflushed;
-        if(0 > marla_Connection_flush(cxn, &nflushed)) {
+        marla_Connection_flush(cxn, &nflushed);
+        if(nflushed <= 0) {
             fprintf(stderr, "Flush returned negative value.\n");
             marla_Connection_destroy(cxn);
             marla_ChunkedPageRequest_free(cpr);

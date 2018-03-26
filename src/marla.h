@@ -360,6 +360,7 @@ marla_Ring* input;
 int drain_input;
 marla_Ring* output;
 int drain_output;
+int sigpipe;
 };
 typedef struct marla_DuplexSource marla_DuplexSource;
 void marla_Duplex_init(marla_Connection* cxn, size_t input_size, size_t output_size);
@@ -367,6 +368,7 @@ void marla_Duplex_drainInput(marla_Connection* cxn);
 void marla_Duplex_drainOutput(marla_Connection* cxn);
 void marla_Duplex_plugInput(marla_Connection* cxn);
 void marla_Duplex_plugOutput(marla_Connection* cxn);
+void marla_Duplex_sigpipe(marla_Connection* cxn);
 
 // ssl.c
 int marla_SSL_init(marla_Connection* cxn, SSL_CTX* ctx, int fd);
@@ -466,6 +468,7 @@ void* undertakerData;
 };
 
 typedef struct marla_Server marla_Server;
+void marla_Backend_recover(marla_Server* server);
 
 struct marla_ServerModule {
 const char* moduleDef;

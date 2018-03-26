@@ -244,10 +244,20 @@ static void process_connection(struct epoll_event ep)
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
                     if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
                         int nflushed;
-                        int rv = marla_Connection_flush(cxn, &nflushed);
-                        if(rv <= 0) {
+                        marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+                        switch(wr) {
+                        case marla_WriteResult_UPSTREAM_CHOKED:
+                            continue;
+                        case marla_WriteResult_DOWNSTREAM_CHOKED:
                             //fprintf(stderr, "Responder choked.\n");
                             loop = 0;
+                            continue;
+                        case marla_WriteResult_CLOSED:
+                            cxn->stage = marla_CLIENT_COMPLETE;
+                            loop = 0;
+                            continue;
+                        default:
+                            marla_die(cxn->server, "Unexpected flush result");
                         }
                     }
                     else {
@@ -277,17 +287,24 @@ static void process_connection(struct epoll_event ep)
                     }
                     continue;
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
-                    if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                    while(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
                         int nflushed;
-                        int rv = marla_Connection_flush(cxn, &nflushed);
-                        if(rv <= 0) {
+                        marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+                        switch(wr) {
+                        case marla_WriteResult_UPSTREAM_CHOKED:
+                            continue;
+                        case marla_WriteResult_DOWNSTREAM_CHOKED:
                             //fprintf(stderr, "Responder choked.\n");
                             loop = 0;
+                            continue;
+                        case marla_WriteResult_CLOSED:
+                            loop = 0;
+                            continue;
+                        default:
+                            marla_die(cxn->server, "Unexpected flush result");
                         }
                     }
-                    else {
-                        loop = 0;
-                    }
+                    loop = 0;
                     continue;
                 default:
                     //fprintf(stderr, "Connection %d's write returned %s\n", cxn->id, marla_nameWriteResult(wr));
@@ -301,18 +318,25 @@ static void process_connection(struct epoll_event ep)
             marla_logMessage(&server, "Connection will be destroyed.");
         }
 
-        if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+        while(cxn->stage != marla_CLIENT_COMPLETE && !cxn->shouldDestroy && marla_Ring_size(cxn->output) > 0) {
             int nflushed;
-            int rv = marla_Connection_flush(cxn, &nflushed);
-            if(rv <= 0) {
+            marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+            switch(wr) {
+            case marla_WriteResult_DOWNSTREAM_CHOKED:
                 //fprintf(stderr, "Responder choked.\n");
                 return;
+            case marla_WriteResult_UPSTREAM_CHOKED:
+                continue;
+            case marla_WriteResult_CLOSED:
+                break;
+            default:
+                marla_die(cxn->server, "Unexpected flush result");
             }
         }
     }
 
     // Double-check if the shutdown needs to be run.
-    if(cxn->stage == marla_CLIENT_COMPLETE) {
+    if(cxn->stage == marla_CLIENT_COMPLETE && !cxn->shouldDestroy) {
         marla_logMessage(cxn->server, "Attempting shutdown for connection");
         // Client needs shutdown.
         if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
@@ -322,7 +346,7 @@ static void process_connection(struct epoll_event ep)
             marla_logMessage(cxn->server, "Connection should be destroyed");
         }
     }
-    if(cxn->shouldDestroy && cxn->requests_in_process == 0) {
+    if(cxn->shouldDestroy) {
         marla_Connection_destroy(cxn);
         marla_logLeave(&server, "Destroying connection.");
     }

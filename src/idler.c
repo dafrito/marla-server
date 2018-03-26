@@ -42,10 +42,19 @@ static void idle_tick(marla_Server* server)
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
                     if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
                         int nflushed;
-                        int rv = marla_Connection_flush(cxn, &nflushed);
-                        if(rv <= 0) {
+                        marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+                        switch(wr) {
+                        case marla_WriteResult_UPSTREAM_CHOKED:
+                            continue;
+                        case marla_WriteResult_DOWNSTREAM_CHOKED:
                             //fprintf(stderr, "Responder choked.\n");
                             loop = 0;
+                            continue;
+                        case marla_WriteResult_CLOSED:
+                            loop = 0;
+                            continue;
+                        default:
+                            marla_die(cxn->server, "Unhandled flush result");
                         }
                     }
                     else {
@@ -73,10 +82,19 @@ static void idle_tick(marla_Server* server)
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
                     if(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
                         int nflushed;
-                        int rv = marla_Connection_flush(cxn, &nflushed);
-                        if(rv <= 0) {
+                        marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+                        switch(wr) {
+                        case marla_WriteResult_DOWNSTREAM_CHOKED:
                             //fprintf(stderr, "Responder choked.\n");
                             loop = 0;
+                            continue;
+                        case marla_WriteResult_UPSTREAM_CHOKED:
+                            continue;
+                        case marla_WriteResult_CLOSED:
+                            loop = 0;
+                            continue;
+                        default:
+                            marla_die(cxn->server, "Unexpected flush result");
                         }
                     }
                     else {
@@ -98,7 +116,7 @@ static void idle_tick(marla_Server* server)
             }
         }
 
-        if(cxn->shouldDestroy && cxn->requests_in_process == 0) {
+        if(cxn->shouldDestroy) {
             marla_Connection* next = cxn->next_connection;
             marla_logLeave(server, "Destroying connection.");
             marla_Connection_destroy(cxn);

@@ -809,7 +809,7 @@ static int test_stages_reading_target(struct marla_Server* server)
     return 0;
 }
 
-void trailerHook(marla_Request* req, void* hookData)
+void installBackendClientHandlerHook(marla_Request* req, void* hookData)
 {
     req->handler = marla_backendClientHandler;
 }
@@ -829,7 +829,7 @@ int test_trailer()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET / HTTP/1.1\r\nHost: localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport);
@@ -873,7 +873,7 @@ int test_userinfo_is_treated_as_error()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET http://foo:bar@localhost:%s/ HTTP/1.1\r\nHost: foo:bar@localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport, server.serverport);
@@ -908,7 +908,7 @@ int test_userinfo_is_treated_as_error_2()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET http://foo:bar@localhost:%s/ HTTP/1.1\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport);
@@ -943,7 +943,7 @@ int test_query()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET http://localhost:%s/login?user=foo&pw=bar HTTP/1.1\r\nHost: localhost:%s\r\nTE: trailers\r\nConnection: TE\r\n\r\n", server.serverport, server.serverport);
@@ -976,7 +976,7 @@ int test_long_url()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     char long_url[512];
@@ -1013,7 +1013,7 @@ int test_choke_on_first_field()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\n");
@@ -1046,7 +1046,7 @@ int test_choke_on_header_crlf_terminator()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r", server.serverport);
@@ -1112,7 +1112,7 @@ int test_large_download()
     backend->is_backend = 1;
     server.backend = backend;
 
-    marla_Server_addHook(&server, marla_ServerHook_ROUTE, trailerHook, 0);
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
 
     char buf[1024];
     int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server.serverport);
@@ -1220,6 +1220,295 @@ int test_large_download()
         return 1;
     }
     //fprintf(stderr, "index=%d outdex=%d\n", index, outdex);
+
+    return 0;
+}
+
+int test_sigpipe_client_after_header_response()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+    strcpy(server.serverport, "80");
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Connection* backend = marla_Connection_new(&server);
+
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    backend->is_backend = 1;
+    server.backend = backend;
+
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
+
+    char buf[1024];
+    int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server.serverport);
+    marla_writeDuplex(client, buf, len);
+
+    marla_WriteResult wr = marla_clientRead(client);
+    if(wr != marla_WriteResult_DOWNSTREAM_CHOKED) {
+        fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+        return 1;
+    }
+    if(client->current_request->readStage != marla_CLIENT_REQUEST_DONE_READING) {
+        fprintf(stderr, "%s\n", marla_nameRequestReadStage(client->current_request->readStage));
+        return 1;
+    }
+
+    int RESPONSE_SIZE = 50 * marla_BUFSIZE;
+    len = snprintf(buf, sizeof buf, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nContent-Type: application/javascript\r\n\r\n", RESPONSE_SIZE);
+    marla_writeDuplex(backend, buf, len);
+
+    wr = marla_backendRead(backend);
+    if(wr != marla_WriteResult_UPSTREAM_CHOKED) {
+        fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+        return 1;
+    }
+
+    char inbuf[RESPONSE_SIZE];
+    int index = 0;
+    generate_random_bytes(inbuf, RESPONSE_SIZE, 12324);
+    char outbuf[RESPONSE_SIZE];
+    int outdex = 0;
+    memset(outbuf, 0, sizeof outbuf);
+
+    while(marla_WriteResult_DOWNSTREAM_CHOKED != marla_clientWrite(client)) {
+        int nresponded = marla_writeDuplex(backend, inbuf + index, RESPONSE_SIZE - index);
+        if(nresponded < 0) {
+            // Backend's input is full.
+            continue;
+        }
+        index += nresponded;
+    }
+
+    char c;
+    marla_readDuplex(client, &c, 1);
+    if(c != 'H') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'T') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'T') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'P') {
+        return 1;
+    }
+
+    marla_Duplex_drainOutput(backend);
+    marla_Duplex_plugOutput(backend);
+
+    int nflushed;
+    marla_Connection_flush(client, &nflushed);
+    if(nflushed < 0) {
+        return 1;
+    }
+
+    //wr = marla_backendRead(backend);
+    wr = marla_clientWrite(client);
+    marla_Duplex_sigpipe(client);
+
+    marla_Connection_flush(client, &nflushed);
+    if(nflushed < 0) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int test_sigpipe_client_after_response()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+    strcpy(server.serverport, "80");
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Connection* backend = marla_Connection_new(&server);
+
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    backend->is_backend = 1;
+    server.backend = backend;
+
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
+
+    char buf[1024];
+    int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server.serverport);
+    marla_writeDuplex(client, buf, len);
+
+    marla_WriteResult wr = marla_clientRead(client);
+    if(wr != marla_WriteResult_DOWNSTREAM_CHOKED) {
+        fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+        return 1;
+    }
+    if(client->current_request->readStage != marla_CLIENT_REQUEST_DONE_READING) {
+        fprintf(stderr, "%s\n", marla_nameRequestReadStage(client->current_request->readStage));
+        return 1;
+    }
+
+    int RESPONSE_SIZE = 50 * marla_BUFSIZE;
+    len = snprintf(buf, sizeof buf, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nContent-Type: application/javascript\r\n\r\n", RESPONSE_SIZE);
+    marla_writeDuplex(backend, buf, len);
+
+    wr = marla_backendRead(backend);
+    if(wr != marla_WriteResult_UPSTREAM_CHOKED) {
+        fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+        return 1;
+    }
+
+    char inbuf[RESPONSE_SIZE];
+    int index = 0;
+    generate_random_bytes(inbuf, RESPONSE_SIZE, 12324);
+    char outbuf[RESPONSE_SIZE];
+    int outdex = 0;
+    memset(outbuf, 0, sizeof outbuf);
+
+    while(marla_WriteResult_DOWNSTREAM_CHOKED != marla_clientWrite(client)) {
+        int nresponded = marla_writeDuplex(backend, inbuf + index, RESPONSE_SIZE - index);
+        if(nresponded < 0) {
+            // Backend's input is full.
+            continue;
+        }
+        index += nresponded;
+    }
+
+    char c;
+    marla_readDuplex(client, &c, 1);
+    if(c != 'H') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'T') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'T') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'P') {
+        return 1;
+    }
+
+    marla_Duplex_drainOutput(backend);
+    marla_Duplex_plugOutput(backend);
+
+    int nflushed;
+    int rv = marla_Connection_flush(client, &nflushed);
+    if(rv == -1) {
+        return 1;
+    }
+
+    //wr = marla_backendRead(backend);
+    wr = marla_clientWrite(client);
+    marla_Duplex_sigpipe(client);
+
+    rv = marla_Connection_flush(client, &nflushed);
+    if(rv != -1) {
+        return 1;
+    }
+
+    return 0;
+}
+
+int test_sigpipe_backend_after_response()
+{
+    marla_Server server;
+    marla_Server_init(&server);
+    strcpy(server.serverport, "80");
+
+    marla_Connection* client = marla_Connection_new(&server);
+    marla_Connection* backend = marla_Connection_new(&server);
+
+    marla_Duplex_init(client, marla_BUFSIZE, marla_BUFSIZE);
+    marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
+
+    backend->is_backend = 1;
+    server.backend = backend;
+
+    marla_Server_addHook(&server, marla_ServerHook_ROUTE, installBackendClientHandlerHook, 0);
+
+    char buf[1024];
+    int len = snprintf(buf, sizeof buf, "GET /news HTTP/1.1\r\nHost: localhost:%s\r\n\r\n", server.serverport);
+    marla_writeDuplex(client, buf, len);
+
+    marla_WriteResult wr = marla_clientRead(client);
+    if(wr != marla_WriteResult_DOWNSTREAM_CHOKED) {
+        fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+        return 1;
+    }
+    if(client->current_request->readStage != marla_CLIENT_REQUEST_DONE_READING) {
+        fprintf(stderr, "%s\n", marla_nameRequestReadStage(client->current_request->readStage));
+        return 1;
+    }
+
+    int RESPONSE_SIZE = 50 * marla_BUFSIZE;
+    len = snprintf(buf, sizeof buf, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\nContent-Type: application/javascript\r\n\r\n", RESPONSE_SIZE);
+    marla_writeDuplex(backend, buf, len);
+
+    wr = marla_backendRead(backend);
+    if(wr != marla_WriteResult_UPSTREAM_CHOKED) {
+        fprintf(stderr, "%s\n", marla_nameWriteResult(wr));
+        return 1;
+    }
+
+    char inbuf[RESPONSE_SIZE];
+    int index = 0;
+    generate_random_bytes(inbuf, RESPONSE_SIZE, 12324);
+    char outbuf[RESPONSE_SIZE];
+    int outdex = 0;
+    memset(outbuf, 0, sizeof outbuf);
+
+    while(marla_WriteResult_DOWNSTREAM_CHOKED != marla_clientWrite(client)) {
+        int nresponded = marla_writeDuplex(backend, inbuf + index, RESPONSE_SIZE - index);
+        if(nresponded < 0) {
+            // Backend's input is full.
+            continue;
+        }
+        index += nresponded;
+    }
+
+    char c;
+    marla_readDuplex(client, &c, 1);
+    if(c != 'H') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'T') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'T') {
+        return 1;
+    }
+    marla_readDuplex(client, &c, 1);
+    if(c != 'P') {
+        return 1;
+    }
+
+    marla_Duplex_drainOutput(backend);
+    marla_Duplex_plugOutput(backend);
+
+    marla_Duplex_sigpipe(backend);
+
+    int nflushed;
+    wr = marla_Connection_flush(backend, &nflushed);
+    if(nflushed <= 0) {
+        return 1;
+    }
+
+    //wr = marla_backendRead(backend);
+    wr = marla_clientWrite(client);
+
+    wr = marla_Connection_flush(backend, &nflushed);
+    if(nflushed <= 0) {
+        return 1;
+    }
 
     return 0;
 }
@@ -1428,6 +1717,24 @@ int main(int argc, char* argv[])
 
     printf("test_large_download:");
     if(0 == test_large_download()) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
+    printf("test_sigpipe_client_after_header_response:");
+    if(0 == test_sigpipe_client_after_header_response()) {
+        printf("PASSED\n");
+    }
+    else {
+        printf("FAILED\n");
+        ++failed;
+    }
+
+    printf("test_sigpipe_backend_after_header_response:");
+    if(0 == test_sigpipe_client_after_header_response()) {
         printf("PASSED\n");
     }
     else {

@@ -61,8 +61,14 @@ static int shutdownSource(marla_Connection* cxn)
 
     while(!marla_Ring_isEmpty(cxn->output)) {
         int nflushed;
-        if(marla_Connection_flush(cxn, &nflushed) <= 0) {
+        switch(marla_Connection_flush(cxn, &nflushed)) {
+        case marla_WriteResult_CLOSED:
+            marla_Ring_clear(cxn->output);
+            continue;
+        case marla_WriteResult_DOWNSTREAM_CHOKED:
             return -1;
+        case marla_WriteResult_UPSTREAM_CHOKED:
+            continue;
         }
     }
     int rv = shutdown(cxnSource->fd, SHUT_RDWR);

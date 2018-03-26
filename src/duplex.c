@@ -14,6 +14,9 @@ static int readDuplexSource(struct marla_Connection* cxn, void* sink, size_t len
 static int writeDuplexSource(struct marla_Connection* cxn, void* writeSource, size_t len)
 {
     marla_DuplexSource* cxnSource = cxn->source;
+    if(cxnSource->sigpipe) {
+        return -1;
+    }
     int rv = marla_Ring_write(cxnSource->output, writeSource, len);
     if(rv <= 0) {
         return -1;
@@ -92,6 +95,12 @@ void marla_Duplex_plugOutput(marla_Connection* cxn)
     source->drain_output = 0;
 }
 
+void marla_Duplex_sigpipe(marla_Connection* cxn)
+{
+    marla_DuplexSource* source = cxn->source;
+    source->sigpipe = 1;
+}
+
 void marla_Duplex_init(marla_Connection* cxn, size_t input_size, size_t output_size)
 {
     marla_DuplexSource* source = malloc(sizeof(marla_DuplexSource));
@@ -99,6 +108,7 @@ void marla_Duplex_init(marla_Connection* cxn, size_t input_size, size_t output_s
     source->output = marla_Ring_new(output_size);
     source->drain_input = 0;
     source->drain_output = 0;
+    source->sigpipe = 0;
     cxn->source = source;
     cxn->readSource = readDuplexSource;
     cxn->writeSource = writeDuplexSource;

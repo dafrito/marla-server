@@ -351,13 +351,20 @@ marla_WriteResult marla_outputWebSocket(marla_Request* req)
 
     while(req->writeStage == marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE) {
         // Write current output.
-        if(marla_Ring_size(req->cxn->output) > 0) {
+        for(int loop = 1; loop == 1 && marla_Ring_size(req->cxn->output) > 0;) {
             int nflushed;
-            int rv = marla_Connection_flush(req->cxn, &nflushed);
-            if(rv <= 0) {
+            marla_WriteResult wr = marla_Connection_flush(req->cxn, &nflushed);
+            switch(wr) {
+            case marla_WriteResult_UPSTREAM_CHOKED:
+                continue;
+            case marla_WriteResult_DOWNSTREAM_CHOKED:
                 marla_logLeave(server, "Responder choked.");
                 cxn->in_write = 0;
-                return rv;
+                return marla_WriteResult_DOWNSTREAM_CHOKED;
+            case marla_WriteResult_CLOSED:
+                return marla_WriteResult_CLOSED;
+            default:
+                marla_die(server, "Unexpected flush result");
             }
         }
 
@@ -366,7 +373,7 @@ marla_WriteResult marla_outputWebSocket(marla_Request* req)
             if(marla_writeWebSocketHeader(req, 8, 2 + req->websocket_closeReasonLen) < 0) {
                 marla_logLeave(server, 0);
                 cxn->in_write = 0;
-                return -1;
+                return marla_WriteResult_DOWNSTREAM_CHOKED;
             }
             req->websocketFrameOutLen = 2 + req->websocket_closeReasonLen;
             req->websocketFrameWritten = 0;
@@ -385,7 +392,7 @@ marla_WriteResult marla_outputWebSocket(marla_Request* req)
                         }
                         marla_logLeave(server, 0);
                         cxn->in_write = 0;
-                        return -1;
+                        return marla_WriteResult_DOWNSTREAM_CHOKED;
                     }
                     marla_logMessagef(req->cxn->server, "Wrote close code of %d.", req->websocket_closeCode);
                     if(req->websocketFrameOutLen == req->websocketFrameWritten) {
@@ -406,7 +413,7 @@ marla_WriteResult marla_outputWebSocket(marla_Request* req)
                 if(nwritten <= 0) {
                     marla_logLeave(server, 0);
                     cxn->in_write = 0;
-                    return -1;
+                    return marla_WriteResult_DOWNSTREAM_CHOKED;
                 }
                 if(req->websocketFrameOutLen == req->websocketFrameWritten) {
                     req->websocket_pingLen = 0;
@@ -430,16 +437,16 @@ marla_WriteResult marla_outputWebSocket(marla_Request* req)
             if(result == -1) {
                 marla_logLeave(server, 0);
                 cxn->in_write = 0;
-                return -1;
+                return marla_WriteResult_DOWNSTREAM_CHOKED;
             }
         }
         else {
             marla_logLeave(server, 0);
             cxn->in_write = 0;
-            return -1;
+            return marla_WriteResult_DOWNSTREAM_CHOKED;
         }
     }
-    return 0;
+    return marla_WriteResult_CONTINUE;
 
 shutdown:
     cxn->stage = marla_CLIENT_COMPLETE;

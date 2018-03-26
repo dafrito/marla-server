@@ -146,63 +146,48 @@ int marla_Connection_write(marla_Connection* cxn, const void* source, size_t req
     return marla_Ring_write(cxn->output, source, requested);
 }
 
-int marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
+marla_WriteResult marla_Connection_flush(marla_Connection* cxn, int* outnflushed)
 {
     void* buf;
     size_t len;
 
     int nflushed = 0;
+    marla_WriteResult wr;
     for(;;) {
         marla_Ring_readSlot(cxn->output, &buf, &len);
         if(len == 0) {
+            wr = marla_WriteResult_UPSTREAM_CHOKED;
             break;
         }
         int true_flushed = cxn->writeSource(cxn, buf, len);
         if(true_flushed <= 0) {
-            if(outnflushed) {
-                *outnflushed = nflushed;
-            }
-            cxn->flushed += nflushed;
-            //printf("PUTTING BACK %d\n", len);
             marla_Ring_putbackRead(cxn->output, len);
-            if(cxn->shouldDestroy) {
-                return 0;
-            }
-            if(nflushed == 0 && true_flushed <= 0) {
-                return true_flushed;
-            }
-            return nflushed;
+            wr = marla_WriteResult_DOWNSTREAM_CHOKED;
+            break;
         }
         nflushed += true_flushed;
         marla_logMessagecf(cxn->server, "I/O", "%d bytes flushed to source on connection %d.", true_flushed, cxn->id);
         //printf("%d bytes flushed to source on connection %d. Size=%d\n", true_flushed, cxn->id, marla_Ring_size(cxn->output));
         if(true_flushed < len) {
             // Partial write.
-            //printf("PUTTING BACK %d\n", len - true_flushed);
             marla_Ring_putbackRead(cxn->output, len - true_flushed);
             //marla_Ring_dump(cxn->output, "cxn->output");
+            wr = marla_WriteResult_DOWNSTREAM_CHOKED;
             break;
         }
     }
-
     if(outnflushed) {
         *outnflushed = nflushed;
     }
     cxn->flushed += nflushed;
     if(cxn->shouldDestroy) {
-        return 0;
+        return marla_WriteResult_CLOSED;
     }
-    return nflushed;
+    return wr;
 }
 
 void marla_Connection_destroy(marla_Connection* cxn)
 {
-    for(marla_Request* req = cxn->current_request; req != 0;) {
-        if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_BODY && (req->close_after_done || req->requestLen == marla_MESSAGE_USES_CLOSE)) {
-            req->readStage = marla_BACKEND_REQUEST_DONE_READING;
-        }
-        req = req->next_request;
-    }
 
     marla_logMessagef(cxn->server, "Destroying connection %d", cxn->id);
 
@@ -215,10 +200,19 @@ void marla_Connection_destroy(marla_Connection* cxn)
         cxn->destroySource = 0;
     }
 
-    for(marla_Request* req = cxn->current_request; req != 0;) {
-        marla_Request* nextReq = req->next_request;
-        marla_Request_unref(req);
-        req = nextReq;
+    if(!cxn->is_backend) {
+        for(marla_Request* req = cxn->current_request; req != 0;) {
+            if(req->readStage == marla_BACKEND_REQUEST_READING_RESPONSE_BODY && (req->close_after_done || req->requestLen == marla_MESSAGE_USES_CLOSE)) {
+                req->readStage = marla_BACKEND_REQUEST_DONE_READING;
+            }
+            req = req->next_request;
+        }
+
+        for(marla_Request* req = cxn->current_request; req != 0;) {
+            marla_Request* nextReq = req->next_request;
+            marla_Request_unref(req);
+            req = nextReq;
+        }
     }
 
     if(cxn->prev_connection && cxn->next_connection) {

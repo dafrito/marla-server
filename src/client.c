@@ -549,7 +549,7 @@ read_chunk_size:
                     marla_WriteResult wr;
                     switch(result.status) {
                     case marla_WriteResult_CONTINUE:
-                        if(req->readStage == marla_CLIENT_REQUEST_AFTER_RESPONSE) {
+                        if(req->readStage == marla_CLIENT_REQUEST_DONE_READING) {
                             wr = marla_consumeTrailingEol(req);
                             if(wr != marla_WriteResult_CONTINUE) {
                                 req->readStage = marla_CLIENT_REQUEST_READING_CHUNK_SIZE;
@@ -1317,14 +1317,18 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
     marla_Ring* output = cxn->output;
 
     // Write current output.
-    if(marla_Ring_size(output) > 0) {
+    while(marla_Ring_size(output) > 0) {
         int nflushed;
-        int rv = marla_Connection_flush(cxn, &nflushed);
-        if(rv < 0) {
-            return marla_WriteResult_DOWNSTREAM_CHOKED;
-        }
-        if(rv == 0) {
-            return marla_WriteResult_CLOSED;
+        marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+        switch(wr) {
+        case marla_WriteResult_DOWNSTREAM_CHOKED:
+            return wr;
+        case marla_WriteResult_UPSTREAM_CHOKED:
+            continue;
+        case marla_WriteResult_CLOSED:
+            return wr;
+        default:
+            marla_die(cxn->server, "Unhandled flush result");
         }
     }
 
@@ -1457,15 +1461,21 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
             // Write current output.
             if(marla_Ring_size(output) > 0) {
                 int nflushed;
-                int rv = marla_Connection_flush(cxn, &nflushed);
-                if(rv < 0) {
+                marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+                switch(wr) {
+                case marla_WriteResult_CLOSED:
+                    marla_Request_unref(req);
+                    marla_logMessagef(server, "Connection has closed while sending response.");
+                    goto exit_closed;
+                case marla_WriteResult_UPSTREAM_CHOKED:
+                    result.status = marla_WriteResult_CONTINUE;
+                    continue;
+                case marla_WriteResult_DOWNSTREAM_CHOKED:
                     marla_logMessage(server, "Downstream truly choked.");
                     marla_Request_unref(req);
                     goto exit_downstream_choked;
-                }
-                if(rv == 0) {
-                    marla_Request_unref(req);
-                    goto exit_closed;
+                default:
+                    marla_die(server, "Unhandled flush result");
                 }
             }
             else {
@@ -1515,14 +1525,18 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         // Write current output.
         while(marla_Ring_size(cxn->output) > 0) {
             int nflushed;
-            int rv = marla_Connection_flush(cxn, &nflushed);
-            if(rv < 0) {
-                marla_Request_unref(req);
-                goto exit_downstream_choked;
-            }
-            if(rv == 0) {
+            marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
+            switch(wr) {
+            case marla_WriteResult_CLOSED:
                 marla_Request_unref(req);
                 goto exit_closed;
+            case marla_WriteResult_UPSTREAM_CHOKED:
+                continue;
+            case marla_WriteResult_DOWNSTREAM_CHOKED:
+                marla_Request_unref(req);
+                goto exit_downstream_choked;
+            default:
+                marla_die(req->cxn->server, "Unhandled flush result");
             }
         }
 

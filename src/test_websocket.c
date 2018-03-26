@@ -129,7 +129,7 @@ static int test_simple(struct marla_Server* server, const char* port)
     }
 
     if(cxn->stage == marla_CLIENT_COMPLETE) {
-        fprintf(stderr, "Connection must still be open\n");
+        fprintf(stderr, "Connection must still be open.");
         return 1;
     }
 

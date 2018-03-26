@@ -176,7 +176,6 @@ marla_WriteResult marla_ChunkedPageRequest_process(struct marla_ChunkedPageReque
             marla_killRequest(cpr->req, "No handler available to generate content.");
             return marla_WriteResult_KILLED;
         }
-        //marla_Connection_flush(cpr->req->cxn, 0);
         marla_WriteResult wr = cpr->handler(cpr);
         switch(wr) {
         case marla_WriteResult_CONTINUE:
@@ -204,12 +203,20 @@ marla_WriteResult marla_ChunkedPageRequest_process(struct marla_ChunkedPageReque
                     ++cpr->stage;
                     continue;
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
-                    if(marla_Ring_isEmpty(cpr->req->cxn->output)) {
-                        return wr;
-                    }
-                    if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
-                        //fprintf(stderr, "writeChunk choked.\n");
-                        return wr;
+                    while(!marla_Ring_isEmpty(cpr->req->cxn->output)) {
+                        wr = marla_Connection_flush(cpr->req->cxn, &nflushed);
+                        switch(wr) {
+                        case marla_WriteResult_UPSTREAM_CHOKED:
+                            continue;
+                        case marla_WriteResult_DOWNSTREAM_CHOKED:
+                            if(nflushed == 0) {
+                                return wr;
+                            }
+                        case marla_WriteResult_CLOSED:
+                            return wr;
+                        default:
+                            marla_die(cpr->req->cxn->server, "Unexpected flush result");
+                        }
                     }
                     continue;
                 default:
@@ -220,8 +227,19 @@ marla_WriteResult marla_ChunkedPageRequest_process(struct marla_ChunkedPageReque
         case marla_WriteResult_CONTINUE:
             continue;
         case marla_WriteResult_DOWNSTREAM_CHOKED:
-            if(marla_Connection_flush(cpr->req->cxn, &nflushed) <= 0) {
-                return marla_WriteResult_DOWNSTREAM_CHOKED;
+            wr = marla_Connection_flush(cpr->req->cxn, &nflushed);
+            switch(wr) {
+            case marla_WriteResult_UPSTREAM_CHOKED:
+                continue;
+            case marla_WriteResult_DOWNSTREAM_CHOKED:
+                if(nflushed == 0) {
+                    return wr;
+                }
+                continue;
+            case marla_WriteResult_CLOSED:
+                return wr;
+            default:
+                marla_die(cpr->req->cxn->server, "Unexpected flush result");
             }
             continue;
         default:

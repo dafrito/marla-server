@@ -9,7 +9,7 @@ fi
 path=$*
 
 if test $# -lt 1; then
-    path=/
+    path=/favicon.ico
 fi
 
 if echo $path | grep -v -q '^/'; then
@@ -18,6 +18,6 @@ fi
 
 for t in `seq 1 99999`; do
     echo $t $port$path
-    curl -k $port$path || exit
+    curl -k $port$path --output /dev/null || exit
     sleep 0.025
 done

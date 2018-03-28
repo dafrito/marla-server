@@ -284,7 +284,7 @@ static void process_connection(struct epoll_event ep)
                     }
                     continue;
                 case marla_WriteResult_DOWNSTREAM_CHOKED:
-                    while(cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
+                    while(loop && cxn->stage != marla_CLIENT_COMPLETE && marla_Ring_size(cxn->output) > 0) {
                         int nflushed;
                         marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
                         switch(wr) {

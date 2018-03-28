@@ -198,7 +198,8 @@ void marla_Backend_recover(marla_Server* server)
             break;
         }
         marla_Request* nextReq = req->next_request;
-        if(req->readStage < marla_BACKEND_REQUEST_DONE_READING) {
+        if(req->writeStage < marla_BACKEND_REQUEST_DONE_READING) {
+        //if(req->readStage < marla_BACKEND_REQUEST_DONE_READING) {
             // Incomplete request, so re-enqueue request.
             if(!req->backendPeer->cxn->shouldDestroy) {
                 marla_Backend_enqueue(server, req);
@@ -1666,13 +1667,13 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
         return marla_WriteResult_KILLED;
     }
     if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS) {
-        int rv = marla_backendRead(req->backendPeer->cxn);
+        marla_WriteResult wr = marla_backendRead(req->backendPeer->cxn);
         if(!req->backendPeer) {
             marla_killRequest(req, "Client request %d lost its backend", req->id);
             return marla_WriteResult_KILLED;
         }
         if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS) {
-            marla_logMessagef(req->cxn->server, "Not a good time to write %s %s %d", marla_nameRequestReadStage(req->backendPeer->readStage), marla_nameRequestReadStage(req->readStage), rv);
+            marla_logMessagef(req->cxn->server, "Not a good time to write from backend %s to client %s because of %s", marla_nameRequestReadStage(req->backendPeer->readStage), marla_nameRequestReadStage(req->readStage), marla_nameWriteResult(wr));
             return marla_WriteResult_UPSTREAM_CHOKED;
         }
     }

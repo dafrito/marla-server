@@ -1,14 +1,14 @@
 #!/bin/sh
 
 next_server_port() {
-port=`sed -nre '/^PORT=/s/PORT=//p' Makefile`
+port=`sed -nre '/^PORT=/s/PORT=//p' port.mk`
 host=localhost
 if echo $port | grep -q ':'; then
     host=`echo $port | grep -Eoe '^[^:]+'`
     port=`echo $port | sed -nre 's/^[^:]+://p'`
 fi
 port=$(($port + 1))
-sed -i -re "s/^PORT=.+$/PORT=$host:$port/" Makefile
+sed -i -re "s/^PORT=.+$/PORT=$host:$port/" port.mk
 }
 
 run_server() {
@@ -19,7 +19,7 @@ if test $(($starttime - $donetime)) -lt 1; then
     make kill
     next_server_port
     make run
-    authority=`sed -nre '/^PORT=/s/PORT=//p' Makefile`
+    authority=`sed -nre '/^PORT=/s/PORT=//p' port.mk`
     echo "Running on $authority"
     echo $authority | xsel -b -i
 else

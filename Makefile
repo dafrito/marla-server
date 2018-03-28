@@ -1,4 +1,4 @@
-PORT=127.0.0.1:5159
+include port.mk
 BACKEND_PORT=8081
 LOGPORT=28122
 MARLAFLAGS=-nossl -db $(HOME)/var/parsegraph/users.sqlite
@@ -46,6 +46,9 @@ src/test-connection.sh: src/test_duplex src/test_connection src/test_websocket s
 
 isntall: install
 .PHONY: isntall
+
+port.mk:
+	echo "PORT=127.0.0.1:4000" >>$@
 
 create_environment: create_environment.c
 

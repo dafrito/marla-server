@@ -218,7 +218,7 @@ void marla_Backend_recover(marla_Server* server)
             break;
         }
         marla_Request* nextReq = req->next_request;
-        if(req->writeStage < marla_BACKEND_REQUEST_DONE_READING) {
+        if(req->writeStage < marla_BACKEND_REQUEST_DONE_WRITING) {
         //if(req->readStage < marla_BACKEND_REQUEST_DONE_READING) {
             // Incomplete request, so re-enqueue request.
             if(!req->backendPeer->cxn->shouldDestroy) {

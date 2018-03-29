@@ -1105,7 +1105,6 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
         int nread = marla_Connection_read(cxn, &c, 1);
         if(nread <= 0) {
             cxn->in_read = 0;
-            marla_logLeave(server, 0);
             if(nread == 0) {
                 goto exit_closed;
             }

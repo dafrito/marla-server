@@ -21,13 +21,33 @@ static int describeSource(marla_Connection* cxn, char* sink, size_t len)
 static int readSource(marla_Connection* cxn, void* sink, size_t len)
 {
     marla_BackendSource* cxnSource = cxn->source;
-    return read(cxnSource->fd, sink, len);
+    int nread = read(cxnSource->fd, sink, len);
+    if(nread <= 0) {
+        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+            cxn->wantsRead = 1;
+        }
+        else {
+            cxn->shouldDestroy = 1;
+        }
+        return -1;
+    }
+    return nread;
 }
 
 static int writeSource(marla_Connection* cxn, void* source, size_t len)
 {
     marla_BackendSource* cxnSource = cxn->source;
-    return write(cxnSource->fd, source, len);
+    int nwritten = write(cxnSource->fd, source, len);
+    if(nwritten <= 0) {
+        if(errno == EAGAIN || errno == EWOULDBLOCK) {
+            cxn->wantsWrite = 1;
+        }
+        else {
+            cxn->shouldDestroy = 1;
+        }
+        return -1;
+    }
+    return nwritten;
 }
 
 static void acceptSource(marla_Connection* cxn)

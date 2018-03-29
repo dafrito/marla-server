@@ -1128,7 +1128,10 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
         marla_die(cxn->server, "Backend request found its way in client connection processing.");
     }
 
-    marla_logMessagecf(cxn->server, "Client processing", "clientRead: %s", marla_nameRequestReadStage(req->readStage));
+    marla_logMessagef(cxn->server, "Read stage: %s, write stage: %s",
+        marla_nameRequestReadStage(req->readStage),
+        marla_nameRequestReadStage(req->writeStage)
+    );
 
     marla_WriteResult wr;
     wr = marla_processStatusLine(req);
@@ -1325,6 +1328,7 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         case marla_WriteResult_UPSTREAM_CHOKED:
             continue;
         case marla_WriteResult_CLOSED:
+            marla_logMessagecf(cxn->server, "Processing", "Called to write to client, but downstream is closed.");
             return wr;
         default:
             marla_die(cxn->server, "Unhandled flush result");
@@ -1341,6 +1345,7 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
     if(marla_Ring_size(output) > marla_Ring_capacity(output) - 4) {
         // Buffer too full.
         cxn->in_write = 0;
+        marla_logMessagecf(cxn->server, "Processing", "Called to write to client, but client cannot be written to.");
         return marla_WriteResult_DOWNSTREAM_CHOKED;
     }
 
@@ -1595,31 +1600,31 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
     goto exit_upstream_choked;
 
 exit_continue:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client should be written to again.");
     cxn->in_write = 0;
     return marla_WriteResult_CONTINUE;
 exit_timeout:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client writing has timed out.");
     cxn->in_write = 0;
     return marla_WriteResult_TIMEOUT;
 exit_locked:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client connection is locked for writing.");
     cxn->in_write = 0;
     return marla_WriteResult_LOCKED;
 exit_upstream_choked:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client's upstream has choked.");
     cxn->in_write = 0;
     return marla_WriteResult_UPSTREAM_CHOKED;
 exit_downstream_choked:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client's downstream source has choked.");
     cxn->in_write = 0;
     return marla_WriteResult_DOWNSTREAM_CHOKED;
 exit_killed:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client request has been killed.");
     cxn->in_write = 0;
     return marla_WriteResult_KILLED;
 exit_closed:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client connection has been closed.");
     cxn->in_write = 0;
     return marla_WriteResult_CLOSED;
 shutdown:
@@ -1629,11 +1634,11 @@ shutdown:
         if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
             cxn->shouldDestroy = 1;
         }
-        marla_logLeave(server, 0);
+        marla_logLeave(server, "Client downstream has choked while closing.");
         cxn->in_write = 0;
         return marla_WriteResult_DOWNSTREAM_CHOKED;
     }
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Client connection has been closed.");
     cxn->in_write = 0;
     return marla_WriteResult_CLOSED;
 }

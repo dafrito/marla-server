@@ -193,13 +193,13 @@ static void process_connection(struct epoll_event ep)
         cxn->describeSource(cxn, buf, sizeof buf);
 
         if(ep.events & EPOLLOUT && ep.events & EPOLLIN) {
-            marla_logEntercf(&server, "Client processing", "Received client EPOLLIN and EPOLLOUT socket event on %s.", buf);
+            marla_logEntercf(&server, "Processing", "Received client EPOLLIN and EPOLLOUT socket event on %s.", buf);
         }
         else if(ep.events & EPOLLIN) {
-            marla_logEntercf(&server, "Client processing", "Received client EPOLLIN socket event on %s.", buf);
+            marla_logEntercf(&server, "Processing", "Received client EPOLLIN socket event on %s.", buf);
         }
         else if(ep.events & EPOLLOUT) {
-            marla_logEntercf(&server, "Client processing", "Received client EPOLLOUT socket event on %s.", buf);
+            marla_logEntercf(&server, "Processing", "Received client EPOLLOUT socket event on %s.", buf);
         }
         else {
             marla_die(&server, "Unexpected epoll event");

@@ -414,20 +414,20 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
     goto exit_upstream_choked;
 
 exit_killed:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Backend request has been killed.");
     cxn->in_write = 0;
     return marla_WriteResult_KILLED;
 exit_closed:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Backend connection is closed.");
     cxn->in_write = 0;
     cxn->shouldDestroy = 1;
     return marla_WriteResult_CLOSED;
 exit_downstream_choked:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Backend downstream source has choked.");
     cxn->in_write = 0;
     return marla_WriteResult_DOWNSTREAM_CHOKED;
 exit_upstream_choked:
-    marla_logLeave(server, 0);
+    marla_logLeave(server, "Backend's upstream has choked.");
     cxn->in_write = 0;
     return marla_WriteResult_UPSTREAM_CHOKED;
 }
@@ -1566,6 +1566,7 @@ void marla_backendHandler(struct marla_Request* req, enum marla_ClientEvent ev, 
         for(int loop = 1; loop;) {
             we->status = marla_clientWrite(req->backendPeer->cxn);
             //printf("client write gave %s.\n", marla_nameWriteResult(we->status));
+            marla_logMessagef(server, "marla_clientWrite gave %s. %s", marla_nameWriteResult(we->status), req->backendPeer->cxn->shouldDestroy ? "Connection should be destroyed." : "");
             switch(we->status) {
             case marla_WriteResult_CONTINUE:
                 continue;

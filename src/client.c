@@ -1324,6 +1324,12 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn)
         marla_WriteResult wr = marla_Connection_flush(cxn, &nflushed);
         switch(wr) {
         case marla_WriteResult_DOWNSTREAM_CHOKED:
+            if(nflushed == 0) {
+                marla_logMessagecf(cxn->server, "Processing", "Called to write to client, but downstream has choked.");
+            }
+            else {
+                continue;
+            }
             return wr;
         case marla_WriteResult_UPSTREAM_CHOKED:
             continue;

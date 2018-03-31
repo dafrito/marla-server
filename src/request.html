@@ -19,501 +19,450 @@ background: lightgrey;
 <link rel=stylesheet type=text/css href="../../doc/rainback.css">
 </head>
 <body>
-<nav class=toc style="clear: none">
-<p style="text-align: center">
-<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
-</p>
-<div class="slot toc" style="clear:none; font-size:.8em">
-<h2>Request - <a href="index.html">Marla</a></h2>
-<ul>
-<li>enum <b>marla_RequestReadStage</b>
-<li>enum <b>marla_RequestWriteStage</b>
-<li>enum <b>marla_ClientEvent</b>
-<li>struct <b>marla_Request</b>
-<li>marla_Request* <b>marla_Request_new</b>(struct marla_Connection* cxn, struct marla_Server* server)
-<li>void <b>marla_Request_destroy</b>(marla_Request*)
-<li>void <b>marla_killRequest</b>(struct marla_Request* req, const char* reason, ...)
-<li>int <b>marla_clientAccept</b>(marla_Connection* cxn)
-<li>int <b>marla_clientRead</b>(marla_Connection* cxn)
-<li>int <b>marla_clientWrite</b>(marla_Connection* cxn)
-<li>int <b>marla_writeWebSocketHeader</b>(struct marla_Request* req, unsigned char opcode, uint64_t frameLen)
-<li>int <b>marla_writeWebSocket</b>(struct marla_Request* req, unsigned char* data, int dataLen)
-<li>int <b>marla_readWebSocket</b>(struct marla_Request* req, unsigned char* data, int dataLen)
-<li>int <b>marla_WebSocketRemaining</b>(struct marla_Request* req)
-<li>void <b>marla_putbackWebSocketRead</b>(struct marla_Request* req, int dataLen)
-<li>const char* <b>marla_nameRequestReadStage</b>(enum marla_RequestReadStage stage)
-<li>const char* <b>marla_nameRequestWriteStage</b>(enum marla_RequestWriteStage stage)
-<li>const char* <b>marla_nameClientEvent</b>(enum marla_ClientEvent ev)
-<li><b>MIN_METHOD_LENGTH</b>
-<li><b>MAX_METHOD_LENGTH</b>
-<li><b>MAX_FIELD_NAME_LENGTH</b>
-<li><b>MAX_FIELD_VALUE_LENGTH</b>
-<li><b>MAX_WEBSOCKET_NONCE_LENGTH</b>
-<li><b>MAX_URI_LENGTH</b>
-<li><b>marla_MAX_CHUNK_SIZE</b>
-<li><b>marla_MAX_CHUNK_SIZE_LINE</b>
-<li><b>MAX_WEBSOCKET_CONTROL_PAYLOAD</b>
-<li><b>marla_MESSAGE_IS_CHUNKED</b>
-<li><b>marla_MESSAGE_LENGTH_UNKNOWN</b>
-<li><b>marla_MESSAGE_USES_CLOSE</b>
-</ul>
-</div>
-<p>
-<div class="toc slot">
-<h3>Marla</h3>
-Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
-<p>
-<h3>Table of Contents</h3>
-<ol>
-<li><a href="main.html">Main</a>
-<li><a href="server.html">Server</a>
-<li><a href="connection.html">Connection</a>
-<li><a href="request.html">Request</a>
-<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
-<li><a href="WriteEvent.html">WriteEvent</a>
-<li><a href="backend.html">Backend</a>
-<li><a href="ring.html">Ring</a>
-</ol>
-</div>
-</nav>
-<p>
-<main class=content>
-<div class=block>
-<h1>Request - <a href="index.html">Marla</a></h1>
-</div>
-<p>
-<div class=block>
-<h3>enum marla_RequestReadStage</h3>
-Stages of reading a client request. Reads occur either from clients as original requests,
-or from backends as returned responses.
-<p>
-<table>
-<tr><th>Constant<th>Parsing position
-<tr><td>marla_CLIENT_REQUEST_READ_FRESH<td>Before or at client's HTTP request line.
-<tr class=backend><td>marla_BACKEND_REQUEST_FRESH<td>Before or at backend's response line.
-<tr><td>marla_CLIENT_REQUEST_READING_METHOD<td>Client's HTTP method.
-<tr><td>marla_CLIENT_REQUEST_PAST_METHOD<td>Client's whitespace after the HTTP method.
-<tr><td>marla_CLIENT_REQUEST_READING_REQUEST_TARGET<td>Client's HTTP request target.
-<tr><td>marla_CLIENT_REQUEST_PAST_REQUEST_TARGET<td>Client's whitespace after the HTTP request target.
-<tr><td>marla_CLIENT_REQUEST_READING_VERSION<td>Client's HTTP version.
-<tr class=backend><td>marla_BACKEND_REQUEST_READING_RESPONSE_LINE<td>Backend's HTTP response line.
-<tr class=backend><td>marla_BACKEND_REQUEST_READING_HEADERS<td>Backend headers.
-<tr><td>marla_CLIENT_REQUEST_READING_FIELD<td>Client's HTTP headers.
-<tr><td>marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE<td>After client's HTTP headers.
-<tr><td>marla_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE<td>After client's HTTP headers.
-<tr><td>marla_CLIENT_REQUEST_READING_REQUEST_BODY<td>Client's HTTP request body.
-<tr><td>marla_CLIENT_REQUEST_WEBSOCKET<td>Client's WebSocket connection.
-<tr class=backend><td>marla_BACKEND_REQUEST_AWAITING_RESPONSE<td>After backend's HTTP response headers.
-<tr class=backend><td>marla_BACKEND_REQUEST_READING_RESPONSE_BODY<td>Backend's HTTP response body.
-<tr><td>marla_CLIENT_REQUEST_READING_CHUNK_SIZE<td>Client's HTTP request chunk header.
-<tr><td>marla_CLIENT_REQUEST_READING_CHUNK_BODY<td>Client's HTTP request chunk body.
-<tr class=backend><td>marla_BACKEND_REQUEST_READING_CHUNK_SIZE<td>Backend's HTTP response chunk header.
-<tr class=backend><td>marla_BACKEND_REQUEST_READING_CHUNK_BODY<td>Backend's HTTP response chunk header.
-<tr><td>marla_CLIENT_REQUEST_READING_TRAILER<td>Client's HTTP request trailers.
-<tr class=backend><td>marla_BACKEND_REQUEST_READING_TRAILER<td>Backend's HTTP response trailers.
-<tr><td>marla_CLIENT_REQUEST_DONE_READING<td>After client's request.
-<tr class=backend><td>marla_BACKEND_REQUEST_DONE_READING<td>After backend's response.
-</table>
-</p>
-</div>
-<p>
-<div class=block>
-<h3>enum marla_RequestWriteStage</h3>
-<p>
-<table>
-<tr><th>Constant<th>Client write head position
-<tr><td>marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT<td>Nothing written
-<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_REQUEST_LINE<td>Backend's request line.
-<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_HEADERS<td>Backend request headers.
-<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_REQUEST_BODY<td>Backend request body.
-<tr><td>marla_CLIENT_REQUEST_WRITING_UPGRADE<td>Writing server's Upgrade response
-<tr><td>marla_CLIENT_REQUEST_WRITING_CONTINUE<td>Writing server's 100 continue response.
-<tr><td>marla_CLIENT_REQUEST_WRITING_RESPONSE<td>Writing server's HTTP response body.
-<tr><td>marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE<td>Writing server's WebSocket response.
-<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_TRAILERS<td>Backend request trailers.
-<tr class=backend><td>marla_BACKEND_REQUEST_DONE_WRITING<td>After backend's HTTP request.
-<tr><td>marla_CLIENT_REQUEST_DONE_WRITING<td>After server's HTTP response.
-</table>
-</p>
-</div>
-<p>
-<div class=block>
-<h3>enum marla_ClientEvent</h3>
-<ul>
-<li>
-<h3>marla_EVENT_HEADER</h3>
-A HTTP header is available to read.
-<p>
-<table>
-<tr><th>data<td>Pointer to null-terminated character string representing header name</tr>
-<tr><th>dataLen<td>data + dataLen is a pointer to a null-terminated string representing the header value</tr>
-</table>
-</p>
-<li>
-<h3>marla_EVENT_ACCEPTING_REQUEST</h3>
-The handler must accept or decline the request by setting the integer referenced by <code>data</code>.
-If data is nonzero, the request will be accepted. If data is zero, the connection should be destroyed.
-<p>
-<table>
-<tr><th>data<td>Pointer to integer.</tr>
-<tr><th>dataLen<td>N/A</tr>
-</table>
-</p>
-<li>
-<h3>marla_EVENT_REQUEST_BODY</h3>
-<p>
-HTTP request body ready. The content is provided in a marla_WriteEvent. The WritEvent's status must be set or the request's read stage advanced, or the handler will be invoked endlessly.
-</p><p>
-Set the given WriteEvent's status to report the result of handler processing, or leave the status at CONTINUE and advance the readStage to marla_CLIENT_REQUEST_DONE_READING to end. The WriteEvent's length will be set to zero when there is no more request body to be given.
-</p><p>
-<table>
-<tr><th>data<td>Pointer to marla_WriteEvent.</tr>
-<tr><th>dataLen<td>N/A</tr>
-</table>
-</p>
-</li>
-<li>
-<h3>marla_EVENT_MUST_WRITE</h3>
-Client request is expecting a response. Set request's writeStage to marla_CLIENT_REQUEST_AFTER_RESPONSE when done writing.
-<p>
-Pointer to marla_WriteEvent. Set the WriteEvent's status to indicate the handler's returned result. The handler's status must be set, or the request's write stage advanced to marla_CLIENT_REQUEST_AFTER_RESPONSE, or the handler will be invoked endlessly.
-<p>
-<table>
-<tr><th>data<td>Pointer to marla_WriteEvent.</tr>
-<tr><th>dataLen<td>N/A</tr>
-</table>
-</p>
-<li>
-<h3>marla_EVENT_DESTROYING</h3>
-The request is about to be freed.
-<li>
-<h3>marla_EVENT_WEBSOCKET_MUST_READ</h3>
-The handler must read the given data frame.
-<p>
-<table>
-<tr><th>data<td>Pointer to data buffer of WebSocket frame. This is zero when the frame has ended.</tr>
-<tr><th>dataLen<td>Length of data at buffer. This is zero when the frame has ended.</tr>
-</table>
-</li>
-<li>
-<h3>marla_EVENT_WEBSOCKET_MUST_WRITE</h3>
-WebSocket is ready for writing. Set *data to -1 if the handler has choked, 0 if the handler can be invoked again. Default is -1.</tr>
-<p>
-<table>
-<tr><th>data<td>Pointer to integer.</tr>
-<tr><th>dataLen<td>None</tr>
-</table>
-</li>
-<li>
-<h3>marla_EVENT_WEBSOCKET_CLOSING</h3>
-A WebSocket close frame was received.
-<p>
-<table>
-<tr><th>data<td><a href="https://tools.ietf.org/html/rfc6455#section-7.4.1">2-byte character Close status code</a></tr>
-<tr><th>dataLen<td>The length of the status code. Defined as 2.</tr>
-</table>
-</li>
-<li>
-<h3>marla_EVENT_WEBSOCKET_CLOSE_REASON</h3>
-<table>
-<tr><th>data<td>The reason for the close is being received</tr>
-<tr><th>dataLen<td>Bytes received in the WebSocket close reason</tr>
-</table>
-</li>
-<li>
-<h3>marla_EVENT_BACKEND_PEER_CLOSED</h3>
-<p>
-The backend request's connection was closed.
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_NEED_HEADERS</h3>
-The backend request is ready for its request headers. Set data to -1 if choked and set to 1 when headers are fully written (i.e. terminated by \r\n\r\n)
-<p>
-<table>
-<tr><th>data<td>Pointer to integer.
-<tr><th>dataLen<td>N/A
-</table>
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_HEADER</h3>
-Backend's HTTP header available to read. Name terminated by null.
-<p>
-<table>
-<tr><th>data<td>HTTP header name and value.</tr>
-<tr><th>dataLen<td>Offset into HTTP header for reading header value.</tr>
-</table>
-</p>
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_MUST_READ</h3>
-The backend request's response is ready for reading.
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_MUST_WRITE</h3>
-The backend request's response is ready for writing.
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_NEED_TRAILERS</h3>
-The backend request is now expecting trailer fields. Set *data to nonzero when trailers are fully written (i.e terminated by \r\n\r\n)
-<p>
-<table>
-<tr><th>data<td>Pointer to integer.
-<tr><th>dataLen<td>N/A
-</table>
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_CLIENT_PEER_CLOSED</h3>
-The client request's connection was closed.
-</li>
-<li>
-<h3>marla_BACKEND_EVENT_CLOSING</h3>
-The backend request's connection is closing.
-</li>
-</ul>
-</div>
-<p>
-<div class=block>
-<h3>struct marla_Request</h3>
-<table>
-<tr><th>Member<th>Description
-<tr><td>struct marla_Request* next_request<td>The next request in line for this connection.
-<tr><td>int id<td>A server-unique identifier for this request.
-<tr><td>int statusCode<td>HTTP status code
-<tr><td>char statusLine[MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP status line text
-<tr><td>struct marla_Connection* cxn<td>Underlying client connection
-<tr><td>char method[MAX_METHOD_LENGTH + 1]<td>HTTP method
-<tr><td>char host[MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP host
-<tr><td>char uri[MAX_URI_LENGTH + 1]<td>HTTP request target
-<tr><td>char error[marla_BUFSIZE]<td>Error message
-<tr><td>char contentType[MAX_FIELD_VALUE_LENGTH + 1]<td>Content-Type header value
-<tr><td>int is_backend<td>Indicates if the client request is for a backend connection
-<tr><td>enum marla_RequestReadStage readStage<td>Request's read stage
-<tr><td>enum marla_RequestWriteStage writeStage<td>Request's write stage
-<tr><td>int expect_upgrade<td>Indicates this request expects an upgrade to a different protocol.
-<tr><td>int expect_continue<td>Indicates this request expects a 100 Continue response to be written.
-<tr><td>int expect_trailer<td>Indicates this request expects HTTP trailer fields.
-<tr><td>int expect_websocket<td>Indicates this request expected an upgrade to WebSocket.
-<tr><td>int close_after_done<td>Indicates the connection will close once this request is complete.
-<tr><td>void(*handle)(struct marla_Request*, enum marla_ClientEvent, void*, int)<td>Handles request events.
-<tr><td>void* handlerData<td>Internal data used for request events.
-<tr><td>struct marla_Request* backendPeer<td>The other request being processed on account of this one.
-<tr><td>long int requestLen<td>The length in bytes of the request body. Set to the value given by the Content-Length header.
-<tr><td>long int responseLen<td>The length in bytes of the response body.
-<tr><td>long int remainingResponseLen<td>When writing fixed-length backend responses, this is the bytes remaining to be written.
-<tr><td>long int totalContentLen<td>
-<tr><td>long int chunkSize<td>
-<tr><td>char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1]<td>The Location: header value
-<tr><td>char setCookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Set-Cookie: header value
-<tr><td>char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Cookie: header value
-<tr><td>char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1]<td>
-<tr><td>char websocket_accept[2 * SHA_DIGEST_LENGTH + 1]<td>
-<tr><td>unsigned char websocket_frame[7]<td>
-<tr><td>int websocket_pingLen<td>
-<tr><td>unsigned char websocket_ping[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
-<tr><td>char websocket_pongLen<td>
-<tr><td>unsigned char websocket_pong[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
-<tr><td>unsigned char websocket_closeReason[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
-<tr><td>char websocket_closeReasonLen<td>
-<tr><td>uint16_t websocket_closeCode<td>
-<tr><td>int websocket_type<td>
-<tr><td>int websocket_fin<td>
-<tr><td>int needWebSocketClose<td>
-<tr><td>int doingPong<td>
-<tr><td>int doingWebSocketClose<td>
-<tr><td>uint64_t websocketFrameWritten<td>
-<tr><td>uint64_t websocketFrameOutLen<td>
-<tr><td>uint64_t websocketFrameRead<td>
-<tr><td>uint64_t websocketFrameLen<td>
-<tr><td>char websocketOutMask[4]<td>
-<tr><td>char websocketMask[4]<td>
-<tr><td>int websocket_version<td>
-</table>
-</p>
-</div>
-<p>
-<div class=block>
-<h3>marla_Request* marla_Request_new(marla_Connection* connection)</h3>
-<p>
-Creates a new marla_Request using the given connection. The request is not enqueued in the connection.
-</div>
-<p>
-<div class=block>
-<h3>void marla_dumpRequest(marla_Request* req)</h3>
-<p>
-Dumps information on the given request to stderr.
-</div>
-<p>
-<div class=block>
-<h3>void marla_Request_destroy(marla_Request* request)</h3>
-<p>
-Dispatches marla_EVENT_DESTROYING event on the given request's handler and then frees the request.
-</div>
-<p>
-<div class=block>
-<h3>void marla_killRequest(marla_Request* request, const char* reason, ...)</h3>
-<p>
-Ends the connection immediately, recording the reason as a formatted string in <code>error</code>.
-</div>
-<p>
-<div class=block>
-<h3>int marla_clientAccept(marla_Connection* cxn)</h3>
-<p>
-Accepts the given client connection.
-<ul>
-<li>Returns 0 if the connection has been accepted.
-<li>Returns -1 if the connection has not been secured yet.
-</ul>
-</div>
-<p>
-<div class=block>
-<h3>int marla_clientRead(marla_Connection* cxn)</h3>
-Consume HTTP requests and WebSocket input on the given connection.
-<ul>
-<li>Returns 0 if the function should be called again.
-<li>Returns -1 if the function has choked and should not be called again.
-<li>Returns 1 if the function needs to close the connection.
-</ul>
-</div>
-<p>
-<div class=block>
-<h3>int marla_clientWrite(marla_Connection* cxn)</h3>
-Produce HTTP responses and WebSocket output on the given connection.
-<ul>
-<li>Returns 0 if the function should be called again.
-<li>Returns -1 if the function has choked and should not be called again.
-<li>Returns 1 if the function needs to close the connection.
-</ul>
-</div>
-<p>
-<div class=block>
-<h3>int marla_writeWebSocketHeader(struct marla_Request* req, unsigned char opcode, uint64_t frameLen)</h3>
-<p>
-Writes a frame header of the given parameters to the request's output.
-<p>
-<ul>
-<li>%x0 denotes a continuation frame
-<li>%x1 denotes a text frame
-<li>%x2 denotes a binary frame
-<li>%x3-7 are reserved for further non-control frames
-<li>%x8 denotes a connection close
-<li>%x9 denotes a ping
-<li>%xA denotes a pong
-<li>%xB-F are reserved for further control frames
-</ul>
-</div>
-<p>
-<div class=block>
-<h3>int marla_writeWebSocket(struct marla_Request* req, unsigned char* data, int dataLen)</h3>
-<p>
-Writes up to the given number of bytes into data. The number of bytes actually written is returned, or -1 if the underlying source is not ready for writing.
-</div>
-<p>
-<div class=block>
-<h3>int marla_readWebSocket(struct marla_Request* req, unsigned char* data, int dataLen)</h3>
-<p>
-Reads up to the given number of bytes into data from the request's WebSocket frame.
-The number of bytes actually read is returned, 0 if there are no more bytes for this connection, and -1 if the underlying source is not ready for reading.
-</div>
-<p>
-<div class=block>
-<h3>int marla_WebSocketRemaining(struct marla_Request* req)</h3>
-<p>
-Returns the number of bytes remaining to be read in the given frame.
-</div>
-<p>
-<div class=block>
-<h3>void marla_putbackWebSocketRead(struct marla_Request* req, int dataLen)</h3>
-<p>
-Puts back the given WebSocket frame bytes.
-</div>
-<p>
-<div class=block>
-<h3>void marla_putbackWebSocketWrite(struct marla_Request* req, int dataLen)</h3>
-<p>
-Puts back the given WebSocket frame bytes.
-</div>
-<p>
-<div class=block>
-<h3>const char* marla_nameRequestReadStage(enum marla_RequestReadStage stage)</h3>
-<p>
-Returns a user-readable string naming the given read stage.
-</div>
-<p>
-<div class=block>
-<h3>const char* marla_nameRequestWriteStage(enum marla_RequestWriteStage stage)</h3>
-<p>
-Returns a user-readable string naming the given write stage.
-</div>
-<p>
-<div class=block>
-<h3>const char* marla_nameClientEvent(enum marla_ClientEvent ev)</h3>
-Names the given client event.
-</div>
-<p>
-<div class=block>
-<h3>MIN_METHOD_LENGTH</h3>
-The minimum tolerated length, in bytes, of a method.
-</div>
-<p>
-<div class=block>
-<h3>MAX_METHOD_LENGTH</h3>
-The maximum tolerated length, in bytes, of a method.
-</div>
-<p>
-<div class=block>
-<h3>MAX_FIELD_NAME_LENGTH</h3>
-The maximum tolerated length, in bytes, of a HTTP header name.
-</div>
-<p>
-<div class=block>
-<h3>MAX_FIELD_VALUE_LENGTH</h3>
-The maximum tolerated length, in bytes, of a HTTP header value.
-</div>
-<p>
-<div class=block>
-<h3>MAX_WEBSOCKET_NONCE_LENGTH</h3>
-The maximum length, in bytes, of a WebSocket nonce.
-</div>
-<p>
-<div class=block>
-<h3>MAX_URI_LENGTH</h3>
-The maxmimum length, in bytes, of a HTTP request target.
-</div>
-<p>
-<div class=block>
-<h3>marla_MAX_CHUNK_SIZE</h3>
-The maximum size of a single HTTP chunk body.
-</div>
-<p>
-<div class=block>
-<h3>marla_MAX_CHUNK_SIZE_LINE</h3>
-The maximum size of a single HTTP chunk header.
-</div>
-<p>
-<div class=block>
-<h3>MAX_WEBSOCKET_CONTROL_PAYLOAD</h3>
-The maximum size of a single HTTP chunk header.
-</div>
-<p>
-<div class=block>
-<h3>marla_MESSAGE_IS_CHUNKED</h3>
-Flag that indicates the HTTP response uses chunked transfer-coding.
-</div>
-<p>
-<div class=block>
-<h3>marla_MESSAGE_LENGTH_UNKNOWN</h3>
-Flag that indicates the HTTP response's length is not known.
-</div>
-<p>
-<div class=block>
-<h3>marla_MESSAGE_USES_CLOSE</h3>
-Flag that indicates the connection should be closed once the response is written.
-</div>
-</main>
-<div style="clear: both"></div>
-<div style="display: block; text-align: center; margin: 1em 0">
-<div class=slot style="display: inline-block;">
+	<div class="grid">
+		<div class="logo">
+		<nav class=toc style="clear: none">
+		<p style="text-align: center">
+		<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
+		</nav>
+		</div>
+		<div class="block title">
+		<h1><h1>Backend - <a href="index.html">Marla</a></h1>
+		Backend server connections.</h1>
+		</div>
+		
+		<div class="slot toctitle">
+		<h2>Table of Contents</h2>
+		<div class="cot" style="font-size: 10px">
+		<h3>Marla</h3>
+		Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR		</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="		http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on 		Linux 2.6.17 or greater. Marla is licensed under the <a href="		http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+		
+		<ol style="font-size: 10px ; padding-left: 0em ; text-align: center" id="top-links">
+		<li><a href="main.html">Main </a>
+		<li><a href="server.html">Server </a>
+		<li><a href="connection.html">Connection </a>
+		<li><a href="request.html">Request </a>
+		<li><a href="ChunkedPageRequest.html">ChunkedPageRequest </a>
+		<li><a href="backend.html">Backend </a>
+		<li><a href="ring.html">Ring </a>
+		</ol>
+		<h3>Marla</h3>
+		Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR</a>, <a 		href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/		ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is 		licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, 		version 2.0</a>.
+		<h2>Request - <a href="index.html">Marla</a></h2>
+		<ul>
+		<li>enum <b><a href="#marla_RequestReadStage">marla_RequestReadStage</a></b>
+		<li>enum <b><a href="#marla_RequestWriteStage">marla_RequestWriteStage</a></b>
+		<li>enum <b><a href="#marla_ClientEvent">marla_ClientEvent</a></b>
+		<li>struct <b><a href="#marla_Request">marla_Request</a></b>
+		<li>marla_Request* <b><a href="#marla_Request_new">marla_Request_new</a></b>(struct marla_Connection* cxn, struct 		marla_Server* server)
+		<li>void <b><a href="#marla_Request_destroy">marla_Request_destroy</a></b>(marla_Request*)
+		<li>void <b><a href="#marla_killRequest">marla_killRequest</a></b>(struct marla_Request* req, const char* reason, ...)
+		<li>int <b><a href="#marla_clientAccept">marla_clientAccept</a></b>(marla_Connection* cxn)
+		<li>int <b><a href="#marla_clientRead">marla_clientRead</a></b>(marla_Connection* cxn)
+		<li>int <b><a href="#marla_clientWrite">marla_clientWrite</a></b>(marla_Connection* cxn)
+		<li>int <b><a href="#marla_writeWebSocketHeader">marla_writeWebSocketHeader</a></b>(struct marla_Request* req, unsigned char 		opcode, uint64_t frameLen)
+		<li>int <b><a href="#marla_writeWebSocket">marla_writeWebSocket</a></b>(struct marla_Request* req, unsigned char* data, int 		dataLen)
+		<li>int <b><a href="#marla_readWebSocket">marla_readWebSocket</a></b>(struct marla_Request* req, unsigned char* data, int 		dataLen)
+		<li>int <b><a href="#marla_WebSocketRemaining">marla_WebSocketRemaining</a></b>(struct marla_Request* req)
+		<li>void <b><a href="#marla_putbackWebSocketRead">marla_putbackWebSocketRead</a></b>(struct marla_Request* req, int dataLen)
+		<li>const char* <b><a href="#marla_nameRequestReadStage">marla_nameRequestReadStage</a></b>(enum marla_RequestReadStage stage)
+		<li>const char* <b><a href="#marla_nameRequestWriteStage">marla_nameRequestWriteStage</a></b>(enum marla_RequestWriteStage stage)
+		<li>const char* <b><a href="#marla_nameClientEvent">marla_nameClientEvent</a></b>(enum marla_ClientEvent ev)
+		<li><b><a href="#MIN_METHOD_LENGTH">MIN_METHOD_LENGTH</a></b>
+		<li><b><a href="#MAX_METHOD_LENGTH">MAX_METHOD_LENGTH</a></b>
+		<li><b><a href="#MAX_FIELD_NAME_LENGTH">MAX_FIELD_NAME_LENGTH</a></b>
+		<li><b><a href="#MAX_FIELD_VALUE_LENGTH">MAX_FIELD_VALUE_LENGTH</a></b>
+		<li><b><a href="#MAX_WEBSOCKET_NONCE_LENGTH">MAX_WEBSOCKET_NONCE_LENGTH</a></b>
+		<li><b><a href="#MAX_URI_LENGTH">MAX_URI_LENGTH</a></b>
+		<li><b><a href="#marla_MAX_CHUNK_SIZE">marla_MAX_CHUNK_SIZE</a></b>
+		<li><b><a href="#marla_MAX_CHUNK_SIZE_LINE">marla_MAX_CHUNK_SIZE_LINE</a></b>
+		<li><b><a href="#MAX_WEBSOCKET_CONTROL_PAYLOAD">MAX_WEBSOCKET_CONTROL_PAYLOAD</a></b>
+		<li><b><a href="#marla_MESSAGE_IS_CHUNKED">marla_MESSAGE_IS_CHUNKED</a></b>
+		<li><b><a href="#marla_MESSAGE_LENGTH_UNKNOWN">marla_MESSAGE_LENGTH_UNKNOWN</a></b>
+		<li><b><a href="#marla_MESSAGE_USES_CLOSE">marla_MESSAGE_USES_CLOSE</a></b>
+		</ul>
+		</div>
+		</div>
+		<div class="block linksearch" style="font-size: 15px">
+			<div class=links>
+       <form id=search action="/search">
+        <input name=q></input> <input type=submit value=Search></input>
+        </form>
+        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+    	</div>
+		</div>
+		<div class="block content" style="font-size: 15px"> 
+		<h1>Request - <a href="index.html">Marla</a></h1>
+		<h2>enum <a name="marla_RequestReadStage">marla_RequestReadStage</h2>
+		Stages of reading a client request. Reads occur either from clients as original 		requests,
+		or from backends as returned responses.
+		<table>
+		<tr><th>Constant<th>Parsing position
+		<tr><td>marla_CLIENT_REQUEST_READ_FRESH<td>Before or at client's HTTP request line.
+		<tr class=backend><td>marla_BACKEND_REQUEST_FRESH<td>Before or at backend's response 		line.
+		<tr><td>marla_CLIENT_REQUEST_READING_METHOD<td>Client's HTTP method.
+		<tr><td>marla_CLIENT_REQUEST_PAST_METHOD<td>Client's whitespace after the HTTP method.
+		<tr><td>marla_CLIENT_REQUEST_READING_REQUEST_TARGET<td>Client's HTTP request target.
+		<tr><td>marla_CLIENT_REQUEST_PAST_REQUEST_TARGET<td>Client's whitespace after the HTTP 		request target.
+		<tr><td>marla_CLIENT_REQUEST_READING_VERSION<td>Client's HTTP version.
+		<tr class=backend><td>marla_BACKEND_REQUEST_READING_RESPONSE_LINE<td>Backend's HTTP 		response line.
+		<tr class=backend><td>marla_BACKEND_REQUEST_READING_HEADERS<td>Backend headers.
+		<tr><td>marla_CLIENT_REQUEST_READING_FIELD<td>Client's HTTP headers.
+		<tr><td>marla_CLIENT_REQUEST_AWAITING_CONTINUE_WRITE<td>After client's HTTP headers.
+		<tr><td>marla_CLIENT_REQUEST_AWAITING_UPGRADE_WRITE<td>After client's HTTP headers.
+		<tr><td>marla_CLIENT_REQUEST_READING_REQUEST_BODY<td>Client's HTTP request body.
+		<tr><td>marla_CLIENT_REQUEST_WEBSOCKET<td>Client's WebSocket connection.
+		<tr class=backend><td>marla_BACKEND_REQUEST_AWAITING_RESPONSE<td>After backend's HTTP 		response headers.
+		<tr class=backend><td>marla_BACKEND_REQUEST_READING_RESPONSE_BODY<td>Backend's HTTP 		response body.
+		<tr><td>marla_CLIENT_REQUEST_READING_CHUNK_SIZE<td>Client's HTTP request chunk header.
+		<tr><td>marla_CLIENT_REQUEST_READING_CHUNK_BODY<td>Client's HTTP request chunk body.
+		<tr class=backend><td>marla_BACKEND_REQUEST_READING_CHUNK_SIZE<td>Backend's HTTP 		response chunk header.
+		<tr class=backend><td>marla_BACKEND_REQUEST_READING_CHUNK_BODY<td>Backend's HTTP 		response chunk header.
+		<tr><td>marla_CLIENT_REQUEST_READING_TRAILER<td>Client's HTTP request trailers.
+		<tr class=backend><td>marla_BACKEND_REQUEST_READING_TRAILER<td>Backend's HTTP response 		trailers.
+		<tr><td>marla_CLIENT_REQUEST_DONE_READING<td>After client's request.
+		<tr class=backend><td>marla_BACKEND_REQUEST_DONE_READING<td>After backend's response.
+		</table>
+		<h2>enum <a name="marla_RequestWriteStage">marla_RequestWriteStage</h2>
+		<table>
+		<tr><th>Constant<th>Client write head position
+		<tr><td>marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT<td>Nothing written
+		<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_REQUEST_LINE<td>Backend's request 		line.
+		<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_HEADERS<td>Backend request headers.
+		<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_REQUEST_BODY<td>Backend request 		body.
+		<tr><td>marla_CLIENT_REQUEST_WRITING_UPGRADE<td>Writing server's Upgrade response
+		<tr><td>marla_CLIENT_REQUEST_WRITING_CONTINUE<td>Writing server's 100 continue response.
+		<tr><td>marla_CLIENT_REQUEST_WRITING_RESPONSE<td>Writing server's HTTP response body.
+		<tr><td>marla_CLIENT_REQUEST_WRITING_WEBSOCKET_RESPONSE<td>Writing server's WebSocket 		response.
+		<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_TRAILERS<td>Backend request 		trailers.
+		<tr class=backend><td>marla_BACKEND_REQUEST_DONE_WRITING<td>After backend's HTTP 		request.
+		<tr><td>marla_CLIENT_REQUEST_DONE_WRITING<td>After server's HTTP response.
+		</table>
+		<h2>enum <a name="marla_ClientEvent">marla_ClientEvent</h2>
+		<ul>
+		<li>
+		<h2><a name="marla_EVENT_HEADER">marla_EVENT_HEADER</a></h2>
+		A HTTP header is available to read.
+		<table>
+		<tr><th>data<td>Pointer to null-terminated character string representing header name</<tr>		</tr>>
+		<tr><th>dataLen<td>data + dataLen is a pointer to a null-terminated string representing 		the header value</tr>
+		</table>
+		<li>
+		<h2><a name="marla_EVENT_ACCEPTING_REQUEST">marla_EVENT_ACCEPTING_REQUEST</a></h2>
+		The handler must accept or decline the request by setting the integer referenced by <		code>data</code>.
+		If data is nonzero, the request will be accepted. If data is zero, the connection 		should be destroyed.
+		<table>
+		<tr><th>data<td>Pointer to integer.</tr>
+		<tr><th>dataLen<td>N/A</tr>
+		</table>
+		<li>
+		<h2><a name="marla_EVENT_REQUEST_BODY">marla_EVENT_REQUEST_BODY</a></h2>
+		HTTP request body ready. The content is provided in a marla_WriteEvent. The WritEvent's 		status must be set or the request's read stage advanced, or the handler will be invoked 		endlessly.
+		Set the given WriteEvent's status to report the result of handler processing, or leave 		the status at CONTINUE and advance the readStage to marla_CLIENT_REQUEST_DONE_READING 		to end. The WriteEvent's length will be set to zero when there is no more request body 		to be given.
+		<table>
+		<tr><th>data<td>Pointer to marla_WriteEvent.</tr>
+		<tr><th>dataLen<td>N/A</tr>
+		</table>
+
+		</li>
+		<li>
+		<h2><a name="marla_EVENT_MUST_WRITE">marla_EVENT_MUST_WRITE</a></h2>
+		Client request is expecting a response. Set request's writeStage to 		marla_CLIENT_REQUEST_AFTER_RESPONSE when done writing.
+		Pointer to marla_WriteEvent. Set the WriteEvent's status to indicate the handler's 		returned result. The handler's status must be set, or the request's write stage 		advanced to marla_CLIENT_REQUEST_AFTER_RESPONSE, or the handler will be invoked 		endlessly.
+		<table>
+		<tr><th>data<td>Pointer to marla_WriteEvent.</tr>
+		<tr><th>dataLen<td>N/A</tr>
+		</table>
+		<li>
+		<h2><a name="marla_EVENT_DESTROYING">marla_EVENT_DESTROYING</a></h2>
+		The request is about to be freed.
+		<li>
+		<h2><a name="marla_EVENT_WEBSOCKET_MUST_READ">marla_EVENT_WEBSOCKET_MUST_READ</a></h2>
+		The handler must read the given data frame.
+		<table>
+		<tr><th>data<td>Pointer to data buffer of WebSocket frame. This is zero when the frame 		has ended.</tr>
+		<tr><th>dataLen<td>Length of data at buffer. This is zero when the frame has ended.</tr>
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_EVENT_WEBSOCKET_MUST_WRITE">marla_EVENT_WEBSOCKET_MUST_WRITE</a></h2>
+		WebSocket is ready for writing. Set *data to -1 if the handler has choked, 0 if the 		handler can be invoked again. Default is -1.</tr>
+		<table>
+		<tr><th>data<td>Pointer to integer.</tr>
+		<tr><th>dataLen<td>None</tr>
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_EVENT_WEBSOCKET_CLOSING">marla_EVENT_WEBSOCKET_CLOSING</a></h2>
+		A WebSocket close frame was received.
+		<table>
+		<tr><th>data<td><a href="https://tools.ietf.org/html/rfc6455#section-7.4.1">2-byte 		character Close status code</a></tr>
+		<tr><th>dataLen<td>The length of the status code. Defined as 2.</tr>
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_EVENT_WEBSOCKET_CLOSE_REASON">marla_EVENT_WEBSOCKET_CLOSE_REASON</a></h2>
+		<table>
+		<tr><th>data<td>The reason for the close is being received</tr>
+		<tr><th>dataLen<td>Bytes received in the WebSocket close reason</tr>
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_EVENT_BACKEND_PEER_CLOSED">marla_EVENT_BACKEND_PEER_CLOSED</a></h2>
+		The backend request's connection was closed.
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_NEED_HEADERS">marla_BACKEND_EVENT_NEED_HEADERS</a></h2>
+		The backend request is ready for its request headers. Set data to -1 if choked and set 		to 1 when headers are fully written (i.e. terminated by \r\n\r\n)
+		<table>
+		<tr><th>data<td>Pointer to integer.
+		<tr><th>dataLen<td>N/A
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_HEADER">marla_BACKEND_EVENT_HEADER</a></h2>
+		Backend's HTTP header available to read. Name terminated by null.
+		<table>
+		<tr><th>data<td>HTTP header name and value.</tr>
+		<tr><th>dataLen<td>Offset into HTTP header for reading header value.</tr>
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_MUST_READ">marla_BACKEND_EVENT_MUST_READ</a></h2>
+		The backend request's response is ready for reading.
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_MUST_WRITE">marla_BACKEND_EVENT_MUST_WRITE</a></h2>
+		The backend request's response is ready for writing.
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_NEED_TRAILERS">marla_BACKEND_EVENT_NEED_TRAILERS</a></h2>
+		The backend request is now expecting trailer fields. Set *data to nonzero when trailers 		are fully written (i.e terminated by \r\n\r\n)
+		<table>
+		<tr><th>data<td>Pointer to integer.
+		<tr><th>dataLen<td>N/A
+		</table>
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_CLIENT_PEER_CLOSED">marla_BACKEND_EVENT_CLIENT_PEER_CLOSED</a></h2>
+		The client request's connection was closed.
+		</li>
+		<li>
+		<h2><a name="marla_BACKEND_EVENT_CLOSING">marla_BACKEND_EVENT_CLOSING</a></h2>
+		The backend request's connection is closing.
+		</li>
+		</ul>
+		<h2>struct <a name="marla_Request">marla_Request</h2>
+		<table>
+		<tr><th>Member<th>Description
+		<tr><td>struct marla_Request* next_request<td>The next request in line for this 		connection.
+		<tr><td>int id<td>A server-unique identifier for this request.
+		<tr><td>int statusCode<td>HTTP status code
+		<tr><td>char statusLine[MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP status line text
+		<tr><td>struct marla_Connection* cxn<td>Underlying client connection
+		<tr><td>char method[MAX_METHOD_LENGTH + 1]<td>HTTP method
+		<tr><td>char host[MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP host
+		<tr><td>char uri[MAX_URI_LENGTH + 1]<td>HTTP request target
+		<tr><td>char error[marla_BUFSIZE]<td>Error message
+		<tr><td>char contentType[MAX_FIELD_VALUE_LENGTH + 1]<td>Content-Type header value
+		<tr><td>int is_backend<td>Indicates if the client request is for a backend connection
+		<tr><td>enum marla_RequestReadStage readStage<td>Request's read stage
+		<tr><td>enum marla_RequestWriteStage writeStage<td>Request's write stage
+		<tr><td>int expect_upgrade<td>Indicates this request expects an upgrade to a different 		protocol.
+		<tr><td>int expect_continue<td>Indicates this request expects a 100 Continue response 		to be written.
+		<tr><td>int expect_trailer<td>Indicates this request expects HTTP trailer fields.
+		<tr><td>int expect_websocket<td>Indicates this request expected an upgrade to WebSocket.
+		<tr><td>int close_after_done<td>Indicates the connection will close once this request 		is complete.
+		<tr><td>void(*handle)(struct marla_Request*, enum marla_ClientEvent, void*, int)<td>		Handles request events.
+		<tr><td>void* handlerData<td>Internal data used for request events.
+		<tr><td>struct marla_Request* backendPeer<td>The other request being processed on 		account of this one.
+		<tr><td>long int requestLen<td>The length in bytes of the request body. Set to the 		value given by the Content-Length header.
+		<tr><td>long int responseLen<td>The length in bytes of the response body.
+		<tr><td>long int remainingResponseLen<td>When writing fixed-length backend responses, 		this is the bytes remaining to be written.
+		<tr><td>long int totalContentLen<td>
+		<tr><td>long int chunkSize<td>
+		<tr><td>char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1]<td>The Location: header value
+		<tr><td>char setCookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Set-Cookie: header value
+		<tr><td>char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Cookie: header value
+		<tr><td>char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1]<td>
+		<tr><td>char websocket_accept[2 * SHA_DIGEST_LENGTH + 1]<td>
+		<tr><td>unsigned char websocket_frame[7]<td>
+		<tr><td>int websocket_pingLen<td>
+		<tr><td>unsigned char websocket_ping[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
+		<tr><td>char websocket_pongLen<td>
+		<tr><td>unsigned char websocket_pong[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
+		<tr><td>unsigned char websocket_closeReason[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
+		<tr><td>char websocket_closeReasonLen<td>
+		<tr><td>uint16_t websocket_closeCode<td>
+		<tr><td>int websocket_type<td>
+		<tr><td>int websocket_fin<td>
+		<tr><td>int needWebSocketClose<td>
+		<tr><td>int doingPong<td>
+		<tr><td>int doingWebSocketClose<td>
+		<tr><td>uint64_t websocketFrameWritten<td>
+		<tr><td>uint64_t websocketFrameOutLen<td>
+		<tr><td>uint64_t websocketFrameRead<td>
+		<tr><td>uint64_t websocketFrameLen<td>
+		<tr><td>char websocketOutMask[4]<td>
+		<tr><td>char websocketMask[4]<td>
+		<tr><td>int websocket_version<td>
+		</table>
+		<h2>marla_Request* <a name="marla_Request_new">marla_Request_new</a>(marla_Connection* connection)</h2>
+		<p>
+		Creates a new marla_Request using the given connection. The request is not enqueued in 		the connection.
+
+		<p>
+		<h2>void <a name="marla_dumpRequest">marla_dumpRequest(marla_Request* req)</h2>
+		<p>
+		Dumps information on the given request to stderr.
+
+		<p>
+		<h2>void <a name="marla_Request_destroy">marla_Request_destroy(marla_Request* request)</h2>
+		<p>
+		Dispatches marla_EVENT_DESTROYING event on the given request's handler and then frees 		the request.
+
+		<p>
+		<h2>void <a name="marla_killRequest">marla_killRequest(marla_Request* request, const char* reason, ...)</h2>
+		<p>
+		Ends the connection immediately, recording the reason as a formatted string in <code>		error</code>.
+
+		<p>
+		<h2>int <a name="marla_clientAccept">marla_clientAccept(marla_Connection* cxn)</h2>
+		<p>
+		Accepts the given client connection.
+		<ul>
+		<li>Returns 0 if the connection has been accepted.
+		<li>Returns -1 if the connection has not been secured yet.
+		</ul>
+	
+		<p>
+		<h2>int <a name="marla_clientRead">marla_clientRead(marla_Connection* cxn)</h2>
+		Consume HTTP requests and WebSocket input on the given connection.
+		<ul>
+		<li>Returns 0 if the function should be called again.
+		<li>Returns -1 if the function has choked and should not be called again.
+		<li>Returns 1 if the function needs to close the connection.
+		</ul>
+	
+		<p>
+		<h2>int <a name="marla_clientWrite">marla_clientWrite(marla_Connection* cxn)</h2>
+		Produce HTTP responses and WebSocket output on the given connection.
+		<ul>
+		<li>Returns 0 if the function should be called again.
+		<li>Returns -1 if the function has choked and should not be called again.
+		<li>Returns 1 if the function needs to close the connection.
+		</ul>
+	
+		<p>
+		<h2>int <a name="marla_writeWebSocketHeader">marla_writeWebSocketHeader(struct marla_Request* req, unsigned char opcode, 		uint64_t frameLen)</h2>
+		<p>
+		Writes a frame header of the given parameters to the request's output.
+		<p>
+		<ul>
+		<li>%x0 denotes a continuation frame
+		<li>%x1 denotes a text frame
+		<li>%x2 denotes a binary frame
+		<li>%x3-7 are reserved for further non-control frames
+		<li>%x8 denotes a connection close
+		<li>%x9 denotes a ping
+		<li>%xA denotes a pong
+		<li>%xB-F are reserved for further control frames
+		</ul>
+	
+		<p>
+		<h2>int <a name="marla_writeWebSocket">marla_writeWebSocket(struct marla_Request* req, unsigned char* data, int 		dataLen)</h2>
+		<p>
+		Writes up to the given number of bytes into data. The number of bytes actually written 		is returned, or -1 if the underlying source is not ready for writing.
+
+		<p>
+		<h2>int <a name="marla_readWebSocket">marla_readWebSocket(struct marla_Request* req, unsigned char* data, int dataLen)		</h2>
+		<p>
+		Reads up to the given number of bytes into data from the request's WebSocket frame.
+		The number of bytes actually read is returned, 0 if there are no more bytes for this 		connection, and -1 if the underlying source is not ready for reading.
+
+		<p>
+		<h2>int <a name="marla_WebSocketRemaining">marla_WebSocketRemaining(struct marla_Request* req)</h2>
+		<p>
+		Returns the number of bytes remaining to be read in the given frame.
+
+		<p>
+		<h2>void <a name="marla_putbackWebSocketRead">marla_putbackWebSocketRead(struct marla_Request* req, int dataLen)</h2>
+		<p>
+		Puts back the given WebSocket frame bytes.
+
+		<p>
+		<h2>void <a name="marla_putbackWebSocketWrite">marla_putbackWebSocketWrite(struct marla_Request* req, int dataLen)</h2>
+		<p>
+		Puts back the given WebSocket frame bytes.
+
+		<p>
+		<h2>const char* <a name="marla_nameRequestReadStage">marla_nameRequestReadStage</a>(enum marla_RequestReadStage stage)</h2>
+		<p>
+		Returns a user-readable string naming the given read stage.
+
+		<p>
+		<h2>const char* <a name="marla_nameRequestWriteStage">marla_nameRequestWriteStage</a>(enum marla_RequestWriteStage stage)</h2>
+		<p>
+		Returns a user-readable string naming the given write stage.
+
+		<p>
+		<h2>const char* <a name="marla_nameClientEvent">marla_nameClientEvent</a>(enum marla_ClientEvent ev)</h2>
+		Names the given client event.
+		
+		<p>
+		<h2><a name="MIN_METHOD_LENGTH">MIN_METHOD_LENGTH</a></h2>
+		The minimum tolerated length, in bytes, of a method.
+		
+		<p>
+		<h2><a name="MAX_METHOD_LENGTH">MAX_METHOD_LENGTH</a></h2>
+		The maximum tolerated length, in bytes, of a method.
+		
+		<p>
+		<h2><a name="MAX_FIELD_NAME_LENGTH">MAX_FIELD_NAME_LENGTH</a></h2>
+		The maximum tolerated length, in bytes, of a HTTP header name.
+		
+		<p>
+		<h2><a name="MAX_FIELD_VALUE_LENGTH">MAX_FIELD_VALUE_LENGTH</a></h2>
+		The maximum tolerated length, in bytes, of a HTTP header value.
+		
+		<p>
+		<h2><a name="MAX_WEBSOCKET_NONCE_LENGTH">MAX_WEBSOCKET_NONCE_LENGTH</a></h2>
+		The maximum length, in bytes, of a WebSocket nonce.
+		
+		<p>
+		<h2><a name="MAX_URI_LENGTH">MAX_URI_LENGTH</a></h2>
+		The maxmimum length, in bytes, of a HTTP request target.
+		
+		<p>
+		<h2><a name="marla_MAX_CHUNK_SIZE">marla_MAX_CHUNK_SIZE</a></h2>
+		The maximum size of a single HTTP chunk body.
+		
+		<p>
+		<h2><a name="marla_MAX_CHUNK_SIZE_LINE">marla_MAX_CHUNK_SIZE_LINE</a></h2>
+		The maximum size of a single HTTP chunk header.
+		
+		<p>
+		<h2><a name="MAX_WEBSOCKET_CONTROL_PAYLOAD">MAX_WEBSOCKET_CONTROL_PAYLOAD</a></h2>
+		The maximum size of a single HTTP chunk header.
+		
+		<p>
+		<h2><a name="marla_MESSAGE_IS_CHUNKED">marla_MESSAGE_IS_CHUNKED</a></h2>
+		Flag that indicates the HTTP response uses chunked transfer-coding.
+		
+		<p>
+		<h2><a name="marla_MESSAGE_LENGTH_UNKNOWN">marla_MESSAGE_LENGTH_UNKNOWN</a></h2>
+		Flag that indicates the HTTP response's length is not known.
+		
+		<p>
+		<h2><a name="marla_MESSAGE_USES_CLOSE">marla_MESSAGE_USES_CLOSE</a></h2>
+		Flag that indicates the connection should be closed once the response is written.
+		</div>
+
+		<div class="footer slot style="display: inline-block; "">
     &copy; 2018 <a href='https://rainback.com'>Rainback, Inc.</a> All rights reserved. <a href=/contact><span class="bud">Contact Us</span></a>
-</div>
+	</div>
+	</div>
 </body>
 </html>

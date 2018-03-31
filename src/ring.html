@@ -12,89 +12,121 @@ border: 1px solid grey;
 }
 </style>
 <title>Ring - Marla</title>
-<link rel=stylesheet type=text/css href="style.css">
+<link rel=stylesheet type=text/css href="../../doc/rainback.css">
 </head>
 <body>
-<main class=content>
-<h1>Ring - <a href="index.html">Marla</a></h1>
-Circular buffer.
-<h2>struct marla_Ring</h2>
-<table>
-<tr><th>Member<th>Description
-<tr><td>char* buf<td>Internal buffer.
-<tr><td>unsigned int read_index<td>Offset of the read head in the internal buffer. Not guaranteed to be in [0, capacity).
-<tr><td>unsigned int write_index<td>Offset of the write head in the internal buffer. Not guaranteed to be in [0, capacity).
-<tr><td>size_t capacity<td>Capacity, in bytes, of the internal buffer.
-</table>
-<h2>marla_Ring* marla_Ring_new(size_t capacity)</h2>
-Creates and returns a new marla_Ring with the specified capacity. The capacity must be a power of two.
-<h2>void marla_Ring_free(ring)</h2>
-Destroys and frees the given ring.
-<h2>unsigned int marla_Ring_size(ring)</h2>
-Returns the number of bytes available for reading from this ring.
-<h2>size_t marla_Ring_capacity(ring)</h2>
-Returns the capacity of the ring.
-<h2>int marla_Ring_readc(marla_Ring* ring, unsigned char* out)</h2>
-Reads a single character from the ring. Returns 1 if a character was read, 0 otherwise.
-<h2>int marla_Ring_read(ring, char* sink, size_t size)</h2>
-Reads up to the specified number of bytes from the ring. The number of bytes actually read is returned.
-<h2>int marla_Ring_isFull(marla_Ring* ring)</h2>
-Returns 1 if the given ring is full of data to be read.
-<h2>int marla_Ring_isEmpty(marla_Ring* ring)</h2>
-Returns 1 if the given ring is empty.
-<h2>void marla_Ring_putbackRead(ring, size_t count)</h2>
-Reverses this ring's read head by the specified number of bytes.
-<h2>void marla_Ring_putbackWrite(ring, size_t count)</h2>
-Reverses this ring's write head by the specified number of bytes.
-<h2>size_t marla_Ring_write(ring, const char* source, size_t size)</h2>
-Writes up to the specified number of bytes from the given source to this ring. The number of bytes actually written is returned.
-<h2>int marla_Ring_writec(ring, char source)</h2>
-Writes the specified character to this ring. Returns 1 if the character was written, or 0
-if the ring is full.
-<h2>int marla_Ring_writeStr(ring, const char* source)</h2>
-Shorthand for <code>marla_Ring_write(ring, source, strlen(source))</code>.
-<h2>void marla_Ring_writeSlot(ring, void** slot, size_t* slotLen)</h2>
-Returns, in slot and slotLen, a continuous area of memory in this ring for which to write.
-<h2>void marla_Ring_readSlot(ring, void** slot, size_t* slotLen)</h2>
-Returns, in slot and slotLen, a continuous stretch of bytes to read from this ring.
-<h2>#define marla_BUFSIZE</h2>
-A power-of-two buffer size considered reasonable for normal use. Defined as 2,048 bytes. The server cannot work with sizes smaller than 1,024 bytes.
-</main>
-<nav class=toc>
-<h3>Ring - <a href="index.html">Marla</a></h3>
-<ul>
-<li>struct <b>marla_Ring</b>
-<li>marla_Ring* <b>marla_Ring_new</b>(size_t capacity)
-<li>void <b>marla_Ring_free</b>(ring)
-<li>unsigned int <b>marla_Ring_size</b>(ring)
-<li>size_t <b>marla_Ring_capacity</b>(ring)
-<li>int <b>marla_Ring_readc</b>(ring, unsigned char*)
-<li>int <b>marla_Ring_isFull</b>(marla_Ring* ring)
-<li>int <b>marla_Ring_isEmpty</b>(marla_Ring* ring)
-<li>int <b>marla_Ring_read</b>(ring, char* sink, size_t size)
-<li>void <b>marla_Ring_putbackRead</b>(ring, size_t count)
-<li>void <b>marla_Ring_putbackWrite</b>(ring, size_t count)
-<li>int <b>marla_Ring_write</b>(ring, const char* source, size_t size)
-<li>int <b>marla_Ring_writec</b>(ring, char source)
-<li>int <b>marla_Ring_writeStr</b>(ring, const char* source)
-<li>void <b>marla_Ring_writeSlot</b>(ring, void** slot, size_t* slotLen)
-<li>void <b>marla_Ring_readSlot</b>(ring, void** slot, size_t* slotLen)
-<li>#define <b>marla_BUFSIZE</b>
-</ul>
-<h3>Marla</h3>
-Marla is a HTTP 1.1 server that depends on <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
-<p>
-<h3>Table of Contents</h3>
-<ol>
-<li><a href="main.html">Main</a>
-<li><a href="server.html">Server</a>
-<li><a href="connection.html">Connection</a>
-<li><a href="request.html">Request</a>
-<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
-<li><a href="WriteEvent.html">WriteEvent</a>
-<li><a href="backend.html">Backend</a>
-<li><a href="ring.html">Ring</a>
-</ol>
-</nav>
+	<div class="grid">
+		<div class="logo">
+		<nav class="toc" style="clear: none">
+		<p style="text-align: center">
+		<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
+		</p>
+		</nav>
+		</div>
+		<div class="block title">
+		<h1><h1>Ring - <a href="index.html">Marla</a></h1>
+		Circular Buffer</h1>
+		</div>
+		
+		<div class="slot toctitle">
+		<h2>Table of Contents</h2>
+		<h3>Marla</h3>
+		Marla is a HTTP 1.1 server that depends on <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+		<p>
+		<ol>
+		<li><a href="main.html">Main</a>
+		<li><a href="server.html">Server</a>
+		<li><a href="connection.html">Connection</a>
+		<li><a href="request.html">Request</a>
+		<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
+		<li><a href="WriteEvent.html">WriteEvent</a>
+		<li><a href="backend.html">Backend</a>
+		<li><a href="ring.html">Ring</a>
+		</ol>
+		<nav class=toc>
+		<h3>Ring - <a href="index.html">Marla</a></h3>
+		<ul>
+		<li>struct <b><a href="#marla_Ring">marla_Ring</a></b>
+		<li>marla_Ring* <b><a href="#marla_Ring_new">marla_Ring_new</a></b>(size_t capacity)
+		<li>void <b><a href="#marla_Ring_free">marla_Ring_free</a></b>(ring)
+		<li>unsigned int <b><a href="#marla_Ring_size">marla_Ring_size</a></b>(ring)
+		<li>size_t <b><a href="#marla_Ring_capacity">marla_Ring_capacity</a></b>(ring)
+		<li>int <b><a href="#marla_Ring_readc">marla_Ring_readc</a></b>(ring, unsigned char*)
+		<li>int <b><a href="#marla_Ring_isFull">marla_Ring_isFull</a></b>(marla_Ring* ring)
+		<li>int <b><a href="#marla_Ring_isEmpty">marla_Ring_isEmpty</a></b>(marla_Ring* ring)
+		<li>int <b><a href="#marla_Ring_read">marla_Ring_read</a></b>(ring, char* sink, size_t size)
+		<li>void <b><a href="#marla_Ring_putbackRead">marla_Ring_putbackRead</a></b>(ring, size_t count)
+		<li>void <b><a href="#marla_Ring_putbackWrite">marla_Ring_putbackWrite</a></b>(ring, size_t count)
+		<li>int <b><a href="#marla_Ring_write">marla_Ring_write</a></b>(ring, const char* source, size_t size)
+		<li>int <b><a href="#marla_Ring_writec">marla_Ring_writec</a></b>(ring, char source)
+		<li>int <b><a href="#marla_Ring_writeStr">marla_Ring_writeStr</a></b>(ring, const char* source)
+		<li>void <b><a href="#marla_Ring_writeSlot">marla_Ring_writeSlot</a></b>(ring, void** slot, size_t* slotLen)
+		<li>void <b><a href="#marla_Ring_readSlot">marla_Ring_readSlot</a></b>(ring, void** slot, size_t* slotLen)
+		<li>#define <b><a href="#marla_BUFSIZE">marla_BUFSIZE</a></b>
+		</ul>
+		</div>
+		<div class="block linksearch" style="font-size: 15px">
+			<div class=links>
+       <form id=search action="/search">
+        <input name=q></input> <input type=submit value=Search></input>
+        </form>
+        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+    	</div>
+		</div>
+		
+		<div class="block content" style="font-size: 15px"> 
+		<h1>Ring - <a href="index.html">Marla</a></h1>
+		Circular buffer.
+		<h2>struct <a name="marla_Ring">marla_Ring</a></h2>
+		<table>
+		<tr><th>Member<th>Description
+		<tr><td>char* buf<td>Internal buffer.
+		<tr><td>unsigned int read_index<td>Offset of the read head in the internal buffer. Not guaranteed to be in [0, capacity).
+		<tr><td>unsigned int write_index<td>Offset of the write head in the internal buffer. Not guaranteed to be in [0, capacity).
+		<tr><td>size_t capacity<td>Capacity, in bytes, of the internal buffer.
+		</table>
+		<h2>marla_Ring* <a name="marla_Ring_new">marla_Ring_new(size_t capacity)</a></h2>
+		Creates and returns a new marla_Ring with the specified capacity. The capacity must be a power of two.
+		<h2>void <a name="marla_Ring_free">marla_Ring_free(ring)</a></h2>
+		Destroys and frees the given ring.
+		<h2>unsigned int <a name="marla_Ring_size">marla_Ring_size(ring)</a></h2>
+		Returns the number of bytes available for reading from this ring.
+		<h2>size_t <a name="marla_Ring_capacity">marla_Ring_capacity(ring)</a></h2>
+		Returns the capacity of the ring.
+		<h2>int <a name="marla_Ring_readc">marla_Ring_readc(marla_Ring* ring, unsigned char* out)</a></h2>
+		Reads a single character from the ring. Returns 1 if a character was read, 0 otherwise.
+		<h2>int <a name="marla_Ring_read">marla_Ring_read(ring, char* sink, size_t size)</a></h2>
+		Reads up to the specified number of bytes from the ring. The number of bytes actually read is returned.
+		<h2>int <a name="marla_Ring_isFull">marla_Ring_isFull(marla_Ring* ring)</a></h2>
+		Returns 1 if the given ring is full of data to be read.
+		<h2>int <a name="marla_Ring_isEmpty">marla_Ring_isEmpty(marla_Ring* ring)</a></h2>
+		Returns 1 if the given ring is empty.
+		<h2>void <a name="marla_Ring_putbackRead">marla_Ring_putbackRead(ring, size_t count)</a></h2>
+		Reverses this ring's read head by the specified number of bytes.
+		<h2>void <a name="marla_Ring_putbackWrite">marla_Ring_putbackWrite(ring, size_t count)</a></h2>
+		Reverses this ring's write head by the specified number of bytes.
+		<h2>size_t <a name="marla_Ring_write">marla_Ring_write(ring, const char* source, size_t size)</a></h2>
+		Writes up to the specified number of bytes from the given source to this ring. The number of bytes actually written is returned.
+		<h2>int <a name="marla_Ring_writec">marla_Ring_writec(ring, char source)</a></h2>
+		Writes the specified character to this ring. Returns 1 if the character was written, or 0
+		if the ring is full.
+		<h2>int <a name="marla_Ring_writeStr">marla_Ring_writeStr(ring, const char* source)</a></h2>
+		Shorthand for <code>marla_Ring_write(ring, source, strlen(source))</code>.
+		<h2>void <a name="marla_Ring_writeSlot">marla_Ring_writeSlot(ring, void** slot, size_t* slotLen)</a></h2>
+		Returns, in slot and slotLen, a continuous area of memory in this ring for which to write.
+		<h2>void <a name="marla_Ring_readSlot">marla_Ring_readSlot(ring, void** slot, size_t* slotLen)</a></h2>
+		Returns, in slot and slotLen, a continuous stretch of bytes to read from this ring.
+		<h2>#define <a name="marla_BUFSIZE">marla_BUFSIZE</a></h2>
+		A power-of-two buffer size considered reasonable for normal use. Defined as 2,048 bytes. The server cannot work with sizes smaller than 1,024 bytes.
+		</div>
+
+		<div class="footer slot style="display: inline-block; "">
+    	&copy; 2018 <a href='https://rainback.com'>Rainback, Inc.</a> All rights reserved. <a href=/contact><span class="bud">Contact Us</span></a>
+		</div>
+	</div>
+		
+		
 </body>
 </html>

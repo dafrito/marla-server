@@ -2,52 +2,93 @@
 <html>
 <head>
 <title>WriteEvent - Marla</title>
-<link rel=stylesheet type=text/css href="style.css">
+<link rel=stylesheet type=text/css href="../../doc/rainback.css">
 </head>
 <body>
-<main class=content>
-<h1>WriteEvent - <a href="index.html">Marla</a></h1>
-<h2>enum marla_WriteResult</h2>
-<table>
-<tr><th>Status<th>Value<th>Description
-<tr><td>marla_WriteResult_CONTINUE<td>0<td>Handler indicated that it can be usefully invoked again.
-<tr><td>marla_WriteResult_DOWNSTREAM_CHOKED<td>-1<td>
-<ul>
-<li>Connection's output buffer is full and needs to be flushed to source.
-<li>Connection's source is full and needs to be flushed.
-<li>Client request is not done being written.
-</ul>
-<tr><td>marla_WriteResult_UPSTREAM_CHOKED<td>-2<td>
-<ul>
-<li>Connection's input buffer is empty and needs to be refilled from source.
-<li>Connection's source has no bytes availble to read.
-<li>Client request is not done being read.
-</ul>
-<tr><td>marla_WriteResult_TIMEOUT<td>-3<td>
-Processing is not done for some other reason that will be resolved by the callee.
-<tr><td>marla_WriteResult_LOCKED<td>-4<td>
-A write was attempted while already writing, or a read was attempted while already reading.
-<tr><td>marla_WriteResult_KILLED<td>1<td>
-Request is in error.
-<tr><td>marla_WriteResult_CLOSED<td>2<td>
-Connection indicated closed.
-</table>
-<h2>struct marla_WriteEvent</h2>
-<table>
-<tr><td>enum marla_WriteResult status<td>Status of processing.
-<tr><td>int index<td>Index read into buf. Indicates partial reads if index &lt; length and length != 0.
-<tr><td>size_t length<td>Length of the data in buf.
-<tr><td>void* buf<td>Current body buffer.
-</table>
-<h2>void marla_WriteEvent_init(marla_WriteEvent* writeEvent, enum marla_WriteResult st)</h2>
-Initialize the given WriteEvent setting to the given result.
-</main>
-<nav class=toc>
-<h3>WriteEvent - <a href="index.html">Marla</a></h3>
-<ul>
-<li>enum <b>marla_WriteResult</b>
-<li>void <b>marla_WriteEvent_init</b>(marla_WriteEvent* writeEvent, enum marla_WriteResult st)
-</ul>
-</nav>
+	<div class="grid">
+		<div class="logo">
+		<nav class="toc" style="clear: none">
+		<p style="text-align: center">
+		<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
+		</p>
+		</nav>
+		</div>
+		<div class="block title">
+		<h1><h1>WriteEvent - <a href="index.html">Marla</a></h1>
+		Return codes from connection processing.</h1>
+		</div>
+
+		<div class="slot toctitle">
+		<h2>Table of Contents</h2>
+		<div class="cot" style="font-size: 10px">
+		<h3>Marla</h3>
+		Marla is a HTTP 1.1 server that requires <a href="https://apr.apache.org/">APR		</a>, <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="		http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on 		Linux 2.6.17 or greater. Marla is licensed under the <a href="		http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+		
+		<ol style="font-size: 10px ; padding-left: 0em ; text-align: center" id="top-links">
+		<li><a href="main.html">Main </a>
+		<li><a href="server.html">Server </a>
+		<li><a href="connection.html">Connection </a>
+		<li><a href="request.html">Request </a>
+		<li><a href="ChunkedPageRequest.html">ChunkedPageRequest </a>
+		<li><a href="backend.html">Backend </a>
+		<li><a href="ring.html">Ring </a>
+		</ol>
+		<h3>WriteEvent - <a href="index.html">Marla</a></h3>
+		<ul>
+		<li>enum <b><a href="#marla_WriteResult">marla_WriteResult</a></b>
+		<li><b>struct <a href="#marla_WriteEvent">marla_WriteEvent</a></b>
+		<li>void <b><a href="#marla_WriteEvent_init">marla_WriteEvent_init</a></b>(marla_WriteEvent* writeEvent, enum marla_WriteResult st)
+		</ul>
+		</div>
+		</div>
+		<div class="block linksearch" style="font-size: 15px">
+		<div class=links>
+        <form id=search action="/search">
+        <input name=q></input> <input type=submit value=Search></input>
+        </form>
+        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+    	</div>
+		</div>
+
+		<div class="block content" style="font-size: 15px">
+		<h1>WriteEvent - <a href="index.html">Marla</a></h1>
+		<h2>enum <a name="marla_WriteResult">marla_WriteResult</a></h2>
+		<table>
+		<tr><th>Status<th>Value<th>Description
+		<tr><td>marla_WriteResult_CONTINUE<td>0<td>Handler indicated that it can be usefully invoked again.
+		<tr><td>marla_WriteResult_DOWNSTREAM_CHOKED<td>-1<td>
+		<ul>
+		<li>Connection's output buffer is full and needs to be flushed to source.
+		<li>Connection's source is full and needs to be flushed.
+		<li>Client request is not done being written.
+		</ul>
+		<tr><td>marla_WriteResult_UPSTREAM_CHOKED<td>-2<td>
+		<ul>
+		<li>Connection's input buffer is empty and needs to be refilled from source.
+		<li>Connection's source has no bytes availble to read.
+		<li>Client request is not done being read.
+		</ul>
+		<tr><td>marla_WriteResult_TIMEOUT<td>-3<td>
+		Processing is not done for some other reason that will be resolved by the callee.
+		<tr><td>marla_WriteResult_LOCKED<td>-4<td>
+		A write was attempted while already writing, or a read was attempted while already reading.
+		<tr><td>marla_WriteResult_KILLED<td>1<td>
+		Request is in error.
+		<tr><td>marla_WriteResult_CLOSED<td>2<td>
+		Connection indicated closed.
+		</table>
+		<h2>struct <a name="marla_WriteEvent">marla_WriteEvent</a></h2>
+		<table>
+		<tr><td>enum marla_WriteResult status<td>Status of processing.
+		<tr><td>int index<td>Index read into buf. Indicates partial reads if index &lt; length and length != 0.
+		<tr><td>size_t length<td>Length of the data in buf.
+		<tr><td>void* buf<td>Current body buffer.
+		</table>
+		<h2>void <a name="marla_WriteEvent_init">marla_WriteEvent_init(marla_WriteEvent* writeEvent, enum marla_WriteResult st)</a></h2>
+		Initialize the given WriteEvent setting to the given result.
+		</div>
+	</div>
 </body>
 </html>

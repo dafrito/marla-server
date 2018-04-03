@@ -197,7 +197,7 @@ void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)
     }
 }
 
-void marla_Backend_recover(marla_Connection* oldCxn)
+marla_Connection* marla_Backend_recover(marla_Connection* oldCxn)
 {
     marla_Server* server = oldCxn->server;
     marla_Connection* newCxn = marla_Backend_connect(oldCxn->server);
@@ -223,7 +223,11 @@ void marla_Backend_recover(marla_Connection* oldCxn)
         }
         oldCxn->current_request = nextReq;
     }
+    if(oldCxn->backendPeer) {
+        newCxn->backendPeer = oldCxn->backendPeer;
+    }
     oldCxn->shouldDestroy = 1;
+    return newCxn;
 }
 
 marla_WriteResult marla_backendWrite(marla_Connection* cxn)

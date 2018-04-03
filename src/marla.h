@@ -398,7 +398,7 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn);
 
 marla_BackendSource* marla_Backend_init(marla_Connection* cxn, int fd);
 void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req);
-void marla_Backend_recover(marla_Connection* cxn);
+marla_Connection* marla_Backend_recover(marla_Connection* cxn);
 
 // Server
 

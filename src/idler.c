@@ -123,6 +123,9 @@ static void idle_tick(marla_Server* server)
         if(cxn->shouldDestroy) {
             marla_Connection* next = cxn->next_connection;
             marla_logLeave(server, "Destroying connection.");
+            if(cxn->is_backend) {
+                marla_Backend_recover(cxn);
+            }
             marla_Connection_destroy(cxn);
             if(next) {
                 cxn = next;

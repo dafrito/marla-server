@@ -215,6 +215,11 @@ void marla_Connection_destroy(marla_Connection* cxn)
         }
     }
 
+    if(cxn->backendPeer && cxn->backendPeer->backendPeer == cxn) {
+        cxn->backendPeer->backendPeer = 0;
+        cxn->backendPeer = 0;
+    }
+
     if(cxn->prev_connection && cxn->next_connection) {
         cxn->next_connection->prev_connection = cxn->prev_connection;
         cxn->prev_connection->next_connection = cxn->next_connection;

@@ -147,7 +147,7 @@ void* idle_operator(void* data)
         req.tv_nsec = 0;
         switch(pthread_mutex_timedlock(&server->server_mutex, &req)) {
         case 0:
-            fprintf(stderr, "Running idler tick\n");
+            //fprintf(stderr, "Running idler tick\n");
             server->idleTimeouts = 0;
             idle_tick(server);
             if(0 != pthread_mutex_unlock(&server->server_mutex)) {
@@ -157,7 +157,7 @@ void* idle_operator(void* data)
             break;
         case ETIMEDOUT:
             ++server->idleTimeouts;
-            fprintf(stderr, "Timeout %d for idler\n", server->idleTimeouts);
+            //fprintf(stderr, "Timeout %d for idler\n", server->idleTimeouts);
             //if(server->idleTimeouts > 30) {
                 //marla_die(server, "Server timed out.");
             //}

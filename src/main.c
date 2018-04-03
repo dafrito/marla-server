@@ -167,7 +167,7 @@ static void process_connection(struct epoll_event ep)
                 marla_Connection_destroy(cxn);
             }
             marla_logMessagef(&server, "Connection done sending data.");
-            fprintf(stderr, "Client connection %d done sending data.\n", cxn->id);
+            //fprintf(stderr, "Client connection %d done sending data.\n", cxn->id);
             return;
         }
         if(ep.events & EPOLLHUP) {
@@ -178,7 +178,7 @@ static void process_connection(struct epoll_event ep)
                 marla_logMessagef(&server, "Backend connection done accepting connections.");
             }
             else {
-                fprintf(stderr, "Client connection %d hung up.\n", cxn->id);
+                //fprintf(stderr, "Client connection %d hung up.\n", cxn->id);
             }
             return;
         }
@@ -226,7 +226,7 @@ static void process_connection(struct epoll_event ep)
         }
     }
     else if(marla_clientAccept(cxn) == 0) {
-        fprintf(stderr, "Processing connection %d\n", cxn->id);
+        //fprintf(stderr, "Processing connection %d\n", cxn->id);
         if(ep.events & EPOLLIN) {
             cxn->wantsRead = 0;
             // Available for read.

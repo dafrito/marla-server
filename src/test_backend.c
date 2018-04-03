@@ -93,7 +93,8 @@ static int test_backend(struct marla_Server* server)
     backend->writeSource = writeDuplexSource;
     backend->destroySource = destroyDuplexSource;
 
-    server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     server->backendPort = server->serverport + 1;
 
     // Create the test input.
@@ -178,7 +179,8 @@ static int test_backend_with_large_content(struct marla_Server* server)
     backend->writeSource = writeDuplexSource;
     backend->destroySource = destroyDuplexSource;
 
-    client->server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     client->server->backendPort = server->serverport + 1;
 
     // Create the test input.
@@ -294,7 +296,8 @@ static int test_BackendResponder2(struct marla_Server* server)
     marla_Connection* backend = marla_Connection_new(server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -348,7 +351,8 @@ static int test_BackendResponder3(struct marla_Server* server)
     marla_Connection* backend = marla_Connection_new(server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -402,7 +406,8 @@ static int test_BackendResponder4(struct marla_Server* server)
     marla_Connection* backend = marla_Connection_new(server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -456,7 +461,8 @@ static int test_BackendResponder5(struct marla_Server* server)
     marla_Connection* backend = marla_Connection_new(server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -551,7 +557,8 @@ static int test_BackendResponder_test_backend_upload()
     marla_Connection* backend = marla_Connection_new(&server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server.backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -688,7 +695,8 @@ static int test_BackendResponder_test_backend_download(struct marla_Server* serv
     marla_Connection* backend = marla_Connection_new(server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server->backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -745,7 +753,8 @@ static int test_backend_with_slow_response_handler()
     marla_Connection* backend = marla_Connection_new(&server);
     marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-    server.backend = backend;
+    client->backendPeer = backend;
+    backend->backendPeer = client;
     backend->is_backend = 1;
 
     // Create the test input.
@@ -889,7 +898,8 @@ static int test_readBackendResponseBody()
             marla_Connection* backend = marla_Connection_new(&server);
             marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-            server.backend = backend;
+            client->backendPeer = backend;
+            backend->backendPeer = client;
             backend->is_backend = 1;
 
             // Create the test input.
@@ -1045,7 +1055,8 @@ static int test_readBackendResponseBody2()
             marla_Connection* backend = marla_Connection_new(&server);
             marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-            server.backend = backend;
+            client->backendPeer = backend;
+            backend->backendPeer = client;
             backend->is_backend = 1;
 
             // Create the test input.
@@ -1201,7 +1212,8 @@ static int test_readBackendResponseBody3()
             marla_Connection* backend = marla_Connection_new(&server);
             marla_Duplex_init(backend, marla_BUFSIZE, marla_BUFSIZE);
 
-            server.backend = backend;
+            client->backendPeer = backend;
+            backend->backendPeer = client;
             backend->is_backend = 1;
 
             // Create the test input.

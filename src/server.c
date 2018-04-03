@@ -41,8 +41,6 @@ void marla_Server_init(struct marla_Server* server)
     server->using_ssl = 0;
     server->efd = 0;
     server->sfd = 0;
-    server->backend = 0;
-    server->backendfd = 0;
     server->first_module = 0;
     server->last_module = 0;
     server->log = marla_Ring_new(marla_LOGBUFSIZE);

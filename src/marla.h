@@ -161,7 +161,10 @@ void* handlerData;
 };
 
 typedef struct marla_BackendResponder marla_BackendResponder;
-int marla_Backend_connect(struct marla_Server* server);
+struct marla_Connection;
+typedef struct marla_Connection marla_Connection;
+
+marla_Connection* marla_Backend_connect(struct marla_Server* server);
 struct marla_BackendResponder* marla_BackendResponder_new(size_t bufSize, struct marla_Request* req);
 void marla_BackendResponder_free(marla_BackendResponder* resp);
 int marla_BackendResponder_writeRequestBody(marla_BackendResponder* resp, unsigned char* in, size_t len);
@@ -302,6 +305,7 @@ enum marla_ConnectionStage stage;
 int in_read;
 int in_write;
 int is_backend;
+marla_Connection* backendPeer;
 
 struct timespec lastProcessTime;
 
@@ -392,8 +396,9 @@ marla_WriteResult marla_clientWrite(marla_Connection* cxn);
 marla_WriteResult marla_backendRead(marla_Connection* cxn);
 marla_WriteResult marla_backendWrite(marla_Connection* cxn);
 
-void marla_Backend_init(marla_Connection* cxn, int fd);
-void marla_Backend_enqueue(struct marla_Server* server, marla_Request* req);
+marla_BackendSource* marla_Backend_init(marla_Connection* cxn, int fd);
+void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req);
+void marla_Backend_recover(marla_Connection* cxn);
 
 // Server
 
@@ -449,14 +454,12 @@ char logbuf[4096];
 char logaddress[1024];
 char serverport[64];
 char backendport[64];
-char db_path[1024];
 const char* backendPort;
+char db_path[1024];
 pthread_mutex_t server_mutex;
 volatile enum marla_ServerStatus server_status;
 volatile int efd;
 volatile int sfd;
-int backendfd;
-marla_Connection* backend;
 pthread_t terminal_thread;
 pthread_t idle_thread;
 volatile int has_terminal;
@@ -468,7 +471,6 @@ void* undertakerData;
 };
 
 typedef struct marla_Server marla_Server;
-void marla_Backend_recover(marla_Server* server);
 
 struct marla_ServerModule {
 const char* moduleDef;

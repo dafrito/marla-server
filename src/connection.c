@@ -35,6 +35,7 @@ marla_Connection* marla_Connection_new(struct marla_Server* server)
     cxn->next_connection = 0;
     cxn->lastProcessTime.tv_sec = 0;
     cxn->lastProcessTime.tv_nsec = 0;
+    cxn->backendPeer = 0;
 
     // Initialize flags.
     cxn->shouldDestroy = 0;
@@ -247,11 +248,6 @@ void marla_Connection_destroy(marla_Connection* cxn)
 
     marla_Ring_free(cxn->input);
     marla_Ring_free(cxn->output);
-
-    if(cxn->server->backend == cxn) {
-        cxn->server->backend = 0;
-        cxn->server->backendfd = 0;
-    }
 
     free(cxn);
 }

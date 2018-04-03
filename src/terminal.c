@@ -35,50 +35,56 @@ static enum TerminalPageMode firstPage = TerminalPageMode_Statistics;
 static enum TerminalPageMode lastPage = TerminalPageMode_Connections;
 static enum TerminalPageMode defaultPage = TerminalPageMode_Statistics;
 
+static void display_connection(marla_Server* server, marla_Connection* cxn, int* y, int WINY)
+{
+    char buf[1024];
+    int len;
+    char sourceStr[64];
+    if(*y >= WINY - 1) {
+        return;
+    }
+    cxn->describeSource(cxn, sourceStr, sizeof(sourceStr));
+    move(++(*y), 0);
+    if(cxn->requests_in_process > 0) {
+        len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s | %s | %s",
+            marla_nameConnectionStage(cxn->stage),
+            cxn->requests_in_process,
+            cxn->input->write_index & (cxn->input->capacity-1),
+            cxn->input->read_index & (cxn->input->capacity-1),
+            cxn->input->capacity,
+            cxn->output->write_index & (cxn->output->capacity-1),
+            cxn->output->read_index & (cxn->output->capacity-1),
+            cxn->output->capacity,
+            sourceStr,
+            (cxn->current_request ? marla_nameRequestWriteStage(cxn->current_request->writeStage) : ""),
+            cxn->is_backend ?
+                (cxn->current_request ? marla_nameRequestReadStage(cxn->current_request->readStage) : "") :
+                (cxn->latest_request ? marla_nameRequestReadStage(cxn->latest_request->readStage) : "")
+        );
+    }
+    else {
+        len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s",
+            marla_nameConnectionStage(cxn->stage),
+            cxn->requests_in_process,
+            cxn->input->write_index & (cxn->input->capacity-1),
+            cxn->input->read_index & (cxn->input->capacity-1),
+            cxn->input->capacity,
+            cxn->output->write_index & (cxn->output->capacity-1),
+            cxn->output->read_index & (cxn->output->capacity-1),
+            cxn->output->capacity,
+            sourceStr
+        );
+    }
+    addnstr(buf, len);
+}
+
 static void display_connections(marla_Server* server, int y)
 {
     int WINY, WINX;
     getmaxyx(stdscr, WINY, WINX);
     struct marla_Connection* cxn = server->first_connection;
-
-    char buf[1024];
-    int len;
-    char sourceStr[64];
     while(cxn) {
-        if(y >= WINY - 1) {
-            return;
-        }
-        cxn->describeSource(cxn, sourceStr, sizeof(sourceStr));
-        move(++y, 0);
-        if(cxn->requests_in_process > 0) {
-            len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s | %s | %s",
-                marla_nameConnectionStage(cxn->stage),
-                cxn->requests_in_process,
-                cxn->input->write_index & (cxn->input->capacity-1),
-                cxn->input->read_index & (cxn->input->capacity-1),
-                cxn->input->capacity,
-                cxn->output->write_index & (cxn->output->capacity-1),
-                cxn->output->read_index & (cxn->output->capacity-1),
-                cxn->output->capacity,
-                sourceStr,
-                (cxn->current_request ? marla_nameRequestWriteStage(cxn->current_request->writeStage) : ""),
-                (cxn->latest_request ? marla_nameRequestReadStage(cxn->latest_request->readStage) : "")
-            );
-        }
-        else {
-            len = snprintf(buf, sizeof buf, "%s | %4ld request | input %4ld ri %4ld wi %4ld cap | output %4ld ri %4ld wi %4ld cap | %s",
-                marla_nameConnectionStage(cxn->stage),
-                cxn->requests_in_process,
-                cxn->input->write_index & (cxn->input->capacity-1),
-                cxn->input->read_index & (cxn->input->capacity-1),
-                cxn->input->capacity,
-                cxn->output->write_index & (cxn->output->capacity-1),
-                cxn->output->read_index & (cxn->output->capacity-1),
-                cxn->output->capacity,
-                sourceStr
-            );
-        }
-        addnstr(buf, len);
+        display_connection(server, cxn, &y, WINY);
         cxn = cxn->next_connection;
     }
 }

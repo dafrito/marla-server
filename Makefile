@@ -83,7 +83,8 @@ debug: marla certificate.pem key.pem mod_rainback.so
 .PHONY: debug
 
 valgrind: marla certificate.pem key.pem mod_rainback.so
-	valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init
+	valgrind --suppressions=marla.supp ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init
+	#valgrind --leak-check=full --suppressions=marla.supp --show-leak-kinds=all ./marla $(PORT) $(BACKEND_PORT) $(LOGPORT) $(MARLAFLAGS) -nocurses ./mod_rainback.so?mod_rainback_init
 .PHONY: valgrind
 
 4400: marla certificate.pem key.pem mod_rainback.so

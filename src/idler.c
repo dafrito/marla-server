@@ -17,6 +17,8 @@ static void idle_tick(marla_Server* server)
             cxn = cxn->next_connection;
             continue;
         }
+        cxn->lastProcessTime.tv_sec = currentProcessTime.tv_sec;
+        cxn->lastProcessTime.tv_nsec = currentProcessTime.tv_nsec;
 
         if(cxn->stage == marla_CLIENT_ACCEPTED) {
             if(marla_clientAccept(cxn) != 0) {
@@ -51,6 +53,7 @@ static void idle_tick(marla_Server* server)
                             loop = 0;
                             continue;
                         case marla_WriteResult_CLOSED:
+                            cxn->stage = marla_CLIENT_COMPLETE;
                             loop = 0;
                             continue;
                         default:
@@ -91,6 +94,7 @@ static void idle_tick(marla_Server* server)
                         case marla_WriteResult_UPSTREAM_CHOKED:
                             continue;
                         case marla_WriteResult_CLOSED:
+                            cxn->stage = marla_CLIENT_COMPLETE;
                             loop = 0;
                             continue;
                         default:
@@ -143,6 +147,7 @@ void* idle_operator(void* data)
         req.tv_nsec = 0;
         switch(pthread_mutex_timedlock(&server->server_mutex, &req)) {
         case 0:
+            fprintf(stderr, "Running idler tick\n");
             server->idleTimeouts = 0;
             idle_tick(server);
             if(0 != pthread_mutex_unlock(&server->server_mutex)) {
@@ -152,10 +157,10 @@ void* idle_operator(void* data)
             break;
         case ETIMEDOUT:
             ++server->idleTimeouts;
-            if(server->idleTimeouts > 30) {
-                marla_die(server, "Server timed out.");
-                break;
-            }
+            fprintf(stderr, "Timeout %d for idler\n", server->idleTimeouts);
+            //if(server->idleTimeouts > 30) {
+                //marla_die(server, "Server timed out.");
+            //}
             break;
         default:
             server->idleTimeouts = 0;

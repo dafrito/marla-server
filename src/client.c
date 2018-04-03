@@ -1640,9 +1640,11 @@ shutdown:
         if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
             cxn->shouldDestroy = 1;
         }
-        marla_logLeave(server, "Client downstream has choked while closing.");
-        cxn->in_write = 0;
-        return marla_WriteResult_DOWNSTREAM_CHOKED;
+        else {
+            marla_logLeave(server, "Client downstream has choked while closing.");
+            cxn->in_write = 0;
+            return marla_WriteResult_DOWNSTREAM_CHOKED;
+        }
     }
     marla_logLeave(server, "Client connection has been closed.");
     cxn->in_write = 0;

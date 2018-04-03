@@ -157,7 +157,7 @@ static void process_connection(struct epoll_event ep)
         marla_Connection* cxn = (marla_Connection*)ep.data.ptr;
         // An error has occured on this fd, or the socket is not ready for reading (why were we notified then?)
         if(ep.events & EPOLLRDHUP) {
-            if(cxn == server.backend) {
+            if(cxn->is_backend) {
                 marla_logMessagef(&server, "Backend connection done sending data.");
                 if(cxn->requests_in_process == 0) {
                     marla_Connection_destroy(cxn);
@@ -167,15 +167,18 @@ static void process_connection(struct epoll_event ep)
                 marla_Connection_destroy(cxn);
             }
             marla_logMessagef(&server, "Connection done sending data.");
-            //fprintf(stderr, "Connection done sending data.\n");
+            fprintf(stderr, "Client connection %d done sending data.\n", cxn->id);
             return;
         }
         if(ep.events & EPOLLHUP) {
             if(cxn->requests_in_process == 0) {
                 marla_Connection_destroy(cxn);
             }
-            if(cxn == server.backend) {
+            if(cxn->is_backend) {
                 marla_logMessagef(&server, "Backend connection done accepting connections.");
+            }
+            else {
+                fprintf(stderr, "Client connection %d hung up.\n", cxn->id);
             }
             return;
         }
@@ -223,6 +226,7 @@ static void process_connection(struct epoll_event ep)
         }
     }
     else if(marla_clientAccept(cxn) == 0) {
+        fprintf(stderr, "Processing connection %d\n", cxn->id);
         if(ep.events & EPOLLIN) {
             cxn->wantsRead = 0;
             // Available for read.
@@ -295,6 +299,7 @@ static void process_connection(struct epoll_event ep)
                             loop = 0;
                             continue;
                         case marla_WriteResult_CLOSED:
+                            cxn->stage = marla_CLIENT_COMPLETE;
                             loop = 0;
                             continue;
                         default:
@@ -344,8 +349,8 @@ static void process_connection(struct epoll_event ep)
         }
     }
     if(cxn->shouldDestroy) {
-        if(cxn->server->backend == cxn) {
-            marla_Backend_recover(cxn->server);
+        if(cxn->is_backend) {
+            marla_Backend_recover(cxn);
         }
         marla_Connection_destroy(cxn);
         marla_logLeave(&server, "Destroying connection.");
@@ -680,6 +685,7 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
                         s = marla_SSL_init(cxn, ctx, infd);
                         if(s <= 0) {
                             perror("Unable to initialize SSL connection");
+                            marla_Connection_destroy(cxn);
                             close(infd);
                             continue;
                         }
@@ -729,9 +735,6 @@ destroy_without_unlock:
     }
     if(server.logfd > 0) {
         close(server.logfd);
-    }
-    if(server.backend) {
-        marla_Connection_destroy(server.backend);
     }
     if(use_curses && server.has_terminal) {
         void* retval;

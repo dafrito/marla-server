@@ -109,7 +109,7 @@ int marla_BackendResponder_writeRequestBody(marla_BackendResponder* resp, unsign
     return marla_Ring_write(resp->backendRequestBody, in, len);
 }
 
-void marla_Backend_init(marla_Connection* cxn, int fd)
+marla_BackendSource* marla_Backend_init(marla_Connection* cxn, int fd)
 {
     marla_BackendSource* source = malloc(sizeof *source);
     cxn->is_backend = 1;
@@ -121,51 +121,44 @@ void marla_Backend_init(marla_Connection* cxn, int fd)
     cxn->destroySource = destroySource;
     cxn->describeSource = describeSource;
     source->fd = fd;
+    return source;
 }
 
-int marla_Backend_connect(marla_Server* server)
+marla_Connection* marla_Backend_connect(marla_Server* server)
 {
-    if(server->backend) {
+    // Create the backend socket
+    int backendfd = create_and_connect("localhost", server->backendport);
+    if(backendfd == -1) {
+        marla_logMessage(server, "Failed to connect to backend server.");
         return 0;
     }
-
-    // Create the backend socket
-    server->backendfd = create_and_connect("localhost", server->backendport);
-    if(server->backendfd == -1) {
-        marla_logMessage(server, "Failed to connect to backend server.");
-        return -1;
-    }
-    int s = make_socket_non_blocking(server->backendfd);
+    int s = make_socket_non_blocking(backendfd);
     if(s == -1) {
         marla_logMessage(server, "Failed to make backend server non-blocking.");
-        close(server->backendfd);
-        return -1;
+        close(backendfd);
+        return 0;
     }
     marla_logMessagef(server, "Server is using backend on port %s", server->backendport);
 
     marla_Connection* backend = marla_Connection_new(server);
-    marla_Backend_init(backend, server->backendfd);
-    server->backend = backend;
+    marla_Backend_init(backend, backendfd);
 
     struct epoll_event event;
     memset(&event, 0, sizeof(struct epoll_event));
     event.data.ptr = backend;
     event.events = EPOLLIN | EPOLLRDHUP | EPOLLOUT | EPOLLET;
-    s = epoll_ctl(server->efd, EPOLL_CTL_ADD, server->backendfd, &event);
+    s = epoll_ctl(server->efd, EPOLL_CTL_ADD, backendfd, &event);
     if(s == -1) {
         marla_logMessage(server, "Failed to add backend server to epoll queue.");
-        return -1;
+        marla_Connection_destroy(backend);
+        return 0;
     }
 
-    return 0;
+    return backend;
 }
 
-void marla_Backend_enqueue(marla_Server* server, marla_Request* req)
+void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)
 {
-    if(marla_Backend_connect(server) != 0) {
-        marla_die(server, "Failed to connect to backend");
-    }
-    marla_Connection* cxn = server->backend;
     req->cxn = cxn;
     req->readStage = marla_BACKEND_REQUEST_READING_RESPONSE_LINE;
     req->writeStage = marla_BACKEND_REQUEST_WRITING_REQUEST_LINE;
@@ -204,11 +197,11 @@ void marla_Backend_enqueue(marla_Server* server, marla_Request* req)
     }
 }
 
-void marla_Backend_recover(marla_Server* server)
+void marla_Backend_recover(marla_Connection* oldCxn)
 {
-    marla_Connection* oldCxn = server->backend;
-    server->backend = 0;
-    if(0 != marla_Backend_connect(server)) {
+    marla_Server* server = oldCxn->server;
+    marla_Connection* newCxn = marla_Backend_connect(oldCxn->server);
+    if(0 == newCxn) {
         marla_die(server, "Failed to reconnect to backend");
     }
 
@@ -219,10 +212,10 @@ void marla_Backend_recover(marla_Server* server)
         }
         marla_Request* nextReq = req->next_request;
         if(req->writeStage < marla_BACKEND_REQUEST_DONE_WRITING) {
-        //if(req->readStage < marla_BACKEND_REQUEST_DONE_READING) {
+        //if(req->readStage < marla_BACKEND_REQUEST_DONE_READING)
             // Incomplete request, so re-enqueue request.
             if(!req->backendPeer->cxn->shouldDestroy) {
-                marla_Backend_enqueue(server, req);
+                marla_Backend_enqueue(newCxn, req);
             }
         }
         else if(!req->backendPeer) {
@@ -1465,6 +1458,11 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
             if(!cxn->shutdownSource || 1 == cxn->shutdownSource(cxn)) {
                 cxn->shouldDestroy = 1;
             }
+            else {
+                marla_logLeave(server, "Backend downstream has choked while closing.");
+                cxn->in_read = 0;
+                return marla_WriteResult_DOWNSTREAM_CHOKED;
+            }
             marla_logLeave(server, 0);
             cxn->in_read = 0;
             return marla_WriteResult_CLOSED;
@@ -1751,11 +1749,12 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
         else {
             req->remainingResponseLen = req->backendPeer->responseLen;
             marla_logMessagef(req->cxn->server, "Sending %d-byte response to client", req->backendPeer->responseLen);
-            responseLen = snprintf(buf, sizeof buf, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %ld\r\n",
+            responseLen = snprintf(buf, sizeof buf, "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %ld%s\r\n",
                 req->backendPeer->statusCode,
                 req->backendPeer->statusLine,
                 req->backendPeer->contentType,
-                req->backendPeer->responseLen
+                req->backendPeer->responseLen,
+                req->close_after_done ? "\r\nConnection: close" : ""
             );
             if(responseLen < 0) {
                 marla_die(server, "Failed to generate initial backend response headers");
@@ -1833,11 +1832,13 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
             marla_WriteResult wr = marla_Connection_flush(req->cxn, &nflushed);
             switch(wr) {
             case marla_WriteResult_CLOSED:
+                //fprintf(stderr, "Client %d is closed\n", req->cxn->id);
                 return marla_WriteResult_CLOSED;
             case marla_WriteResult_UPSTREAM_CHOKED:
+                //fprintf(stderr, "Done flushing client %d\n", req->cxn->id);
                 continue;
             case marla_WriteResult_DOWNSTREAM_CHOKED:
-                //fprintf(stderr, "Choked while flushing client response\n");
+                //fprintf(stderr, "Choked while flushing client %d's response\n", req->cxn->id);
                 return marla_WriteResult_DOWNSTREAM_CHOKED;
             default:
                 marla_die(server, "Unhandled flush result");
@@ -1992,7 +1993,14 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
 
 static void marla_backendClientHandlerAcceptRequest(struct marla_Request* req)
 {
-    marla_Request* backendReq = marla_Request_new(req->cxn->server->backend);
+    marla_Connection* backend = req->cxn->backendPeer;
+    if(!backend) {
+        backend = marla_Backend_connect(req->cxn->server);
+        req->cxn->backendPeer = backend;
+        backend->backendPeer = req->cxn;
+    }
+
+    marla_Request* backendReq = marla_Request_new(backend);
     strcpy(backendReq->uri, req->uri);
     strcpy(backendReq->method, req->method);
     backendReq->handler = marla_backendHandler;
@@ -2001,9 +2009,12 @@ static void marla_backendClientHandlerAcceptRequest(struct marla_Request* req)
     // Set backend peers.
     backendReq->backendPeer = req;
     req->backendPeer = backendReq;
+    if(!strcmp(req->uri, "/rainback-on-fedora-from-scratch.webm")) {
+        req->close_after_done = 1;
+    }
 
     // Enqueue the backend request.
-    marla_Backend_enqueue(req->cxn->server, backendReq);
+    marla_Backend_enqueue(backend, backendReq);
 }
 
 static void marla_backendClientHandlerRequestBody(struct marla_Request* req, marla_WriteEvent* we)

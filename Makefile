@@ -4,7 +4,7 @@ LOGPORT=28122
 MARLAFLAGS=-nossl -db $(HOME)/var/parsegraph/users.sqlite
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.3
-PACKAGE_RELEASE=6
+PACKAGE_RELEASE=8
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com
@@ -19,7 +19,7 @@ INCLUDEDIR=$(PREFIX)/include
 PKGCONFIGDIR=$(LIBDIR)/pkgconfig
 
 CFLAGS=-Og -Wall -g -I$(HOME)/include -I/usr/include/httpd -I/usr/include/apr-1 `pkg-config --cflags openssl apr-1 ncurses` -fPIC
-core_LDLIBS=`pkg-config --libs openssl ncurses` -ldl
+core_LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -ldl
 main_LDLIBS=`pkg-config --libs openssl apr-1 ncurses` -lapr-1 -laprutil-1 -L$(HOME)/lib
 
 # Distribute the pkg-config file.
@@ -55,7 +55,7 @@ create_environment: create_environment.c
 mod_rainback.so:
 	cd ../mod_rainback && ./deploy.sh
 
-BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/idler.o src/http.o src/WriteEvent.o src/websocket.o
+BASE_OBJECTS=src/ring.o src/connection.o src/duplex.o src/request.o src/client.o src/log.o src/backend.o src/hooks.o src/ChunkedPageRequest.o src/ssl.o src/cleartext.o src/terminal.o src/server.o src/idler.o src/http.o src/WriteEvent.o src/websocket.o src/file.o
 
 libmarla.so: $(BASE_OBJECTS) src/marla.h
 	$(CC) $(CFLAGS) -o$@ -shared -lpthread $(BASE_OBJECTS)

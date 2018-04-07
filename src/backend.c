@@ -199,6 +199,7 @@ void marla_Backend_enqueue(marla_Connection* cxn, marla_Request* req)
 
 marla_Connection* marla_Backend_recover(marla_Connection* oldCxn)
 {
+    fprintf(stderr, "Recovering backend connection %d\n", oldCxn->id);
     marla_Server* server = oldCxn->server;
     marla_Connection* newCxn = marla_Backend_connect(oldCxn->server);
     if(0 == newCxn) {

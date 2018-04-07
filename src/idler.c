@@ -19,6 +19,7 @@ static void idle_tick(marla_Server* server)
         }
         cxn->lastProcessTime.tv_sec = currentProcessTime.tv_sec;
         cxn->lastProcessTime.tv_nsec = currentProcessTime.tv_nsec;
+        fprintf(stderr, "Idling %s connection %d\n", cxn->is_backend ? "backend" : "client", cxn->id);
 
         if(cxn->stage == marla_CLIENT_ACCEPTED) {
             if(marla_clientAccept(cxn) != 0) {
@@ -122,7 +123,7 @@ static void idle_tick(marla_Server* server)
 
         if(cxn->shouldDestroy) {
             marla_Connection* next = cxn->next_connection;
-            marla_logLeave(server, "Destroying connection.");
+            marla_logMessage(server, "Destroying connection.");
             if(cxn->is_backend) {
                 marla_Backend_recover(cxn);
             }

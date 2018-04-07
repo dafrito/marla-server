@@ -1361,6 +1361,7 @@ int main(int argc, char* argv[])
     }
 
     printf("Testing backend ...\n");
+    apr_initialize();
 
     struct marla_Server server;
     marla_Server_init(&server);
@@ -1487,5 +1488,6 @@ int main(int argc, char* argv[])
     }
 
     fprintf(stderr, "%d failures\n", failed);
+    apr_terminate();
     return failed;
 }

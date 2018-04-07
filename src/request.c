@@ -223,11 +223,33 @@ void marla_Request_unref(marla_Request* req)
         marla_logMessagef(req->cxn->server, "Destroying request %d with error %s", req->id, req->error);
     }
     else {
-        marla_logMessagef(req->cxn->server, "Destroying request %d", req->id);
+        marla_logMessagef(req->cxn->server, "Destroying %s request %d", req->is_backend ? "backend" : "client", req->id);
     }
     if(req->backendPeer) {
         req->backendPeer->backendPeer = 0;
-        if(!req->cxn->is_backend && req->backendPeer) {
+        if(!req->cxn->is_backend) {
+            // req is a client request; the backendPeer is the backend request.
+            marla_Request* backendReq = req->backendPeer;
+            marla_Request* prev = 0;
+            for(marla_Request* peer = req->backendPeer->cxn->current_request;;) {
+                if(peer != backendReq) {
+                    prev = peer;
+                    peer = peer->next_request;
+                    continue;
+                }
+                if(prev) {
+                    prev->next_request = backendReq->next_request;
+                }
+                break;
+            }
+            if(req->backendPeer->cxn->current_request == backendReq) {
+                if(backendReq->writeStage < marla_BACKEND_REQUEST_DONE_WRITING) {
+                    marla_Backend_recover(req->backendPeer->cxn);
+                }
+            }
+            if(req->backendPeer->cxn->latest_request == backendReq) {
+                req->backendPeer->cxn->latest_request = prev;
+            }
             marla_Request_unref(req->backendPeer);
         }
     }

@@ -221,6 +221,7 @@ int main()
     int fails = 0;
 
     fprintf(stderr, "Testing duplex ...\n");
+    apr_initialize();
 
     fprintf(stderr, "test1: ");
     int rv = test1();
@@ -252,5 +253,6 @@ int main()
         fprintf(stderr, "PASSED\n");
     }
 
+    apr_terminate();
     return fails;
 }

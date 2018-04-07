@@ -32,6 +32,16 @@ const char* marla_nameServerStatus(enum marla_ServerStatus ss)
 
 void marla_Server_init(struct marla_Server* server)
 {
+    server->pool = 0;
+    if(APR_SUCCESS != apr_pool_create(&server->pool, 0)) {
+        fprintf(stderr, "Failed to create file cache pool.\n");
+        abort();
+    }
+
+    // Create the file cache.
+    server->fileCache = apr_hash_make(server->pool);
+    server->wdToFileEntry = apr_hash_make(server->pool);
+
     server->server_status = marla_SERVER_STOPPED;
     pthread_mutex_init(&server->server_mutex, 0);
     server->has_terminal = 0;
@@ -41,6 +51,7 @@ void marla_Server_init(struct marla_Server* server)
     server->using_ssl = 0;
     server->efd = 0;
     server->sfd = 0;
+    server->fileCacheifd = 0;
     server->first_module = 0;
     server->last_module = 0;
     server->log = marla_Ring_new(marla_LOGBUFSIZE);
@@ -83,6 +94,13 @@ void marla_Server_flushLog(struct marla_Server* server)
     }
 }
 
+int clearFileCache(void *rec, const void *key, apr_ssize_t klen, const void *value)
+{
+    marla_FileEntry* fileEntry = (marla_FileEntry*)value;
+    marla_FileEntry_free(fileEntry);
+    return 1;
+}
+
 void marla_Server_free(struct marla_Server* server)
 {
     while(server->first_connection) {
@@ -107,6 +125,12 @@ void marla_Server_free(struct marla_Server* server)
         free(serverModule);
         serverModule = nextModule;
     }
+
+    // Destroy existing marla_FileEntry objects.
+    apr_hash_do(clearFileCache, server, server->fileCache);
+
+    // Destroy the server's pool. Hashes are now invalid past this point.
+    apr_pool_destroy(server->pool);
 
     marla_Ring_free(server->log);
 }

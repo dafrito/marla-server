@@ -16,6 +16,7 @@
 #include <apr_pools.h>
 #include <dlfcn.h>
 #include <apr_dso.h>
+#include <sys/inotify.h>
 
 #define MAXEVENTS 64
 
@@ -190,6 +191,7 @@ static void process_connection(struct epoll_event ep)
         return;
     }
     marla_Connection* cxn = (marla_Connection*)ep.data.ptr;
+    fprintf(stderr, "Received epoll for %s connection %d\n", cxn->is_backend ? "backend" : "client", cxn->id);
     {
         char buf[marla_BUFSIZE];
         memset(buf, 0, sizeof buf);
@@ -371,7 +373,7 @@ int main(int argc, const char**argv)
 
     const size_t MIN_ARGS = 4;
 
-    apr_pool_initialize();
+    apr_initialize();
 
     marla_Server_init(&server);
 
@@ -401,6 +403,19 @@ int main(int argc, const char**argv)
         perror("Creating main epoll queue for server");
         marla_logLeave(&server, "Failed to create epoll queue.");
         exit(EXIT_FAILURE);
+    }
+
+    // Create the file cache's inotify instance.
+    server.fileCacheifd = inotify_init1(O_NONBLOCK);
+    {
+        // Add the inotifiy instance to epoll.
+        struct epoll_event ev;
+        ev.data.fd = server.fileCacheifd;
+        if(0 != epoll_ctl(server.efd, EPOLL_CTL_ADD, server.fileCacheifd, &ev)) {
+            perror("epoll_ctl");
+            marla_logLeave(&server, "Failed to create inotify queue for file cache.");
+            exit(EXIT_FAILURE);
+        }
     }
 
     // Create the logging socket
@@ -620,7 +635,36 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
         server.server_status = marla_SERVER_PROCESSING;
 
         for(i = 0; i < n; i++) {
+            // Process one epoll event.
+            if(events[i].data.fd == server.fileCacheifd) {
+                // epoll event is from the file cache inotify descriptor.
+                char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
+                for(int loop = 1; loop;) {
+                    // Attempt to read the next event.
+                    ssize_t nread = read(server.fileCacheifd, buf, sizeof(buf));
+                    if(nread < 0) {
+                        // Done reading events.
+                        loop = 0;
+                        continue;
+                    }
+
+                    // Process one event.
+                    struct inotify_event* ev = (struct inotify_event*)buf;
+                    marla_FileEntry* fe = apr_hash_get(server.wdToFileEntry, &ev->wd, sizeof(ev->wd));
+                    if(!fe) {
+                        fprintf(stderr, "Failed to find FileEntry for given watch descriptor %d\n", ev->wd);
+                        abort();
+                    }
+
+                    // Reload the file.
+                    marla_Server_reloadFile(&server, fe->pathname);
+                }
+
+                // Done reading events.
+                continue;
+            }
             if(events[i].data.fd == server.logfd) {
+                // epoll event is from the logging port.
                 if((events[i].events & EPOLLERR) || (events[i].events & EPOLLHUP) || (!(events[i].events & EPOLLIN) && !(events[i].events & EPOLLOUT))) {
                     if(events[i].events & EPOLLRDHUP) {
                         continue;
@@ -746,6 +790,6 @@ destroy_without_unlock:
         pthread_join(server.idle_thread, &retval);
     }
     marla_Server_free(&server);
-    apr_pool_terminate();
+    apr_terminate();
     return 0;
 }

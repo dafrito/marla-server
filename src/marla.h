@@ -3,9 +3,11 @@
 
 #include <sys/epoll.h>
 #include <openssl/ssl.h>
+#include <apr_pools.h>
+#include <apr_hash.h>
 
 #define marla_BUFSIZE 1024
-#define marla_LOGBUFSIZE 32*1024
+#define marla_LOGBUFSIZE 524288
 
 // ring.c
 typedef struct {
@@ -441,6 +443,10 @@ const char* marla_nameServerStatus(enum marla_ServerStatus);
 
 struct marla_Server {
 
+apr_pool_t* pool;
+apr_hash_t* wdToFileEntry;
+apr_hash_t* fileCache;
+
 int idleTimeouts;
 
 struct marla_Connection* first_connection;
@@ -460,6 +466,7 @@ pthread_mutex_t server_mutex;
 volatile enum marla_ServerStatus server_status;
 volatile int efd;
 volatile int sfd;
+volatile int fileCacheifd;
 pthread_t terminal_thread;
 pthread_t idle_thread;
 volatile int has_terminal;
@@ -488,6 +495,7 @@ void marla_Server_addHook(struct marla_Server* server, enum marla_ServerHook ser
 const char* marla_nameClientEvent(enum marla_ClientEvent ev);
 
 void marla_Server_log(struct marla_Server* server, const char* output, size_t len);
+
 void marla_logEntercf(marla_Server* server, const char* category, const char* fmt, ...);
 void marla_logEnterc(marla_Server* server, const char* category, const char* message);
 void marla_logEnter(marla_Server* server, const char* message);
@@ -505,5 +513,37 @@ void marla_die(marla_Server* server, const char* fmt, ...);
 
 // http.o
 const char* marla_getDefaultStatusLine(int statusCode);
+
+struct marla_FileEntry {
+const char* pathname;
+unsigned char* data;
+size_t length;
+int fd;
+int wd;
+struct timespec modtime;
+marla_Server* server;
+};
+
+struct marla_FileEntry;
+typedef struct marla_FileEntry marla_FileEntry;
+
+// Server file entries.
+marla_FileEntry* marla_Server_getFile(marla_Server* server, const char* pathname);
+marla_FileEntry* marla_Server_reloadFile(marla_Server* server, const char* pathname);
+
+// File entries.
+marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname);
+void marla_FileEntry_reload(marla_FileEntry* fileEntry);
+void marla_FileEntry_free(marla_FileEntry* fileEntry);
+
+struct marla_FileResponder {
+marla_Server* server;
+marla_FileEntry* entry;
+};
+
+// File responder.
+typedef struct marla_FileResponder marla_FileResponder;
+struct marla_FileResponder* marla_FileResponder_new(struct marla_Server* server, marla_FileEntry* entry);
+void marla_FileResponder_free(marla_FileResponder* resp);
 
 #endif // marla_INCLUDED

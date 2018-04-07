@@ -1530,6 +1530,8 @@ int main(int argc, char* argv[])
 
     printf("Testing client connection ...\n");
 
+    apr_initialize();
+
     struct marla_Server server;
     marla_Server_init(&server);
     strcpy(server.serverport, argv[1]);
@@ -1751,5 +1753,6 @@ int main(int argc, char* argv[])
     }*/
 
     marla_Server_free(&server);
+    apr_terminate();
     return failed;
 }

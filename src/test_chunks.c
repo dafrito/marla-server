@@ -644,6 +644,8 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    apr_initialize();
+
     struct marla_Server server;
     marla_Server_init(&server);
     strcpy(server.serverport, argv[1]);
@@ -675,5 +677,6 @@ int main(int argc, char* argv[])
         ++failed;
     }
     marla_Server_free(&server);
+    apr_terminate();
     return failed;
 }

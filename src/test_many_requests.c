@@ -63,10 +63,12 @@ static int test_many_requests(char* serverport)
 int main(int argc, char** argv)
 {
     printf("test_many_requests.\n");
+    apr_initialize();
     if(argc < 2) {
         fprintf(stderr, "Too few arguments given; provide serverport.");
         return 1;
     }
     test_many_requests(argv[1]);
+    apr_terminate();
     return 0;
 }

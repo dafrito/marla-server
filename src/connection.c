@@ -190,6 +190,7 @@ marla_WriteResult marla_Connection_flush(marla_Connection* cxn, int* outnflushed
 void marla_Connection_destroy(marla_Connection* cxn)
 {
     marla_logMessagef(cxn->server, "Destroying connection %d", cxn->id);
+    fprintf(stderr, "Destroying %s connection %d\n", cxn->is_backend ? "backend" : "client", cxn->id);
 
     // Force reads and writes to fail.
     cxn->in_write = 1;

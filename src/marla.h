@@ -5,6 +5,7 @@
 #include <openssl/ssl.h>
 #include <apr_pools.h>
 #include <apr_hash.h>
+#include <limits.h>
 
 #define marla_BUFSIZE 1024
 #define marla_LOGBUFSIZE 524288
@@ -218,6 +219,7 @@ int fd;
 typedef struct marla_BackendSource marla_BackendSource;
 
 struct marla_Request {
+apr_pool_t* pool;
 struct marla_Request* next_request;
 int id;
 int statusCode;
@@ -442,7 +444,6 @@ marla_SERVER_DESTROYING = 5,
 const char* marla_nameServerStatus(enum marla_ServerStatus);
 
 struct marla_Server {
-
 apr_pool_t* pool;
 apr_hash_t* wdToFileEntry;
 apr_hash_t* fileCache;
@@ -456,12 +457,12 @@ int using_ssl;
 int wantsLogWrite;
 int logfd;
 marla_Ring* log;
-char logbuf[4096];
 char logaddress[1024];
 char serverport[64];
 char backendport[64];
 const char* backendPort;
-char db_path[1024];
+char db_path[PATH_MAX];
+char documentRoot[PATH_MAX];
 pthread_mutex_t server_mutex;
 volatile enum marla_ServerStatus server_status;
 volatile int efd;
@@ -515,6 +516,7 @@ void marla_die(marla_Server* server, const char* fmt, ...);
 const char* marla_getDefaultStatusLine(int statusCode);
 
 struct marla_FileEntry {
+const char* type;
 const char* pathname;
 unsigned char* data;
 size_t length;
@@ -536,14 +538,24 @@ marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname)
 void marla_FileEntry_reload(marla_FileEntry* fileEntry);
 void marla_FileEntry_free(marla_FileEntry* fileEntry);
 
+enum marla_FileResponderStage {
+marla_FileResponderStage_WRITING_HEADER,
+marla_FileResponderStage_BODY,
+marla_FileResponderStage_FLUSHING,
+marla_FileResponderStage_DONE
+};
+
 struct marla_FileResponder {
 marla_Server* server;
 marla_FileEntry* entry;
+ssize_t pos;
+enum marla_FileResponderStage handleStage;
 };
 
 // File responder.
 typedef struct marla_FileResponder marla_FileResponder;
 struct marla_FileResponder* marla_FileResponder_new(struct marla_Server* server, marla_FileEntry* entry);
 void marla_FileResponder_free(marla_FileResponder* resp);
+void marla_fileHandler(struct marla_Request* req, enum marla_ClientEvent ev, void* in, int given_len);
 
 #endif // marla_INCLUDED

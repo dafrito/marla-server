@@ -411,6 +411,7 @@ int main(int argc, const char**argv)
         // Add the inotifiy instance to epoll.
         struct epoll_event ev;
         ev.data.fd = server.fileCacheifd;
+        ev.events = EPOLLIN | EPOLLET;
         if(0 != epoll_ctl(server.efd, EPOLL_CTL_ADD, server.fileCacheifd, &ev)) {
             perror("epoll_ctl");
             marla_logLeave(&server, "Failed to create inotify queue for file cache.");
@@ -484,7 +485,28 @@ int main(int argc, const char**argv)
 
     strcpy(ssl_key_path, "key.pem");
     strcpy(ssl_certificate_path, "certificate.pem");
-    strcpy(server.db_path, "/home/dafrito/var/parsegraph/users.sqlite");
+
+    uid_t uid = geteuid();
+    if(uid != 0) {
+        char dbPathBuf[PATH_MAX];
+        char* homeDir = getenv("HOME");
+        strcpy(dbPathBuf, homeDir);
+        ssize_t len = strlen(dbPathBuf);
+        char c = dbPathBuf[len - 1];
+        if(c != '\\') {
+            // HOME is not terminated with a /.
+            strcat(dbPathBuf, "/var/parsegraph/users.sqlite");
+        }
+        else {
+            // HOME is terminated with a /.
+            strcat(dbPathBuf, "var/parsegraph/users.sqlite");
+        }
+        strcpy(server.db_path, dbPathBuf);
+    }
+    else {
+        strcpy(server.db_path, "/var/parsegraph/users.sqlite");
+    }
+    strcpy(server.documentRoot, getenv("PWD"));
 
     if(argc > MIN_ARGS) {
         for(int n = MIN_ARGS; n < argc; ++n) {
@@ -518,6 +540,11 @@ int main(int argc, const char**argv)
                 }
                 if(!strcmp(arg, "-db")) {
                     strncpy(server.db_path, argv[n+1], sizeof server.db_path);
+                    ++n;
+                    continue;
+                }
+                if(!strcmp(arg, "-doc")) {
+                    strncpy(server.documentRoot, argv[n+1], sizeof server.documentRoot);
                     ++n;
                     continue;
                 }

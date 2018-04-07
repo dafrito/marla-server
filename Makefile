@@ -1,10 +1,10 @@
 include port.mk
 BACKEND_PORT=8081
 LOGPORT=28122
-MARLAFLAGS=-nossl -db $(HOME)/var/parsegraph/users.sqlite
+MARLAFLAGS=-nossl -db $(HOME)/var/parsegraph/users.sqlite -doc $(shell realpath ../public_html)
 PACKAGE_NAME=marla
 PACKAGE_VERSION=1.3
-PACKAGE_RELEASE=8
+PACKAGE_RELEASE=9
 PACKAGE_SUMMARY=Marla web server
 PACKAGE_DESCRIPTION=Marla web server
 PACKAGE_URL=rainback.com

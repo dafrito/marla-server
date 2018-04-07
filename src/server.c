@@ -60,6 +60,7 @@ void marla_Server_init(struct marla_Server* server)
     memset(server->serverport, 0, sizeof server->serverport);
     memset(server->backendport, 0, sizeof server->backendport);
     memset(server->db_path, 0, sizeof server->db_path);
+    memset(server->documentRoot, 0, sizeof server->documentRoot);
 
     server->first_connection = 0;
     server->last_connection = 0;

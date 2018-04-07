@@ -214,6 +214,12 @@ void* terminal_operator(void* data)
                 move(++y, 0);
                 len = snprintf(buf, sizeof buf, "marla_LOGBUFSIZE: %d bytes", marla_LOGBUFSIZE);
                 addnstr(buf, len);
+                move(++y, 0);
+                len = snprintf(buf, sizeof buf, "db_path: %s", server->db_path);
+                addnstr(buf, len);
+                move(++y, 0);
+                len = snprintf(buf, sizeof buf, "documentRoot: %s", server->documentRoot);
+                addnstr(buf, len);
             }
             else if(mode == TerminalPageMode_Connections) {
                 display_connections(server, y);

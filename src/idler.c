@@ -19,7 +19,7 @@ static void idle_tick(marla_Server* server)
         }
         cxn->lastProcessTime.tv_sec = currentProcessTime.tv_sec;
         cxn->lastProcessTime.tv_nsec = currentProcessTime.tv_nsec;
-        fprintf(stderr, "Idling %s connection %d\n", cxn->is_backend ? "backend" : "client", cxn->id);
+        //fprintf(stderr, "Idling %s connection %d\n", cxn->is_backend ? "backend" : "client", cxn->id);
 
         if(cxn->stage == marla_CLIENT_ACCEPTED) {
             if(marla_clientAccept(cxn) != 0) {

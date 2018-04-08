@@ -223,22 +223,22 @@ void marla_fileHandlerAcceptRequest(marla_Request* req)
     marla_Server* server = req->cxn->server;
 
     if(strstr(req->uri, "../")) {
-        marla_killRequest(req, "Path contains unsupported characters.");
+        marla_killRequest(req, 400, "Path contains unsupported characters.");
         return;
     }
     if(req->uri[0] != '/') {
-        marla_killRequest(req, "Path given does not begin with a slash");
+        marla_killRequest(req, 400, "Path given does not begin with a slash");
         return;
     }
     if(req->uri[1] == '/') {
-        marla_killRequest(req, "Path contains a redundant slash");
+        marla_killRequest(req, 400, "Path contains a redundant slash");
         return;
     }
 
     char *pathbuf = NULL;
     switch(apr_filepath_merge(&pathbuf, server->documentRoot, req->uri + 1, APR_FILEPATH_TRUENAME | APR_FILEPATH_NOTABOVEROOT, req->cxn->server->pool)) {
     case APR_EPATHWILD:
-        marla_killRequest(req, "Path contains unsupported characters.");
+        marla_killRequest(req, 400, "Path contains unsupported characters.");
         return;
     case APR_SUCCESS:
         // pathbuf contains the merged path.
@@ -246,7 +246,7 @@ void marla_fileHandlerAcceptRequest(marla_Request* req)
     }
 
     if(pathbuf != strstr(pathbuf, server->documentRoot)) {
-        marla_killRequest(req, "Path contains unsupported characters.");
+        marla_killRequest(req, 400, "Path contains unsupported characters.");
         return;
     }
 
@@ -255,13 +255,13 @@ void marla_fileHandlerAcceptRequest(marla_Request* req)
     if(access(pathbuf, F_OK) != -1) {
         // file exists
     } else {
-        marla_killRequest(req, "File not found.");
+        marla_killRequest(req, 404, "File not found.");
         return;
     }
 
     char* sep = rindex(req->uri, '.');
     if(!sep) {
-        marla_killRequest(req, "Path given has no extension");
+        marla_killRequest(req, 400, "Path given has no extension");
         return;
     }
 
@@ -279,7 +279,7 @@ void marla_fileHandlerRequestBody(marla_Request* req, marla_WriteEvent* we)
         req->readStage = marla_CLIENT_REQUEST_DONE_READING;
         return;
     }
-    marla_killRequest(req, "Bad request");
+    marla_killRequest(req, 400, "Bad request");
 }
 
 marla_WriteResult marla_writeFileHandlerResponse(marla_Request* req, marla_WriteEvent* we)

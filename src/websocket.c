@@ -142,7 +142,7 @@ marla_WriteResult marla_inputWebSocket(marla_Request* req)
                 unsigned char c = req->websocket_frame[0] << 1;
                 if(c << i == c) {
                     // A reserved bit was zero.
-                    marla_killRequest(req, "A reserved bit was zero.");
+                    marla_killRequest(req, 400, "A reserved bit was zero.");
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
                     return 1;
@@ -170,7 +170,7 @@ marla_WriteResult marla_inputWebSocket(marla_Request* req)
                 break;
             default:
                 // Reserved opcode.
-                marla_killRequest(req, "Reserved opcode");
+                marla_killRequest(req, 400, "Reserved opcode");
                 marla_logLeave(server, 0);
                 cxn->in_read = 0;
                 return 1;
@@ -191,7 +191,7 @@ marla_WriteResult marla_inputWebSocket(marla_Request* req)
             uint64_t payload_len = (unsigned char)(req->websocket_frame[1] << 1) >> 1;
             if(payload_len == 126) {
                 if(req->websocket_type < 0 || req->websocket_type > 2) {
-                    marla_killRequest(req, "WebSocket type unrecognized");
+                    marla_killRequest(req, 400, "WebSocket type unrecognized");
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
                     return 1;
@@ -207,7 +207,7 @@ marla_WriteResult marla_inputWebSocket(marla_Request* req)
             }
             else if(payload_len == 127) {
                 if(req->websocket_type < 0 || req->websocket_type > 2) {
-                    marla_killRequest(req, "WebSocket type unrecognized");
+                    marla_killRequest(req, 400, "WebSocket type unrecognized");
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
                     return 1;
@@ -297,7 +297,7 @@ marla_WriteResult marla_inputWebSocket(marla_Request* req)
             case 10:
                 // Pong frame.
                 if(req->websocket_pongLen != req->websocketFrameLen) {
-                    marla_killRequest(req, "Pong mismatch");
+                    marla_killRequest(req, 400, "Pong mismatch");
                     marla_logLeave(server, 0);
                     cxn->in_read = 0;
                     return 1;
@@ -309,7 +309,7 @@ marla_WriteResult marla_inputWebSocket(marla_Request* req)
                 for(int i = 0; i < nread; ++i) {
                     if(req->websocket_pong[i + req->websocketFrameRead] != buf[i]) {
                         // Pong mismatch
-                        marla_killRequest(req, "Pong mismatch");
+                        marla_killRequest(req, 400, "Pong mismatch");
                         marla_logLeave(server, 0);
                         cxn->in_read = 0;
                         return 1;

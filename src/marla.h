@@ -286,7 +286,7 @@ struct marla_Server;
 marla_Request* marla_Request_new(struct marla_Connection* cxn);
 void marla_Request_ref(marla_Request*);
 void marla_Request_unref(marla_Request*);
-void marla_killRequest(struct marla_Request* req, const char* reason, ...);
+void marla_killRequest(struct marla_Request* req, int statusCode, const char* reason, ...);
 void marla_dumpRequest(marla_Request* req);
 
 // connection.c
@@ -474,7 +474,7 @@ volatile int has_terminal;
 struct marla_ServerModule* first_module;
 struct marla_ServerModule* last_module;
 struct marla_HookList hooks[marla_ServerHook_MAX];
-void(*undertaker)(marla_Request*);
+void(*undertaker)(marla_Request*, int);
 void* undertakerData;
 };
 

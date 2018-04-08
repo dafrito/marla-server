@@ -12,19 +12,19 @@
 
 int marla_Request_numKilled = 0;
 
-void marla_killRequest(struct marla_Request* req, const char* reason, ...)
+void marla_killRequest(struct marla_Request* req, int statusCode, const char* reason, ...)
 {
     va_list ap;
     va_start(ap, reason);
     vsnprintf(req->error, sizeof req->error, reason, ap);
-    if(req->writeStage > marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT || req->readStage < marla_CLIENT_REQUEST_DONE_READING) {
+    if(!req->cxn->server->undertaker || req->writeStage > marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT || req->readStage < marla_CLIENT_REQUEST_READING_FIELD) {
         marla_logMessagef(req->cxn->server, "Killing request and ending connection: %s.", req->error);
         req->cxn->stage = marla_CLIENT_COMPLETE;
     }
     else {
         marla_logMessagef(req->cxn->server, "Killing request: %s.", req->error);
         if(req->cxn->server->undertaker) {
-            req->cxn->server->undertaker(req);
+            req->cxn->server->undertaker(req, statusCode);
         }
     }
     //fprintf(stderr, "Killing request: %s\n", req->error);

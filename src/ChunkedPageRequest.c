@@ -150,7 +150,7 @@ marla_WriteResult marla_ChunkedPageRequest_process(struct marla_ChunkedPageReque
 
     if(cpr->stage == marla_CHUNK_RESPONSE_GENERATE) {
         if(!cpr->handler) {
-            marla_killRequest(cpr->req, "No handler available to generate content.");
+            marla_killRequest(cpr->req, 404, "No handler available to generate content.");
             return marla_WriteResult_KILLED;
         }
         cpr->stage = marla_CHUNK_RESPONSE_HEADER;
@@ -173,7 +173,7 @@ marla_WriteResult marla_ChunkedPageRequest_process(struct marla_ChunkedPageReque
     while(cpr->stage == marla_CHUNK_RESPONSE_RESPOND) {
         int done_indicated = 0;
         if(!cpr->handler) {
-            marla_killRequest(cpr->req, "No handler available to generate content.");
+            marla_killRequest(cpr->req, 404, "No handler available to generate content.");
             return marla_WriteResult_KILLED;
         }
         marla_WriteResult wr = cpr->handler(cpr);

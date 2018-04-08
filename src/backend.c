@@ -254,12 +254,12 @@ marla_WriteResult marla_backendWrite(marla_Connection* cxn)
         // Write request line to backend.
         if(req->writeStage == marla_BACKEND_REQUEST_WRITING_REQUEST_LINE) {
             if(req->method[0] == 0) {
-                marla_killRequest(req, "Method must be provided");
+                marla_killRequest(req, 400, "Method must be provided");
                 marla_Request_unref(req);
                 goto exit_killed;
             }
             if(req->uri[0] == 0) {
-                marla_killRequest(req, "URI must be provided");
+                marla_killRequest(req, 400, "URI must be provided");
                 marla_Request_unref(req);
                 goto exit_killed;
             }
@@ -479,15 +479,15 @@ static marla_WriteResult marla_processBackendResponseLine(marla_Request* req)
         char c = out[i];
         //marla_logMessagef(server, "Read character '%c'. WordIndex=%d.", c, wordIndex);
         if(c <= 0x1f || c == 0x7f) {
-            marla_killRequest(req, "Backend response line contains control characters, so no valid response.");
+            marla_killRequest(req, 400, "Backend response line contains control characters, so no valid response.");
             return marla_WriteResult_KILLED;
         }
         if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
-            marla_killRequest(req, "Backend response line contains delimiters, so no valid response.");
+            marla_killRequest(req, 400, "Backend response line contains delimiters, so no valid response.");
             return marla_WriteResult_KILLED;
         }
         if(c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`') {
-            marla_killRequest(req, "Backend response line contains unwise characters, so no valid response.");
+            marla_killRequest(req, 400, "Backend response line contains unwise characters, so no valid response.");
             return marla_WriteResult_KILLED;
         }
         if(wordIndex < 2 && c == ' ') {
@@ -495,7 +495,7 @@ static marla_WriteResult marla_processBackendResponseLine(marla_Request* req)
                 //marla_logMessagef(server, "Found end of version.");
                 out[i] = 0;
                 if(strcmp(start, "HTTP/1.1")) {
-                    marla_killRequest(req, "Response line contains unexpected version, so no valid request.");
+                    marla_killRequest(req, 400, "Response line contains unexpected version, so no valid request.");
                     return marla_WriteResult_KILLED;
                 }
                 ++i;
@@ -507,15 +507,15 @@ static marla_WriteResult marla_processBackendResponseLine(marla_Request* req)
                 char* endptr = 0;
                 req->statusCode = strtol(start, &endptr, 10);
                 if(start == endptr) {
-                    marla_killRequest(req, "No status code digits were found, so no valid request.");
+                    marla_killRequest(req, 400, "No status code digits were found, so no valid request.");
                     return marla_WriteResult_KILLED;
                 }
                 if(endptr != out + i) {
-                    marla_killRequest(req, "Response line contains invalid status code, so no valid request. %ld", (endptr-out));
+                    marla_killRequest(req, 400, "Response line contains invalid status code, so no valid request. %ld", (endptr-out));
                     return marla_WriteResult_KILLED;
                 }
                 if(req->statusCode < 100 || req->statusCode > 599) {
-                    marla_killRequest(req, "Response line contains invalid status code %d, so no valid request.", req->statusCode);
+                    marla_killRequest(req, 400, "Response line contains invalid status code %d, so no valid request.", req->statusCode);
                     return marla_WriteResult_KILLED;
                 }
                 ++i;
@@ -533,7 +533,7 @@ static marla_WriteResult marla_processBackendResponseLine(marla_Request* req)
             continue;
         }
         if(!isascii(c)) {
-            marla_killRequest(req, "Response line contains non-ASCII characters, so no valid request.\n");
+            marla_killRequest(req, 400, "Response line contains non-ASCII characters, so no valid request.\n");
             return marla_WriteResult_KILLED;
         }
         if(!start) {
@@ -544,7 +544,7 @@ static marla_WriteResult marla_processBackendResponseLine(marla_Request* req)
     }
 
     if(wordIndex != 2) {
-        marla_killRequest(req, "Response line ended prematurely.");
+        marla_killRequest(req, 400, "Response line ended prematurely.");
         return marla_WriteResult_KILLED;
     }
     strncpy(req->statusLine, start, sizeof req->statusLine);
@@ -592,7 +592,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                         foundEnd = 1;
                         break;
                     }
-                    marla_killRequest(req, "Header ended prematurely.");
+                    marla_killRequest(req, 400, "Header ended prematurely.");
                     return marla_WriteResult_KILLED;
                 }
                 out[i] = 0;
@@ -613,7 +613,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                         foundEnd = 1;
                         break;
                     }
-                    marla_killRequest(req, "Header ended prematurely.");
+                    marla_killRequest(req, 400, "Header ended prematurely.");
                     return marla_WriteResult_KILLED;
                 }
                 out[i] = 0;
@@ -628,15 +628,15 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
             char c = out[i];
             //marla_logMessagef(cxn->server, "Reading header character %c", c);
             if((c <= 0x1f && c != '\t') || c == 0x7f) {
-                marla_killRequest(req, "Backend response header contains control characters, so no valid request.");
+                marla_killRequest(req, 400, "Backend response header contains control characters, so no valid request.");
                 return marla_WriteResult_KILLED;
             }
             if(c == '<' || c == '>' || c == '#' || c == '%') {
-                marla_killRequest(req, "Backend response header contains delimiters, so no valid request.");
+                marla_killRequest(req, 400, "Backend response header contains delimiters, so no valid request.");
                 return marla_WriteResult_KILLED;
             }
             if(c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`') {
-                marla_killRequest(req, "Backend response header contains unwise characters, so no valid request.");
+                marla_killRequest(req, 400, "Backend response header contains unwise characters, so no valid request.");
                 return marla_WriteResult_KILLED;
             }
             if(lineStage == 0 && c == ':') {
@@ -656,7 +656,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                 continue;
             }
             if(!isascii(c)) {
-                marla_killRequest(req, "Response line contains non-ASCII characters, so no valid request.");
+                marla_killRequest(req, 400, "Response line contains non-ASCII characters, so no valid request.");
                 return marla_WriteResult_KILLED;
             }
             ++i;
@@ -670,7 +670,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                 req->handler(req, marla_BACKEND_EVENT_ACCEPTING_RESPONSE, &accept, 0);
             }
             if(!accept) {
-                marla_killRequest(req, "Request explicitly rejected.\n");
+                marla_killRequest(req, 400, "Request explicitly rejected.\n");
                 return marla_WriteResult_KILLED;
             }
 
@@ -694,7 +694,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
             break;
         }
         if(lineStage != 1) {
-            marla_killRequest(req, "Response line ended prematurely.");
+            marla_killRequest(req, 400, "Response line ended prematurely.");
             return marla_WriteResult_KILLED;
         }
         if(responseHeaderValue != 0 && responseHeaderKey != 0) {
@@ -709,11 +709,11 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                 char* endptr;
                 long contentLen = strtol(responseHeaderValue, &endptr, 10);
                 if(endptr == responseHeaderValue) {
-                    marla_killRequest(req, "Content-Length is malformed");
+                    marla_killRequest(req, 400, "Content-Length is malformed");
                     return marla_WriteResult_KILLED;
                 }
                 if(req->responseLen != marla_MESSAGE_LENGTH_UNKNOWN) {
-                    marla_killRequest(req, "Content-Length specified twice.");
+                    marla_killRequest(req, 400, "Content-Length specified twice.");
                     return marla_WriteResult_KILLED;
                 }
                 req->responseLen = contentLen;
@@ -738,7 +738,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                         req->expect_upgrade = 1;
                     }
                     else if(strcasecmp(fieldToken, "keep-alive")) {
-                        marla_killRequest(req, "Connection is not understood, so no valid request.\n");
+                        marla_killRequest(req, 400, "Connection is not understood, so no valid request.\n");
                         return marla_WriteResult_KILLED;
                     }
                     if(hasMultiple) {
@@ -755,7 +755,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
         }
         else if(!strcmp(responseHeaderKey, "Transfer-Encoding")) {
             if(req->responseLen != marla_MESSAGE_LENGTH_UNKNOWN) {
-                marla_killRequest(req, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
+                marla_killRequest(req, 400, "Content-Length/Transfer-Encoding header value was set twice, so no valid request.\n");
                 return marla_WriteResult_KILLED;
             }
 
@@ -785,7 +785,7 @@ static marla_WriteResult marla_consumeTrailingEol(marla_Request* req)
     int nread = marla_Connection_read(cxn, (unsigned char*)buf, sizeof(buf));
     if(nread == 0) {
         // Zero-length read indicates end of stream.
-        marla_killRequest(req, "Premature end of response chunk body.\n");
+        marla_killRequest(req, 400, "Premature end of response chunk body.\n");
         return marla_WriteResult_KILLED;
     }
     if(nread < 0) {
@@ -809,7 +809,7 @@ static marla_WriteResult marla_consumeTrailingEol(marla_Request* req)
         return marla_WriteResult_UPSTREAM_CHOKED;
     }
     else {
-        marla_killRequest(req, "Error while receiving response chunk body.\n");
+        marla_killRequest(req, 500, "Error while receiving response chunk body.\n");
         return marla_WriteResult_KILLED;
     }
 
@@ -830,7 +830,7 @@ read_chunk_size:
         int nread = marla_Connection_read(cxn, (unsigned char*)buf, sizeof(buf));
         if(nread == 0) {
             // Zero-length read indicates premature end of stream.
-            marla_killRequest(req, "Premature end of chunked response body.");
+            marla_killRequest(req, 400, "Premature end of chunked response body.");
             return marla_WriteResult_CLOSED;
         }
         if(nread < 0) {
@@ -865,7 +865,7 @@ read_chunk_size:
                     return marla_WriteResult_UPSTREAM_CHOKED;
                 }
                 if(buf[i + 1] != '\n') {
-                    marla_killRequest(req, "Backend response chunk is not terminated properly.");
+                    marla_killRequest(req, 400, "Backend response chunk is not terminated properly.");
                     return marla_WriteResult_KILLED;
                 }
                 // Size-body separator.
@@ -877,14 +877,14 @@ read_chunk_size:
             }
             else {
                 // Garbage.
-                marla_killRequest(req, "Error while receiving backend response chunk size.\n");
+                marla_killRequest(req, 400, "Error while receiving backend response chunk size.\n");
                 return marla_WriteResult_KILLED;
             }
         }
 
         if(!foundEnd) {
             if(nread >= marla_MAX_CHUNK_SIZE_LINE) {
-                marla_killRequest(req, "Backend response chunk size line too long.\n");
+                marla_killRequest(req, 400, "Backend response chunk size line too long.\n");
                 return marla_WriteResult_KILLED;
             }
 
@@ -894,18 +894,18 @@ read_chunk_size:
         }
 
         if(!foundHexDigit) {
-            marla_killRequest(req, "Failed to find any hex digits in backend response chunk size.\n");
+            marla_killRequest(req, 400, "Failed to find any hex digits in backend response chunk size.\n");
             return marla_WriteResult_KILLED;
         }
 
         char* endptr = 0;
         long int chunkSize = strtol(buf, &endptr, 16);
         if(*endptr != 0) {
-            marla_killRequest(req, "Error while parsing backend response chunk size.\n");
+            marla_killRequest(req, 500, "Error while parsing backend response chunk size.\n");
             return marla_WriteResult_KILLED;
         }
         if(chunkSize < 0 || chunkSize > marla_MAX_CHUNK_SIZE) {
-            marla_killRequest(req, "Backend response chunk size is out of range.\n");
+            marla_killRequest(req, 400, "Backend response chunk size is out of range.\n");
             return marla_WriteResult_KILLED;
         }
         req->chunkSize = chunkSize;
@@ -960,7 +960,7 @@ read_chunk_size:
             if(nread == 0) {
                 // Zero-length read indicates end of stream.
                 if(req->chunkSize > 0) {
-                    marla_killRequest(req, "Premature end of backend response chunk body.\n");
+                    marla_killRequest(req, 400, "Premature end of backend response chunk body.\n");
                     return marla_WriteResult_CLOSED;
                 }
                 break;
@@ -1013,7 +1013,7 @@ read_chunk_size:
                 return marla_WriteResult_DOWNSTREAM_CHOKED;
             case marla_WriteResult_UPSTREAM_CHOKED:
                 if(result.length > 0 && result.index < result.length) {
-                    marla_killRequest(req, "Backend response handler indicated upstream choked despite partial read.");
+                    marla_killRequest(req, 500, "Backend response handler indicated upstream choked despite partial read.");
                     return marla_WriteResult_KILLED;
                 }
                 // Continue to read the next chunk.
@@ -1083,7 +1083,7 @@ marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
         if(nread == 0) {
             // Zero-length read indicates end of stream.
             if(req->remainingContentLen > 0) {
-                marla_killRequest(req, "Premature end of backend response body.\n");
+                marla_killRequest(req, 400, "Premature end of backend response body.\n");
                 return marla_WriteResult_KILLED;
             }
             break;
@@ -1112,7 +1112,7 @@ marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
         switch(result.status) {
         case marla_WriteResult_CONTINUE:
             if(result.index < result.length) {
-                marla_killRequest(req, "Partial read with continue.");
+                marla_killRequest(req, 500, "Partial read with continue.");
                 req->totalContentLen -= nread - result.index;
                 req->remainingContentLen += nread - result.index;
                 marla_Connection_putbackRead(cxn, nread - result.index);
@@ -1136,7 +1136,7 @@ marla_WriteResult marla_readBackendResponseBody(marla_Request* req)
             return marla_WriteResult_DOWNSTREAM_CHOKED;
         case marla_WriteResult_UPSTREAM_CHOKED:
             if(result.length > 0 && result.index < result.length) {
-                marla_killRequest(req, "Backend response handler indicated upstream choked despite partial read.");
+                marla_killRequest(req, 500, "Backend response handler indicated upstream choked despite partial read.");
                 return 1;
             }
             //printf("Continuing to read after upstream choked. %d/%d\n", result.index, result.length);
@@ -1236,7 +1236,7 @@ static marla_WriteResult marla_processBackendTrailer(marla_Request* req)
                     return marla_WriteResult_UPSTREAM_CHOKED;
                 }
                 if(fieldLine[i + 1] != '\n') {
-                    marla_killRequest(req, "Trailer line is not terminated properly, so no valid request.");
+                    marla_killRequest(req, 400, "Trailer line is not terminated properly, so no valid request.");
                     return marla_WriteResult_KILLED;
                 }
                 fieldLine[i] = 0;
@@ -1246,15 +1246,15 @@ static marla_WriteResult marla_processBackendTrailer(marla_Request* req)
             }
             char c = fieldLine[i];
             if((c <= 0x1f && c != '\t') || c == 0x7f) {
-                marla_killRequest(req, "Backend response trailer contains control characters, so no valid request.\n");
+                marla_killRequest(req, 400, "Backend response trailer contains control characters, so no valid request.\n");
                 return marla_WriteResult_KILLED;
             }
             if(!foundSeparator && (c == '<' || c == '>' || c == '#' || c == '%')) {
-                marla_killRequest(req, "Backend response trailer contains delimiters, so no valid request.\n");
+                marla_killRequest(req, 400, "Backend response trailer contains delimiters, so no valid request.\n");
                 return marla_WriteResult_KILLED;
             }
             if(!foundSeparator && (c == '{' || c == '}' || c == '|' || c == '\\' || c == '^' || c == '[' || c == ']' || c == '`')) {
-                marla_killRequest(req, "Backend response trailer contains unwise characters, so no valid request.\n");
+                marla_killRequest(req, 400, "Backend response trailer contains unwise characters, so no valid request.\n");
                 return marla_WriteResult_KILLED;
             }
             if(!foundSeparator && !isalnum(c) && c != '-' && c != '\t') {
@@ -1264,7 +1264,7 @@ static marla_WriteResult marla_processBackendTrailer(marla_Request* req)
                     toleratingSpaces = 1;
                     continue;
                 }
-                marla_killRequest(req, "Header name contains non alphanumeric characters, so no valid request.\n");
+                marla_killRequest(req, 400, "Header name contains non alphanumeric characters, so no valid request.\n");
                 return marla_WriteResult_KILLED;
             }
             if(foundSeparator && toleratingSpaces) {
@@ -1278,7 +1278,7 @@ static marla_WriteResult marla_processBackendTrailer(marla_Request* req)
 
         // Validate.
         if(!foundNewline && nread == sizeof(fieldLine)) {
-            marla_killRequest(req, "Backend response header is too long, so no valid response.\n");
+            marla_killRequest(req, 400, "Backend response header is too long, so no valid response.\n");
             return marla_WriteResult_KILLED;
         }
         if(!foundNewline) {
@@ -1452,7 +1452,7 @@ marla_WriteResult marla_backendRead(marla_Connection* cxn)
             }
         }
         else {
-            marla_killRequest(req, "Unexpected request stage.");
+            marla_killRequest(req, 500, "Unexpected request stage.");
             marla_Request_unref(req);
             marla_logLeave(server, 0);
             cxn->in_read = 0;
@@ -1683,17 +1683,17 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
         return marla_WriteResult_UPSTREAM_CHOKED;
     }
     if(!req->backendPeer) {
-        marla_killRequest(req, "Client request %d lost its backend", req->id);
+        marla_killRequest(req, 502, "Client request %d lost its backend", req->id);
         return marla_WriteResult_KILLED;
     }
     if(req->backendPeer->error[0] != 0) {
-        marla_killRequest(req, "Client request %d' backend request errored: %s", req->id, req->backendPeer->error);
+        marla_killRequest(req, 502, "Client request %d' backend request errored: %s", req->id, req->backendPeer->error);
         return marla_WriteResult_KILLED;
     }
     if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS) {
         marla_WriteResult wr = marla_backendRead(req->backendPeer->cxn);
         if(!req->backendPeer) {
-            marla_killRequest(req, "Client request %d lost its backend", req->id);
+            marla_killRequest(req, 502, "Client request %d lost its backend", req->id);
             return marla_WriteResult_KILLED;
         }
         if(req->backendPeer->readStage <= marla_BACKEND_REQUEST_READING_HEADERS) {
@@ -1948,14 +1948,14 @@ static marla_WriteResult marla_writeBackendClientHandlerResponse(marla_Request* 
             //for(int i = 0; i < len; ++i) {
                 //unsigned char c = ((unsigned char*)in)[i];
                 //if(c == 0) {
-                    //marla_killRequest(req, "Wrote a null!");
+                    //marla_killRequest(req, 500, "Wrote a null!");
                     //return marla_WriteResult_KILLED;
                 //}
             //}
             if(req->responseLen != marla_MESSAGE_USES_CLOSE) {
                 req->remainingResponseLen -= nread;
                 if(req->remainingResponseLen < 0) {
-                    marla_killRequest(req, "Wrote too much in response.");
+                    marla_killRequest(req, 500, "Wrote too much in response.");
                     return marla_WriteResult_KILLED;
                 }
                 if(req->remainingResponseLen == 0) {

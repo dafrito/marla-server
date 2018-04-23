@@ -17,6 +17,7 @@
 #include <dlfcn.h>
 #include <apr_dso.h>
 #include <sys/inotify.h>
+#include <apr_file_info.h>
 
 #define MAXEVENTS 64
 
@@ -507,6 +508,7 @@ int main(int argc, const char**argv)
         strcpy(server.db_path, "/var/parsegraph/users.sqlite");
     }
     strcpy(server.documentRoot, getenv("PWD"));
+    strcpy(server.dataRoot, getenv("PWD"));
 
     if(argc > MIN_ARGS) {
         for(int n = MIN_ARGS; n < argc; ++n) {
@@ -545,6 +547,11 @@ int main(int argc, const char**argv)
                 }
                 if(!strcmp(arg, "-doc")) {
                     strncpy(server.documentRoot, argv[n+1], sizeof server.documentRoot);
+                    ++n;
+                    continue;
+                }
+                if(!strcmp(arg, "-data")) {
+                    strncpy(server.dataRoot, argv[n+1], sizeof server.dataRoot);
                     ++n;
                     continue;
                 }
@@ -666,25 +673,64 @@ wait:   n = epoll_wait(server.efd, events, MAXEVENTS, -1);
             if(events[i].data.fd == server.fileCacheifd) {
                 // epoll event is from the file cache inotify descriptor.
                 char buf[sizeof(struct inotify_event) + NAME_MAX + 1];
+                struct inotify_event* ev = 0;
+                char* filepath = 0;
                 for(int loop = 1; loop;) {
                     // Attempt to read the next event.
-                    ssize_t nread = read(server.fileCacheifd, buf, sizeof(buf));
+                    ev = (struct inotify_event*)buf;
+                    ssize_t nread = read(server.fileCacheifd, buf, sizeof buf);
                     if(nread < 0) {
                         // Done reading events.
                         loop = 0;
                         continue;
                     }
 
+                    if(ev->len > 0) {
+                        // Read the filepath.
+                        filepath = buf + sizeof(struct inotify_event);
+                        fprintf(stderr, "INOTIFY %ld on %s!!!!\n", nread, filepath);
+                    }
+                    else {
+                        filepath = 0;
+                        fprintf(stderr, "INOTIFY %ld!!!!\n", nread);
+                    }
+
                     // Process one event.
-                    struct inotify_event* ev = (struct inotify_event*)buf;
-                    marla_FileEntry* fe = apr_hash_get(server.wdToFileEntry, &ev->wd, sizeof(ev->wd));
-                    if(!fe) {
-                        fprintf(stderr, "Failed to find FileEntry for given watch descriptor %d\n", ev->wd);
+                    const char* pathname = apr_hash_get(server.wdToPathname, &ev->wd, sizeof(ev->wd));
+                    if(!pathname) {
+                        fprintf(stderr, "Failed to find pathanem for given watch descriptor %d\n", ev->wd);
                         abort();
                     }
 
+                    char* pathbuf = NULL;
+                    if(filepath) {
+                        apr_filepath_merge(&pathbuf, pathname, filepath, APR_FILEPATH_TRUENAME | APR_FILEPATH_NOTABOVEROOT, server.pool);
+                    }
+                    else {
+                        pathbuf = (char*)pathname;
+                    }
+
+                    marla_FileEntry* fe = apr_hash_get(server.fileCache, pathbuf, APR_HASH_KEY_STRING);
+                    if(!fe) {
+                        fprintf(stderr, "Nothing found for %s\n", pathbuf);
+                        continue;
+                    }
+                    if(ev->mask & IN_IGNORED) {
+                        apr_hash_set(server.wdToPathname, &fe->wd, sizeof(fe->wd), 0);
+                        fe->wd = inotify_add_watch(
+                            server.fileCacheifd, fe->watchpath, IN_DELETE_SELF | IN_MOVE_SELF | IN_MODIFY
+                        );
+                        apr_hash_set(server.wdToPathname, &fe->wd, sizeof(fe->wd), fe);
+                        fprintf(stderr, "Re-adding watch %d\n", fe->wd);
+                    }
+
+                    if(access(fe->pathname, R_OK) != 0) {
+                        // File was deleted.
+                        continue;
+                    }
+
                     // Reload the file.
-                    marla_Server_reloadFile(&server, fe->pathname);
+                    marla_FileEntry_reload(fe);
                 }
 
                 // Done reading events.

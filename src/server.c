@@ -40,7 +40,7 @@ void marla_Server_init(struct marla_Server* server)
 
     // Create the file cache.
     server->fileCache = apr_hash_make(server->pool);
-    server->wdToFileEntry = apr_hash_make(server->pool);
+    server->wdToPathname = apr_hash_make(server->pool);
 
     server->server_status = marla_SERVER_STOPPED;
     pthread_mutex_init(&server->server_mutex, 0);
@@ -61,6 +61,7 @@ void marla_Server_init(struct marla_Server* server)
     memset(server->backendport, 0, sizeof server->backendport);
     memset(server->db_path, 0, sizeof server->db_path);
     memset(server->documentRoot, 0, sizeof server->documentRoot);
+    memset(server->dataRoot, 0, sizeof server->dataRoot);
 
     server->first_connection = 0;
     server->last_connection = 0;

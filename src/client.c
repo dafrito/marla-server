@@ -2,6 +2,7 @@
 #include <ctype.h>
 #include <endian.h>
 #include <string.h>
+#include <apr_escape.h>
 
 marla_WriteResult marla_processClientFields(marla_Request* req)
 {
@@ -956,7 +957,7 @@ static marla_WriteResult marla_processStatusLine(marla_Request* req)
                 marla_killRequest(req, 400, "Request target contains control characters, so no valid request.");
                 return marla_WriteResult_KILLED;
             }
-            if(c == '<' || c == '>' || c == '#' || c == '%' || c == '"') {
+            if(c == '<' || c == '>' || c == '#' || c == '"') {
                 marla_killRequest(req, 400, "Request target contains delimiters, so no valid request.");
                 return marla_WriteResult_KILLED;
             }
@@ -978,6 +979,21 @@ static marla_WriteResult marla_processStatusLine(marla_Request* req)
         }
         memset(req->uri + strlen(req->uri), 0, sizeof(req->uri) - strlen(req->uri));
 
+        // Ensure the URL can be escaped, but do not actually escape it, to allow for clients to
+        // distinguish between & and %26.
+        char urlBuf[MAX_URI_LENGTH + 1];
+        switch(apr_unescape_url(urlBuf, req->uri, strlen(req->uri), 0, 0, 1, 0)) {
+        case APR_SUCCESS:
+            break;
+        case APR_NOTFOUND:
+            break;
+        case APR_EINVAL:
+            marla_killRequest(req, 400, "Request target contains an invalid escape sequence.");
+            break;
+        case APR_BADCH:
+            marla_killRequest(req, 400, "Request target contains a forbidden character.");
+            break;
+        }
         marla_logMessagef(req->cxn->server, "Found URI: %s", req->uri);
 
         req->readStage = marla_CLIENT_REQUEST_PAST_REQUEST_TARGET;
@@ -1130,7 +1146,7 @@ marla_WriteResult marla_clientRead(marla_Connection* cxn)
 
     marla_logMessagef(cxn->server, "Read stage: %s, write stage: %s",
         marla_nameRequestReadStage(req->readStage),
-        marla_nameRequestReadStage(req->writeStage)
+        marla_nameRequestWriteStage(req->writeStage)
     );
 
     marla_WriteResult wr;

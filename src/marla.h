@@ -443,10 +443,14 @@ marla_SERVER_DESTROYING = 5,
 
 const char* marla_nameServerStatus(enum marla_ServerStatus);
 
+struct marla_FileEntry;
 struct marla_Server {
 apr_pool_t* pool;
-apr_hash_t* wdToFileEntry;
+apr_hash_t* wdToPathname;
 apr_hash_t* fileCache;
+
+void(*fileUpdated)(struct marla_FileEntry*);
+void* fileUpdatedData;
 
 int idleTimeouts;
 
@@ -463,6 +467,7 @@ char backendport[64];
 const char* backendPort;
 char db_path[PATH_MAX];
 char documentRoot[PATH_MAX];
+char dataRoot[PATH_MAX];
 pthread_mutex_t server_mutex;
 volatile enum marla_ServerStatus server_status;
 volatile int efd;
@@ -517,24 +522,26 @@ const char* marla_getDefaultStatusLine(int statusCode);
 
 struct marla_FileEntry {
 const char* type;
-const char* pathname;
+char* pathname;
+char* watchpath;
 unsigned char* data;
 size_t length;
 int fd;
 int wd;
 struct timespec modtime;
 marla_Server* server;
+void(*callback)(struct marla_FileEntry*);
+void* callbackData;
 };
 
 struct marla_FileEntry;
 typedef struct marla_FileEntry marla_FileEntry;
 
 // Server file entries.
-marla_FileEntry* marla_Server_getFile(marla_Server* server, const char* pathname);
-marla_FileEntry* marla_Server_reloadFile(marla_Server* server, const char* pathname);
+marla_FileEntry* marla_Server_getFile(marla_Server* server, const char* pathname, const char* watchpath);
 
 // File entries.
-marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname);
+marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname, const char* watchpath);
 void marla_FileEntry_reload(marla_FileEntry* fileEntry);
 void marla_FileEntry_free(marla_FileEntry* fileEntry);
 

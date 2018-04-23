@@ -23,47 +23,45 @@ void marla_FileResponder_free(marla_FileResponder* resp)
     free(resp);
 }
 
-marla_FileEntry* marla_Server_getFile(marla_Server* server, const char* pathname)
+static void invokeServerUpdater(marla_FileEntry* fe)
+{
+    if(fe->server->fileUpdated) {
+        fe->server->fileUpdated(fe);
+    }
+}
+
+marla_FileEntry* marla_Server_getFile(marla_Server* server, const char* pathname, const char* watchpath)
 {
     // Get the entry.
     marla_FileEntry* fe = apr_hash_get(server->fileCache, pathname, APR_HASH_KEY_STRING);
     if(!fe) {
         // Create a file entry.
-        fe = marla_FileEntry_new(server, pathname);
+        fe = marla_FileEntry_new(server, pathname, watchpath);
 
-        apr_hash_set(server->fileCache, fe->pathname, APR_HASH_KEY_STRING, fe);
-        apr_hash_set(server->wdToFileEntry, &fe->wd, sizeof(fe->wd), fe);
+        if(fe->wd != -1) {
+            apr_hash_set(server->fileCache, fe->pathname, APR_HASH_KEY_STRING, fe);
+            apr_hash_set(server->wdToPathname, &fe->wd, sizeof(fe->wd), fe->watchpath);
+        }
     }
+
+    fe->callback = invokeServerUpdater;
 
     // Return the entry.
     return fe;
 }
 
-marla_FileEntry* marla_Server_reloadFile(marla_Server* server, const char* pathname)
-{
-    // Get the entry.
-    marla_FileEntry* fe = apr_hash_get(server->fileCache, pathname, APR_HASH_KEY_STRING);
-    if(!fe) {
-        // Create the entry initially.
-        return marla_Server_getFile(server, pathname);
-    }
-
-    // Reload the entry in place.
-    marla_FileEntry_reload(fe);
-
-    // Return the entry.
-    return fe;
-}
-
-marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname)
+marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname, const char* watchpath)
 {
     struct stat sb;
 
     // Create the entry struct.
     marla_FileEntry* fileEntry = malloc(sizeof(*fileEntry));
+    fileEntry->watchpath = strdup(watchpath);
     fileEntry->pathname = strdup(pathname);
     fileEntry->server = server;
     fileEntry->type = "application/octet-stream";
+    fileEntry->callback = 0;
+    fileEntry->callbackData = 0;
 
     // Open the file.
     fileEntry->fd = open(pathname, O_RDONLY);
@@ -81,18 +79,43 @@ marla_FileEntry* marla_FileEntry_new(marla_Server* server, const char* pathname)
     // Save the file's modification time.
     fileEntry->modtime = sb.st_mtim;
 
-    // Watch the file for notifications.
-    fileEntry->wd = inotify_add_watch(
-        server->fileCacheifd, pathname, IN_DELETE_SELF | IN_MOVE_SELF | IN_MODIFY
-    );
-    if(fileEntry->wd == -1) {
-        perror("inotify_add_watch");
-        abort();
+    // Watch the file's directory for notifications.
+    if(server->fileCacheifd > 0) {
+        fprintf(stderr, "Added watch for %s\n", watchpath);
+        fileEntry->wd = inotify_add_watch(server->fileCacheifd, fileEntry->watchpath, IN_MODIFY);
+        if(fileEntry->wd == -1) {
+            perror("inotify_add_watch");
+            abort();
+        }
+    }
+    else {
+        fileEntry->wd = -1;
     }
 
-    // Retrieve the memory-mapped data from the file.
+    // Retrieve the data from the file.
     fileEntry->length = sb.st_size;
-    fileEntry->data = mmap(0, fileEntry->length, PROT_READ, MAP_SHARED, fileEntry->fd, 0);
+    if(fileEntry->length > 0) {
+        fileEntry->data = malloc(sb.st_size + 1);
+        fileEntry->data[sb.st_size] = 0;
+        size_t remaining = sb.st_size;
+        size_t index = 0;
+        while(remaining > 0) {
+            int nread = read(fileEntry->fd, fileEntry->data + index, remaining);
+            if(nread <= 0) {
+                perror("read");
+                abort();
+            }
+            remaining -= nread;
+            index += nread;
+        }
+    }
+    else {
+        fileEntry->data = 0;
+    }
+
+    // Close the file.
+    close(fileEntry->fd);
+    fileEntry->fd = -1;
 
     char* sep = rindex(fileEntry->pathname, '.');
     if(!sep) {
@@ -170,14 +193,10 @@ void marla_FileEntry_reload(marla_FileEntry* fileEntry)
 {
     struct stat sb;
 
-    // Unmap memory.
-    if(0 != munmap(fileEntry->data, fileEntry->length)) {
-        perror("munmap");
-        abort();
+    if(fileEntry->data) {
+        free(fileEntry->data);
+        fileEntry->data = 0;
     }
-
-    // Close the file.
-    close(fileEntry->fd);
 
     // Re-open the file.
     fileEntry->fd = open(fileEntry->pathname, O_RDONLY);
@@ -195,26 +214,51 @@ void marla_FileEntry_reload(marla_FileEntry* fileEntry)
     // Save the file's modification time.
     fileEntry->modtime = sb.st_mtim;
 
-    // Retrieve the memory-mapped data from the file.
+    // Retrieve the data from the file.
     fileEntry->length = sb.st_size;
-    fileEntry->data = mmap(0, fileEntry->length, PROT_READ, MAP_SHARED, fileEntry->fd, 0);
-}
-
-void marla_FileEntry_free(marla_FileEntry* fileEntry)
-{
-    // Unmap memory.
-    if(0 != munmap(fileEntry->data, fileEntry->length)) {
-        perror("munmap");
-        abort();
+    if(fileEntry->length > 0) {
+        fileEntry->data = malloc(sb.st_size + 1);
+        fileEntry->data[sb.st_size] = 0;
+        size_t remaining = sb.st_size;
+        size_t index = 0;
+        while(remaining > 0) {
+            int nread = read(fileEntry->fd, fileEntry->data + index, remaining);
+            if(nread <= 0) {
+                perror("read");
+                abort();
+            }
+            remaining -= nread;
+            index += nread;
+        }
+    }
+    else {
+        fileEntry->data = 0;
     }
 
     // Close the file.
     close(fileEntry->fd);
+    fileEntry->fd = -1;
+    fprintf(stderr, "Reloaded %s\n", fileEntry->pathname);
+    if(fileEntry->callback) {
+        fileEntry->callback(fileEntry);
+    }
+}
 
-    // End the file's watch.
-    inotify_rm_watch(fileEntry->server->fileCacheifd, fileEntry->wd);
+void marla_FileEntry_free(marla_FileEntry* fileEntry)
+{
+    if(fileEntry->data) {
+        free(fileEntry->data);
+        fileEntry->data = 0;
+    }
+
+    if(fileEntry->wd != -1) {
+        // End the file's watch.
+        inotify_rm_watch(fileEntry->server->fileCacheifd, fileEntry->wd);
+    }
 
     // Free the memory.
+    free(fileEntry->pathname);
+    free(fileEntry->watchpath);
     free(fileEntry);
 }
 
@@ -265,7 +309,7 @@ void marla_fileHandlerAcceptRequest(marla_Request* req)
         return;
     }
 
-    marla_FileEntry* fe = marla_Server_getFile(server, pathbuf);
+    marla_FileEntry* fe = marla_Server_getFile(server, pathbuf, server->documentRoot);
     if(!fe) {
         fprintf(stderr, "The handlerData must be set for request %d\n.", req->id);
         abort();

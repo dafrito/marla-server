@@ -65,17 +65,20 @@ border: 1px solid grey;
 		<li>#define <b><a href="#marla_BUFSIZE">marla_BUFSIZE</a></b>
 		</ul>
 		</div>
-		<div class="block linksearch" style="font-size: 15px">
+		<div class="block linksearch" style="font-size: 15px; width: 100%;">
 			<div class=links>
-       <form id=search action="/search">
+       
+        	<a href=/login><span class="alphabud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="alphabud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="alphabud" style="align-content: right">Import</span></a>
+
+        <form id=search action="/search" style="width: %; float:right; display: inline-block;">
+
         <input name=q></input> <input type=submit value=Search></input>
         </form>
-        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
-        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
-        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+
     	</div>
 		</div>
-		
 		<div class="block content" style="font-size: 15px"> 
 		<h1>Ring - <a href="index.html">Marla</a></h1>
 		Circular buffer.

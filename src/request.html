@@ -82,14 +82,18 @@ background: lightgrey;
 		</ul>
 		</div>
 		</div>
-		<div class="block linksearch" style="font-size: 15px">
+		<div class="block linksearch" style="font-size: 15px; width: 100%;">
 			<div class=links>
-       <form id=search action="/search">
+       
+        	<a href=/login><span class="alphabud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="alphabud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="alphabud" style="align-content: right">Import</span></a>
+
+        <form id=search action="/search" style="width: %; float:right; display: inline-block;">
+
         <input name=q></input> <input type=submit value=Search></input>
         </form>
-        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
-        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
-        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+
     	</div>
 		</div>
 		<div class="block content" style="font-size: 15px"> 
@@ -97,7 +101,9 @@ background: lightgrey;
 		<h2>enum <a name="marla_RequestReadStage">marla_RequestReadStage</h2>
 		Stages of reading a client request. Reads occur either from clients as original 		requests,
 		or from backends as returned responses.
-		<table>
+		<table class="request">
+			<col style="width: 40%">
+			<col style="width: 60%">
 		<tr><th>Constant<th>Parsing position
 		<tr><td>marla_CLIENT_REQUEST_READ_FRESH<td>Before or at client's HTTP request line.
 		<tr class=backend><td>marla_BACKEND_REQUEST_FRESH<td>Before or at backend's response 		line.
@@ -125,7 +131,9 @@ background: lightgrey;
 		<tr class=backend><td>marla_BACKEND_REQUEST_DONE_READING<td>After backend's response.
 		</table>
 		<h2>enum <a name="marla_RequestWriteStage">marla_RequestWriteStage</h2>
-		<table>
+		<table class="request">
+			<col style="width: 40%">
+			<col style="width: 60%">
 		<tr><th>Constant<th>Client write head position
 		<tr><td>marla_CLIENT_REQUEST_WRITE_AWAITING_ACCEPT<td>Nothing written
 		<tr class=backend><td>marla_BACKEND_REQUEST_WRITING_REQUEST_LINE<td>Backend's request 		line.
@@ -254,18 +262,20 @@ background: lightgrey;
 		</li>
 		</ul>
 		<h2>struct <a name="marla_Request">marla_Request</h2>
-		<table>
+		<table class="request">
+			<col style="width: 40%">
+			<col style="width: 60%">
 		<tr><th>Member<th>Description
 		<tr><td>struct marla_Request* next_request<td>The next request in line for this 		connection.
 		<tr><td>int id<td>A server-unique identifier for this request.
 		<tr><td>int statusCode<td>HTTP status code
-		<tr><td>char statusLine[MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP status line text
+		<tr><td>char statusLine [MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP status line text
 		<tr><td>struct marla_Connection* cxn<td>Underlying client connection
-		<tr><td>char method[MAX_METHOD_LENGTH + 1]<td>HTTP method
-		<tr><td>char host[MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP host
-		<tr><td>char uri[MAX_URI_LENGTH + 1]<td>HTTP request target
-		<tr><td>char error[marla_BUFSIZE]<td>Error message
-		<tr><td>char contentType[MAX_FIELD_VALUE_LENGTH + 1]<td>Content-Type header value
+		<tr><td>char method [MAX_METHOD_LENGTH + 1]<td>HTTP method
+		<tr><td>char host [MAX_FIELD_VALUE_LENGTH + 1]<td>HTTP host
+		<tr><td>char uri [MAX_URI_LENGTH + 1]<td>HTTP request target
+		<tr><td>char error [marla_BUFSIZE]<td>Error message
+		<tr><td>char contentType [MAX_FIELD_VALUE_LENGTH + 1]<td>Content-Type header value
 		<tr><td>int is_backend<td>Indicates if the client request is for a backend connection
 		<tr><td>enum marla_RequestReadStage readStage<td>Request's read stage
 		<tr><td>enum marla_RequestWriteStage writeStage<td>Request's write stage
@@ -282,17 +292,17 @@ background: lightgrey;
 		<tr><td>long int remainingResponseLen<td>When writing fixed-length backend responses, 		this is the bytes remaining to be written.
 		<tr><td>long int totalContentLen<td>
 		<tr><td>long int chunkSize<td>
-		<tr><td>char redirectLocation[MAX_FIELD_VALUE_LENGTH + 1]<td>The Location: header value
-		<tr><td>char setCookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Set-Cookie: header value
-		<tr><td>char cookieHeader[MAX_FIELD_VALUE_LENGTH + 1]<td>The Cookie: header value
-		<tr><td>char websocket_nonce[MAX_WEBSOCKET_NONCE_LENGTH + 1]<td>
-		<tr><td>char websocket_accept[2 * SHA_DIGEST_LENGTH + 1]<td>
+		<tr><td>char redirectLocation [MAX_FIELD_VALUE_LENGTH + 1]<td>The Location: header value
+		<tr><td>char setCookieHeader [MAX_FIELD_VALUE_LENGTH + 1]<td>The Set-Cookie: header value
+		<tr><td>char cookieHeader [MAX_FIELD_VALUE_LENGTH + 1]<td>The Cookie: header value
+		<tr><td>char websocket_nonce [MAX_WEBSOCKET_NONCE_LENGTH + 1]<td>
+		<tr><td>char websocket_accept [2 * SHA_DIGEST_LENGTH + 1]<td>
 		<tr><td>unsigned char websocket_frame[7]<td>
 		<tr><td>int websocket_pingLen<td>
-		<tr><td>unsigned char websocket_ping[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
+		<tr><td>unsigned char websocket_ping [MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
 		<tr><td>char websocket_pongLen<td>
-		<tr><td>unsigned char websocket_pong[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
-		<tr><td>unsigned char websocket_closeReason[MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
+		<tr><td>unsigned char websocket_pong [MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
+		<tr><td>unsigned char websocket_closeReason [MAX_WEBSOCKET_CONTROL_PAYLOAD]<td>
 		<tr><td>char websocket_closeReasonLen<td>
 		<tr><td>uint16_t websocket_closeCode<td>
 		<tr><td>int websocket_type<td>

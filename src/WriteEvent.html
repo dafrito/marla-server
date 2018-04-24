@@ -41,17 +41,20 @@
 		</ul>
 		</div>
 		</div>
-		<div class="block linksearch" style="font-size: 15px">
-		<div class=links>
-        <form id=search action="/search">
+		<div class="block linksearch" style="font-size: 15px; width: 100%;">
+			<div class=links>
+       
+        	<a href=/login><span class="alphabud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="alphabud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="alphabud" style="align-content: right">Import</span></a>
+
+        <form id=search action="/search" style="width: %; float:right; display: inline-block;">
+
         <input name=q></input> <input type=submit value=Search></input>
         </form>
-        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
-        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
-        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+
     	</div>
 		</div>
-
 		<div class="block content" style="font-size: 15px">
 		<h1>WriteEvent - <a href="index.html">Marla</a></h1>
 		<h2>enum <a name="marla_WriteResult">marla_WriteResult</a></h2>
@@ -88,6 +91,10 @@
 		</table>
 		<h2>void <a name="marla_WriteEvent_init">marla_WriteEvent_init(marla_WriteEvent* writeEvent, enum marla_WriteResult st)</a></h2>
 		Initialize the given WriteEvent setting to the given result.
+		</div>
+		<div class="footer slot style="display: inline-block; "">
+    &copy; 2018 <a href='https://rainback.com'>Rainback, Inc.</a> All rights reserved. <a href=/contact><span class="bud">Contact Us</span></a>
+</div>
 		</div>
 	</div>
 </body>

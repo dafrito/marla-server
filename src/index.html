@@ -22,37 +22,70 @@ table.enums td {
 vertical-align: top;
 }
 </style>
+<link rel=stylesheet type=text/css href="../../doc/rainback.css">
 <title>Marla</title>
 </head>
 <body>
-<h1>Marla</h1>
-Marla is a HTTP 1.1 server that depends on <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
-<ol>
-<li><a href="main.html">Main</a>
-<li><a href="server.html">Server</a>
-<li><a href="connection.html">Connection</a>
-<li><a href="request.html">Request</a>
-<li><a href="WriteEvent.html">WriteEvent</a>
-<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
-<li><a href="backend.html">Backend</a>
-<li><a href="ring.html">Ring</a>
-<li><a href="http.html">HTTP</a>
-</ol>
-<table class=enums>
-<tr>
-<td>
-<h2>Client read</h2>
-<img src="../client-read.png"></img>
-<td>
-<h2>Backend write</h2>
-<img src="../backend-write.png"></img>
-<tr>
-<td>
-<h2>Client write</h2>
-<img src="../client-write.png"></img>
-<td>
-<h2>Backend read</h2>
-<img src="../backend-read.png"></img>
-</table>
+	<div class="indexgrid":>
+		<div class="logo" style="align-items: center;">
+		<nav class="toc" style="clear: none">
+		<p style="text-align: center">
+		<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
+		</p>
+		</nav>
+		</div>
+		<div class="block linksearch" style="font-size: 15px; width: 100%;">
+			<div class=links>
+       
+        	<a href=/login><span class="alphabud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="alphabud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="alphabud" style="align-content: right">Import</span></a>
+
+        <form id=search action="/search" style="width: %; float:right; display: inline-block;">
+
+        <input name=q></input> <input type=submit value=Search></input>
+        </form>
+
+    	</div>
+		</div>
+
+		<div class="slot blurb" style="width: 100%;">
+		<h1>Marla</h1>
+		Marla is a HTTP 1.1 server that depends on <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+		<ol>
+		<li><a href="main.html">Main</a>
+		<li><a href="server.html">Server</a>
+		<li><a href="connection.html">Connection</a>
+		<li><a href="request.html">Request</a>
+		<li><a href="WriteEvent.html">WriteEvent</a>
+		<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
+		<li><a href="backend.html">Backend</a>
+		<li><a href="ring.html">Ring</a>
+		<li><a href="http.html">HTTP</a>
+		</ol>
+		</div>
+		<div class="block content">
+
+		<table class=enums style="width: 100%;">
+		<tr>
+		<td style="text-align: center;">
+		<h2>Client read</h2>
+		<img style="max-width: 950px;" src="../client-read.png"></img>
+		<tr><td style="text-align: center;">
+		<h2>Backend write</h2>
+		<img style="max-width: 600px;" src="../backend-write.png"></img>
+		<tr>
+		<td style="text-align: center;">
+		<h2>Client write</h2>
+		<img style="max-width: 950px;" src="../client-write.png"></img>
+		<tr><td style="text-align: center;">
+		<h2>Backend read</h2>
+		<img style="max-width: 950px;" src="../backend-read.png"></img>
+		</table>
+		</div>
+		<div class="footer slot style="display: inline-block; "">
+    &copy; 2018 <a href='https://rainback.com'>Rainback, Inc.</a> All rights reserved. <a href=/contact><span class="bud">Contact Us</span></a>
+</div>
+	</div>
 </body>
 </html>

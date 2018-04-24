@@ -20,7 +20,7 @@ background: black;
 <body>
 	<div class="grid">
 		<div class="logo">
-		<nav class="toc" style="clear: none">
+		<nav class="toc" style="clear: none; ">
 		<p style="text-align: center">
 		<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
 		</p>
@@ -64,21 +64,25 @@ background: black;
 		</ul>
 		</div>
 		</div>
-		<div class="block linksearch" style="font-size: 15px">
+		<div class="block linksearch" style="font-size: 15px; width: 100%;">
 			<div class=links>
-       <form id=search action="/search">
+       
+        	<a href=/login><span class="alphabud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="alphabud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="alphabud" style="align-content: right">Import</span></a>
+
+        <form id=search action="/search" style="width: %; float:right; display: inline-block;">
+
         <input name=q></input> <input type=submit value=Search></input>
         </form>
-        <a href=/login><span class="bud" style="background-color: greenyellow">Log in</span></a> 
-        <a href=/signup><span class="bud" style="background-color: gold">Sign up</span></a> 
-        <a href="/import"><span class="bud" style="align-content: right">Import</span></a>
+
     	</div>
 		</div>
 		
 		<div class="block content" style="font-size: 15px"> 
 		<h1>Functions</h1>
 		<h2><a name="marla_BackendResponderStage">enum marla_BackendResponderStage</a></h2>
-		<table style="width: 100px">
+		<table style="width: 80%">
 		<tr><td>marla_BackendResponderStage_STARTED<td>
 		<tr><td>marla_BackendResponderStage_RESPONSE_LINE<td>
 		<tr><td>marla_BackendResponderStage_LOCATION_HEADER<td>

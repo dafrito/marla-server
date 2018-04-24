@@ -11,79 +11,115 @@ table td, table th
 border: 1px solid grey;
 }
 </style>
-<link rel=stylesheet type=text/css href="style.css">
+<link rel=stylesheet type=text/css href="../../doc/rainback.css">
 </head>
 <body>
-<main class=content>
-<h1>Main - <a href="index.html">Marla</a></h1>
-marla <em>server-port</em> <em>backend-port</em> <em>logging-port</em> [<em>modules-or-flags</em>, ...]
-<p>
-The first three arguments choose ports to use. Remaining arguments are server flags or server module definitions.
-<h3>Server port</h3>
-The TCP port serving HTTP or HTTPS.
-<h3>Backend port</h3>
-The TCP port of the local backend HTTP server.
-<h3>Logging port</h3>
-The TCP port of the logging server.
-<pre>
+	<div class="grid">
+		<div class="logo">
+		<nav class="toc" style="clear: none; ">
+		<p style="text-align: center">
+		<a href=/><img id=logo src="../../doc/nav-side-logo.png"></img></a>
+		</p>
+		</nav>
+		</div>
+		<div class="block title">
+		<h1><h1>Main - <a href="index.html">Marla</a></h1>
+		marla <em>server-port</em> <em>backend-port</em> <em>logging-port</em> [<em>modules-or-flags</em>, ...]
+		<p>
+		The first three arguments choose ports to use. Remaining arguments are server flags or server module definitions.</h1>
+		</div>
+		<div class="slot toctitle">
+		<p>
+		<h2>Table of Contents</h2>
+		<div class="cot" style="font-size: 10px">
+		<h3>Marla</h3>
+		Marla is a HTTP 1.1 server that depends on <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
+		<ol style="font-size: 10px ; padding-left: 0em ; text-align: center" id="top-links">
+		<li><a href="main.html">Main</a>
+		<li><a href="server.html">Server</a>
+		<li><a href="connection.html">Connection</a>
+		<li><a href="request.html">Request</a>
+		<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
+		<li><a href="WriteEvent.html">WriteEvent</a>
+		<li><a href="backend.html">Backend</a>
+		<li><a href="ring.html">Ring</a>
+		</ol>
+		<h3>Main - <a href="index.html">Marla</a></h3>
+		<ul>
+		<li><a href="#Server">Server port</a>
+		<li><a href="#Backend">Backend port</a>
+		<li><a href="#Logging">Logging port</a>
+		<li><a href="#Server">Server module definitions</a>
+		<li><a href="#Server">Server flags</a>
+		</ul>
+		
+		</div>
+		</div>
+		<div class="block linksearch" style="font-size: 15px; width: 100%;">
+			<div class=links>
+       
+        	<a href=/login><span class="alphabud" style="background-color: greenyellow">Log in</span></a> 
+        <a href=/signup><span class="alphabud" style="background-color: gold">Sign up</span></a> 
+        <a href="/import"><span class="alphabud" style="align-content: right">Import</span></a>
+
+        <form id=search action="/search" style="width: %; float:right; display: inline-block;">
+
+        <input name=q></input> <input type=submit value=Search></input>
+        </form>
+
+    	</div>
+    	</div>
+		<div class="block content">
+		<h1>Main - <a href="index.html">Marla</a></h1>
+		
+		<h3><a name="Server">Server port</h3></a>
+		The TCP port serving HTTP or HTTPS.
+		<h3><a name="Backend">Backend port</h3></a>
+		The TCP port of the local backend HTTP server.
+		<h3><a name="Logging">Logging port</h3></a>
+		The TCP port of the logging server.
+		<pre>
 java -jar logviewer.jar
-</pre>
-<h3>Server module definitions</h3>
-Marla expects each server module to be passed in the command-line in the form <code>modulepath?modulefunc</code>.
-<p>
-modulepath is the path from marla's cwd to library opened with <a href="https://linux.die.net/man/3/dlopen">dlopen()</a>.
-modulefunc is the name of a function defined within that library, that is
-retrieved using <a href="https://linux.die.net/man/3/dlsym">dlsym()</a> and invoked.
-<p>
-The function is of the type void(*moduleFunc)(struct marla_Server*, enum marla_ServerModuleEvent).
-<pre>
-void module_servermod_init(struct marla_Server* server, enum marla_ServerModuleEvent e)
+		</pre>
+		<h3><a name="Server">Server module definitions</h3></a>
+		Marla expects each server module to be passed in the command-line in the form <code>modulepath?modulefunc</code>.
+		<p>
+		modulepath is the path from marla's cwd to library opened with <a href="https://linux.die.net/man/3/dlopen">dlopen()</a>.
+		modulefunc is the name of a function defined within that library, that is
+		retrieved using <a href="https://linux.die.net/man/3/dlsym">dlsym()</a> and invoked.
+		<p>
+		The function is of the type void(*moduleFunc)(struct marla_Server*, enum marla_ServerModuleEvent).
+		<pre style="font-size: 15px">
+void module_servermod_init(
+struct marla_Server* server,
+ enum marla_ServerModuleEvent e)
 {
-    switch(e) {
-    case marla_EVENT_SERVER_MODULE_START:
-        <a href="server.html">marla_Server_addHook</a>(server, marla_SERVER_HOOK_ROUTE, routeHook, 0);
-        //printf("Module servermod loaded.\n");
-        break;
-    case marla_EVENT_SERVER_MODULE_STOP:
-        break;
-    }
+switch(e) {
+case marla_EVENT_SERVER_MODULE_START:
+ <a href="server.html">marla_Server_addHook</a>(server,
+  marla_SERVER_HOOK_ROUTE, routeHook, 0);
+//printf("Module servermod loaded.\n");
+break;
+case marla_EVENT_SERVER_MODULE_STOP:
+break;
 }
-</pre>
-If the prior function was defined in a suitable library named libservermod.so, then to invoke it as a server module, you would use <code>libservermod.so?module_servermod_init</code>.
-<h3>Server flags</h3>
-<table>
-<tr><td>-curses<td>Enable curses interface. Default.
-<tr><td>-ssl<td>Enable encryption over OpenSSL. Default.
-<tr><td>-nossl<td>Disable encryption over OpenSSL.
-<tr><td>-nocurses<td>Disable curses interface.
-<tr><td>-key <em>path</em><td>SSL key path.
-<tr><td>-cert <em>path</em><td>SSL cert path.
-<tr><td>-db <em>path</em><td>SQLite3 database path.
-</table>
-</main>
-<nav class=toc>
-<h3>Main - <a href="index.html">Marla</a></h3>
-<ul>
-<li>Server port
-<li>Backend port
-<li>Logging port
-<li>Server module definitions
-<li>Server flags
-</ul>
-<h3>Marla</h3>
-Marla is a HTTP 1.1 server that depends on <a href="https://www.openssl.org/">OpenSSL</a>, and <a href="http://invisible-island.net/ncurses/">ncurses</a>. Marla is written to work on Linux 2.6.17 or greater. Marla is licensed under the <a href="http://www.apache.org/licenses/LICENSE-2.0">Apache License, version 2.0</a>.
-<p>
-<h3>Table of Contents</h3>
-<ol>
-<li><a href="main.html">Main</a>
-<li><a href="server.html">Server</a>
-<li><a href="connection.html">Connection</a>
-<li><a href="request.html">Request</a>
-<li><a href="ChunkedPageRequest.html">ChunkedPageRequest</a>
-<li><a href="WriteEvent.html">WriteEvent</a>
-<li><a href="backend.html">Backend</a>
-<li><a href="ring.html">Ring</a>
-</ol>
-</nav>
+}
+		</pre>
+		If the prior function was defined in a suitable library named libservermod.so, then to invoke it as a server module, you would use <code>libservermod.so?module_servermod_init</code>.
+		<h3><a name="Server">Server flags</h3></a>
+		<table>
+		<tr><td>-curses<td>Enable curses interface. Default.
+		<tr><td>-ssl<td>Enable encryption over OpenSSL. Default.
+		<tr><td>-nossl<td>Disable encryption over OpenSSL.
+		<tr><td>-nocurses<td>Disable curses interface.
+		<tr><td>-key <em>path</em><td>SSL key path.
+		<tr><td>-cert <em>path</em><td>SSL cert path.
+		<tr><td>-db <em>path</em><td>SQLite3 database path.
+		</table>
+		</div>
+			<div class="footer slot style="display: inline-block; "">
+    &copy; 2018 <a href='https://rainback.com'>Rainback, Inc.</a> All rights reserved. <a href=/contact><span class="bud">Contact Us</span></a>
+</div>
+		</div>
 </body>
 </html>

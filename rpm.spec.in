@@ -29,8 +29,6 @@ mkdir -p %{buildroot}/%{_includedir}
 cp marla %{buildroot}/%{_bindir}
 cp libmarla.so %{buildroot}/%{_libdir}
 cp src/marla.h %{buildroot}/%{_includedir}
-mkdir -p %{buildroot}/%{_datadir}/parsegraph
-mkdir -p %{buildroot}/%{_sysconfdir}/parsegraph
 
 %package devel
 Summary: Development libraries for @PACKAGE_NAME@
@@ -41,8 +39,6 @@ Development libraries for Marla.
 %files
 %{_bindir}/*
 %{_libdir}/libmarla.so
-%{_datadir}/parsegraph
-%{_sysconfdir}/parsegraph
 
 %files devel
 %{_includedir}/*

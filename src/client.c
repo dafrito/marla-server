@@ -126,13 +126,16 @@ marla_WriteResult marla_processClientFields(marla_Request* req)
             }
             else if(!strcasecmp(fieldName, "Connection")) {
                 char* sp;
-                char* fieldToken = strtok_r(fieldValue, ", ", &sp);
+                char* fieldToken = strtok_r(fieldValue, ",", &sp);
                 int hasMultiple = 1;
                 if(!fieldToken) {
                     fieldToken = fieldValue;
                     hasMultiple = 0;
                 }
                 while(fieldToken) {
+                    while(fieldToken[0] == ' ') {
+                        ++fieldToken;
+                    }
                     if(!strcasecmp(fieldToken, "close")) {
                         if(req->requestLen == marla_MESSAGE_LENGTH_UNKNOWN) {
                             req->requestLen = marla_MESSAGE_USES_CLOSE;
@@ -154,7 +157,7 @@ marla_WriteResult marla_processClientFields(marla_Request* req)
                         req->handler(req, marla_EVENT_HEADER, fieldName, fieldValue - fieldName);
                     }
                     if(hasMultiple) {
-                        fieldToken = strtok_r(0, ", ", &sp);
+                        fieldToken = strtok_r(0, ",", &sp);
                     }
                 }
             }

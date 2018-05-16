@@ -720,13 +720,16 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
             }
             else if(!strcmp(responseHeaderKey, "Connection")) {
                 char* sp;
-                char* fieldToken = strtok_r(responseHeaderValue, ", ", &sp);
+                char* fieldToken = strtok_r(responseHeaderValue, ",", &sp);
                 int hasMultiple = 1;
                 if(!fieldToken) {
                     fieldToken = responseHeaderValue;
                     hasMultiple = 0;
                 }
                 while(fieldToken) {
+                    while(fieldToken[0] == ' ') {
+                        ++fieldToken;
+                    }
                     if(!strcasecmp(fieldToken, "close")) {
                         marla_logMessage(server, "Backend request will close once done.");
                         if(req->responseLen == marla_MESSAGE_LENGTH_UNKNOWN) {
@@ -742,7 +745,7 @@ static marla_WriteResult marla_processBackendResponseFields(marla_Request* req)
                         return marla_WriteResult_KILLED;
                     }
                     if(hasMultiple) {
-                        fieldToken = strtok_r(0, ", ", &sp);
+                        fieldToken = strtok_r(0, ",", &sp);
                     }
                 }
             }
